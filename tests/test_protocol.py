@@ -75,3 +75,25 @@ def test_constants_match_c_header():
         assert uuid in text
     for cmd in p.Command:
         assert f"0x{cmd.value:02X}" in text, cmd
+
+
+def test_status_round_trip_and_size():
+    assert p.STATUS_SIZE == 12
+    st = p.Status(
+        1, 0, 0, session_id=3, gate_state=1, uptime_s=123456, calibrated=1, session_active=0
+    )
+    assert p.unpack_status(p.pack_status(st)) == st
+    assert st.firmware == "1.0.0"
+    with pytest.raises(ValueError):
+        p.unpack_status(b"\x00" * 5)
+    c = _header_constants()
+    assert c["STATUS_SIZE"] == str(p.STATUS_SIZE)
+
+
+def test_serial_commands_and_energy_threshold_match_header():
+    text = HEADER.read_text()
+    for cmd, ch in p.SERIAL_COMMANDS.items():
+        assert f"'{ch}'" in text, cmd
+    assert len(set(p.SERIAL_COMMANDS.values())) == len(p.SERIAL_COMMANDS)
+    c = _header_constants()
+    assert float(c["GATE_ENERGY_THRESHOLD_MS2SQ"].rstrip("f")) == p.GATE_ENERGY_THRESHOLD_MS2SQ

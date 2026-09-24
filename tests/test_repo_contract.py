@@ -51,7 +51,7 @@ def test_expected_layout_exists():
         "src/formcoach/app",
         "src/formcoach/eval",
         "firmware/platformio.ini",
-        "firmware/src/main.cpp",
+        "firmware/src/app/main.cpp",
         "firmware/include/protocol.h",
         "data/MANIFEST.md",
         "docs/STATUS.md",

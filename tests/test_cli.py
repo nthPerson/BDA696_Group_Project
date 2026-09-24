@@ -34,8 +34,6 @@ def test_every_checkpoint_command_exists():
         ["eval", "all"],
         ["eval", "rules"],
         ["eval", "gating", "--gate", "energy"],
-        ["record", "--source", "serial", "--port", "COM5"],
-        ["session", "check", "data/team/S1/0001"],
     ]
     for cmd in commands:
         result = runner.invoke(app, cmd)

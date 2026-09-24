@@ -65,11 +65,14 @@ record: ## record a team session (SOURCE=serial|ble PORT=/dev/ttyACM0|COM5)
 fw-build: ## compile the firmware (PlatformIO via uvx; also runs in CI)
 	$(PIO) run -d firmware
 
-fw-upload: ## flash the firmware over USB-C
-	$(PIO) run -d firmware -t upload
+fw-upload: ## flash the firmware over USB-C (PORT=COM5 | /dev/ttyACM0; omit to auto-detect)
+	$(PIO) run -d firmware -e xiao_esp32s3 -t upload $(if $(PORT),--upload-port $(PORT),)
 
-fw-monitor: ## open the serial monitor (115200 baud)
-	$(PIO) device monitor -d firmware
+fw-monitor: ## open the serial monitor at 115200 baud (PORT=COM5 | /dev/ttyACM0)
+	$(PIO) device monitor -d firmware -b 115200 $(if $(PORT),-p $(PORT),)
+
+fw-libtest: ## compile-test the candidate BMI160 / TFLite Micro libraries (no hardware)
+	$(PIO) run -d firmware -e libtest_tflm_chirale -e libtest_tflm_arduino -e libtest_tflm_tanaka -e libtest_bmi160_dfrobot -e libtest_bmi160_hanyazou
 
 clean: ## remove caches and build artifacts (never touches data/)
 	rm -rf .pytest_cache .ruff_cache htmlcov .coverage firmware/.pio

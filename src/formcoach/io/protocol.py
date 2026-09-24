@@ -128,7 +128,50 @@ def unpack_batch(buf: bytes | memoryview) -> tuple[int, list[Sample]]:
     return session_id, samples
 
 
+# ---- Status characteristic (12 bytes; FcStatus in protocol.h) -------------------------------
+STATUS_STRUCT = struct.Struct("<BBBHBIBB")
+STATUS_SIZE = STATUS_STRUCT.size  # 12
+
+
+@dataclass(frozen=True, slots=True)
+class Status:
+    fw_major: int
+    fw_minor: int
+    fw_patch: int
+    session_id: int
+    gate_state: int
+    uptime_s: int
+    calibrated: int
+    session_active: int
+
+    @property
+    def firmware(self) -> str:
+        return f"{self.fw_major}.{self.fw_minor}.{self.fw_patch}"
+
+
+def pack_status(st: Status) -> bytes:
+    return STATUS_STRUCT.pack(*(getattr(st, f) for f in Status.__slots__))
+
+
+def unpack_status(buf: bytes | memoryview) -> Status:
+    if len(buf) < STATUS_SIZE:
+        raise ValueError(f"status packet too short: {len(buf)} bytes")
+    return Status(*STATUS_STRUCT.unpack_from(buf, 0))
+
+
+# ---- Energy gate threshold shared with firmware v1 (FC_GATE_ENERGY_THRESHOLD_MS2SQ) ----------
+GATE_ENERGY_THRESHOLD_MS2SQ = 3.0
+
 SERIAL_CSV_HEADER = "t_ms,ax,ay,az,gx,gy,gz,flags,seq"
+# One ASCII character per command over USB serial (FC_SERIAL_CMD_* in protocol.h)
+SERIAL_COMMANDS: dict[Command, str] = {
+    Command.LED_GOOD_REP: "G",
+    Command.LED_FAULT: "F",
+    Command.START_SESSION: "S",
+    Command.STOP_SESSION: "X",
+    Command.CALIBRATE: "C",
+    Command.PING: "P",
+}
 
 
 def parse_serial_line(line: str) -> Sample | None:

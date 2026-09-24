@@ -69,5 +69,30 @@ static_assert(sizeof(FcBatchHeader) == FC_BATCH_HEADER_SIZE, "FcBatchHeader must
 static_assert(sizeof(FcBatch) == FC_MAX_BATCH_SIZE, "FcBatch must be 99 bytes");
 static_assert(FC_MAX_BATCH_SIZE <= FC_REQUESTED_MTU - 3, "batch must fit one notification");
 
+// ---- Status characteristic payload (read/notify) -------------------------------------------
+#pragma pack(push, 1)
+struct FcStatus {
+  uint8_t fw_major, fw_minor, fw_patch;
+  uint16_t session_id;
+  uint8_t gate_state;   // 0 idle, 1 active
+  uint32_t uptime_s;
+  uint8_t calibrated;   // 1 when a gravity/gyro-bias calibration is stored in NVS
+  uint8_t session_active;
+};
+#pragma pack(pop)
+#define FC_STATUS_SIZE 12
+static_assert(sizeof(FcStatus) == FC_STATUS_SIZE, "FcStatus must be 12 packed bytes");
+
+// ---- Energy gate (laptop `--gate energy` and firmware v1 use the same threshold) ------------
+// var(|a|) over the 2 s window, in (m/s^2)^2; balanced-accuracy fit on RecoFit (ADR-0019).
+#define FC_GATE_ENERGY_THRESHOLD_MS2SQ 3.0f
+
 // Dev-mode serial CSV (one line per sample, 115200 baud):
 #define FC_SERIAL_CSV_HEADER "t_ms,ax,ay,az,gx,gy,gz,flags,seq"
+// Serial control: one ASCII character per line mirrors the BLE command codes (protocol.py).
+#define FC_SERIAL_CMD_LED_GOOD_REP 'G'   // FC_CMD_LED_GOOD_REP
+#define FC_SERIAL_CMD_LED_FAULT 'F'      // FC_CMD_LED_FAULT
+#define FC_SERIAL_CMD_START_SESSION 'S'  // FC_CMD_START_SESSION
+#define FC_SERIAL_CMD_STOP_SESSION 'X'   // FC_CMD_STOP_SESSION
+#define FC_SERIAL_CMD_CALIBRATE 'C'      // FC_CMD_CALIBRATE
+#define FC_SERIAL_CMD_PING 'P'           // FC_CMD_PING

@@ -57,6 +57,7 @@ class Source(StrEnum):
     replay = "replay"
     serial = "serial"
     ble = "ble"
+    fake = "fake"  # software wearable for dry runs and tests (io/fake.py)
 
 
 class Gate(StrEnum):
@@ -411,28 +412,105 @@ def demo(
         console.print(f"wrote {out}/events.parquet frames.parquet session.json")
 
 
+def _open_source(source: Source, port: str | None, duration: float):
+    """Serial / BLE / fake IMU source for record and (later) live demo."""
+    if source is Source.fake:
+        from formcoach.io.fake import FakeSource
+
+        return FakeSource(duration_s=duration if duration > 0 else 10.0)
+    if source is Source.serial:
+        from formcoach.io.serial_source import SerialSource, list_ports
+
+        if not port:
+            ports = list_ports()
+            raise FileNotFoundError(
+                f"--port is required for --source serial (visible ports: {ports or 'none'})"
+            )
+        return SerialSource(port)
+    if source is Source.ble:
+        from formcoach.io.ble import BLESource
+
+        return BLESource(address=port)
+    raise ValueError("record needs --source serial|ble|fake")
+
+
 @app.command("record")
 def record(
-    source: Annotated[Source, typer.Option(help="serial | ble")] = Source.serial,
-    port: Annotated[str | None, typer.Option(help="e.g. /dev/ttyACM0, COM5")] = None,
+    source: Annotated[Source, typer.Option(help="serial | ble | fake")] = Source.serial,
+    port: Annotated[str | None, typer.Option(help="e.g. /dev/ttyACM0, COM5 (BLE: address)")] = None,
     subject: Annotated[str, typer.Option(help="Subject code S1..S5")] = "S1",
     exercise: Annotated[str, typer.Option(help="curl | press | raise | squat")] = "curl",
     camera: Annotated[int | None, typer.Option(help="Webcam index; omit for IMU only.")] = None,
+    duration: Annotated[float, typer.Option(help="Seconds to record (0 = until Ctrl-C).")] = 0.0,
+    notes: Annotated[str, typer.Option(help="Free text stored in meta.json")] = "",
+    root: Annotated[Path | None, typer.Option(help="Output root (default data/team).")] = None,
 ) -> None:
-    """Record a session to data/team/<subject>/<session_id>/ (imu.parquet, meta.json, ...)."""
-    stub(
-        f"record --source {source.value}",
-        4,
-        f"log {exercise} for {subject} from {source.value}"
-        f"{f' on {port}' if port else ''}"
-        f"{f' + camera {camera}' if camera is not None else ''} into data/team/{subject}/.",
-    )
+    """Record a session to data/team/<subject>/<session_id>/ (imu.parquet, meta.json, ...).
+
+    Sends START_SESSION to the wearable, streams samples until --duration or Ctrl-C, then
+    STOP_SESSION. Run `formcoach session check <dir>` afterwards.
+    """
+    import time
+
+    from formcoach.io import protocol
+    from formcoach.io.recorder import TEAM_ROOT, SessionRecorder
+
+    try:
+        src = _open_source(source, port, duration)
+    except (ImportError, FileNotFoundError) as exc:
+        console.print(f"[bold red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    if camera is not None:
+        console.print(
+            "[yellow]camera capture is not wired yet (Checkpoint 4 hardware day); IMU only[/]"
+        )
+    rec = SessionRecorder(
+        subject, exercise, root or TEAM_ROOT, source=source.value, camera=camera, notes=notes,
+        device_name=getattr(src, "device_name", None),
+    )  # fmt: skip
+    rec.start()
+    console.print(f"recording {exercise} for {subject} from {source.value} -> {rec.session_dir}")
+    if hasattr(src, "send"):
+        src.send(protocol.Command.START_SESSION)
+    n = 0
+    t0 = time.monotonic()
+    try:
+        for s in src.iter_samples():
+            rec.add(s)
+            n += 1
+            if n % 250 == 0:
+                console.print(
+                    f"  {n} samples  t={s.t:.1f}s  gate={'on' if s.gate_state else 'off'}"
+                )
+            if duration > 0 and time.monotonic() - t0 >= duration and source is not Source.fake:
+                break
+    except KeyboardInterrupt:
+        console.print("stopping (Ctrl-C)")
+    finally:
+        if hasattr(src, "send"):
+            src.send(protocol.Command.STOP_SESSION)
+        src.close()
+        stats = getattr(src, "stats", None)
+        extra = (
+            {"dropped_by_decoder": stats.dropped, "bad_packets": stats.bad_packets} if stats else {}
+        )
+        out = rec.finish(extra)
+    console.print(f"[green]wrote[/] {out}/imu.parquet meta.json ({n} samples)")
+    console.print(f"next: uv run formcoach session check {out}")
 
 
 @session_app.command("check")
 def session_check(session_dir: Annotated[Path, typer.Argument(help="data/team/<S#>/<id>")]):
     """Quality check: sample drops, gate timeline, frames processed, reps vs expected."""
-    stub("session check", 4, f"summarize {session_dir} and flag problems.")
+    from formcoach.io import session_check as sc
+
+    if not (session_dir / "imu.parquet").exists():
+        console.print(f"[bold red]{session_dir} has no imu.parquet[/]")
+        raise typer.Exit(2)
+    report = sc.check(session_dir)
+    console.print(sc.format_report(report))
+    if report["problems"]:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":  # pragma: no cover
