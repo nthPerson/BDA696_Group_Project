@@ -1,6 +1,6 @@
 # How to: the team's Claude Code configuration (hooks that enforce CLAUDE.md)
 
-**Owner:** Bryce · **Built by:** Claude Code with Robert on 2026-09-24 · **PR:** TBD (branch `chore/claude-code-config`, not yet opened)
+**Owner:** Bryce · **Built by:** Claude Code with Robert on 2026-09-24 · **PR:** #2
 **Checkpoint:** 0 (`docs/00-START-HERE.md`) — repo tooling built alongside the Checkpoint 0 skeleton, not a listed deliverable
 **State:** works (verified in this session; nothing partial)
 
@@ -77,7 +77,7 @@ Update together: if `PROTECTED_DIRS`/`RAW_EXTENSIONS`/`VIDEO` patterns in `data_
 
 - No **(verify)** items from the design docs are touched by this config — it only encodes CLAUDE.md working rules 4 and 7, not third-party hardware/data formats.
 - Not yet exercised: how Claude Code's real hook runner behaves on Windows (`uv run --no-sync python .claude/hooks/...`); only Linux/WSL2 was available this session. The scripts are stdlib-only and path-agnostic (`re` patterns use `[\\/]` for both slash styles), so this should work unchanged, but Bryce should confirm on his OS.
-- No PR is open yet for this work (uncommitted on `chore/claude-code-config`); the PR number above needs filling in once opened.
+- Hooks were built on Linux/WSL2; see the Windows note above.
 
 ## 6. Next steps for Bryce
 
