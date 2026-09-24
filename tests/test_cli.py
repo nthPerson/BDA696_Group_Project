@@ -30,7 +30,6 @@ def test_demo_replay_headless_is_the_demo_of_record():
 
 def test_every_checkpoint_command_exists():
     commands = [
-        ["data", "profile"],
         ["features", "build"],
         ["pose", "extract", "--video", "x.mp4"],
         ["train", "gate"],

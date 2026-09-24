@@ -4,8 +4,47 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 0 done → 1 next
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 1 done (PR #3 open) → 2 next
 **Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-24 — Checkpoint 1: public data loads (Claude Code, autonomous run for Robert)
+
+### What changed
+- **PR #3 `feat/checkpoint-1-data`** (stacked base for the pre-hardware series; plan in
+  `docs/superpowers/plans/2026-09-24-pre-hardware-build.md`).
+- `formcoach data fetch`: registry of every raw file (URL, exact size, SHA-256, license),
+  resumable downloads, checksum verification, zip extraction, manifest rows. All eight raw
+  files verified on disk; `data/MANIFEST.md` rows written.
+- `formcoach data convert` → 314 IMUStream Parquet files (MM-Fit 42, RecoFit 126, RecGym 146)
+  under `data/processed/<dataset>/streams/` in 41 s. `formcoach data profile` →
+  `reports/data_profile.md` + 2 figures (committed).
+- Loaders `mmfit.py`, `recofit.py`, `recgym.py`, label map `labels.py`, schema `schema.py`,
+  manifest writer, fixture builder (`data/fixtures/`, raw formats, < 400 KB each), 51 tests.
+- `docs/04-datasets.md` corrected from the real files (MM-Fit units/joints/subject mapping,
+  RecoFit 94 subjects / CDLA license / 7-column labels, RecGym columns + normalised units +
+  corrupt UCI zip); ADR-0011 … ADR-0016.
+- `Ruby`: read `docs/howto/datasets.md` first, then `src/formcoach/data/schema.py` and
+  `src/formcoach/data/recgym.py` (the smallest loader).
+
+### Facts that differed from the docs (all now in docs/04 and DECISIONS)
+- RecoFit has **94 subjects**, not 200+; files are MATLAB v5 (scipy); license CDLA-Permissive-2.0.
+- MM-Fit smartwatch data is already m/s² and rad/s; pose_3d has 17 joints (H3.6M), pose_2d 18 (COCO).
+- RecGym: UCI zip served corrupt → Kaggle mirror; signals min-max normalised (no units);
+  columns `Subject, Position, Session, …`; 4,703,320 rows.
+
+### Next
+- PR 2 `feat/checkpoint-2-signal` (targets this branch): resample/filters/gravity/windows/
+  features, LOSO, energy + RF baselines, peak rep counter, `reports/loso_*.md`,
+  `reports/baseline_repcount.md`.
+
+### Open questions
+- Should RecoFit's junk-labelled minutes (device taps etc.) be used as extra idle negatives
+  instead of dropped? Currently dropped (ADR-0015).
+
+### Blockers
+- None.
 
 ---
 

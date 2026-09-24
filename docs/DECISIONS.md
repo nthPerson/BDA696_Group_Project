@@ -123,3 +123,64 @@ more to get wrong), and making the guard tolerate a missing script (it would sil
 guarding). Consequences: hooks work from any cwd inside the repo; settings are read at
 session start, so the change takes effect on the next restart; the ADR-0009 sentence about
 starting Claude Code from the repo root still holds for `CLAUDE_PROJECT_DIR` itself.
+
+## ADR-0011 · Raw → IMUStream Parquet conversion is an explicit step · 2026-09-24 · accepted
+Context: RecoFit's `.mat` files take 14 s and 3 GB each to load, MM-Fit is 324 `.npy` files
+and RecGym one 475 MB CSV; every later stage (windows, LOSO, replay) needs the same rows.
+Decision: `formcoach data convert` writes one Parquet per stream in the §5 `IMUStream` schema
+under `data/processed/<dataset>/streams/<subject>-<session>[-<device>].parquet` (gitignored);
+`features build`, `eval …` and the replay source read only those files. Loaders keep a
+`describe()` for the profile report but are otherwise not called in hot paths. Consequences:
+a fresh clone runs `make data && make convert` once (about a minute); the raw formats are
+isolated in `src/formcoach/data/{mmfit,recofit,recgym}.py`.
+
+## ADR-0012 · MM-Fit session clock is fitted from frame index and timestamp · 2026-09-24 · accepted
+Context: MM-Fit sensor rows carry a video frame index and a Unix-ms timestamp; pose arrays
+carry only frame indices; sensors start ~135 s after the video. Decision: per workout,
+`mmfit.session_clock()` least-squares-fits `timestamp = t0 + ms_per_frame × frame` on the
+watch accelerometer (≈ 33.4 ms/frame) and every stream's `t` is seconds since video frame 0;
+pose frames map to `t` through the same fit. Alternatives: `t` relative to the first sensor
+sample (breaks pose alignment across devices) or raw Unix seconds (breaks the "starts near 0"
+convention). Consequences: MM-Fit `t` starts at ~135 s, which is correct, and pose/IMU
+alignment error is below one frame.
+
+## ADR-0013 · RecGym is fetched from the authors' Kaggle mirror · 2026-09-24 · accepted
+Context: the UCI zip for dataset 1128 is served with its first 60 MB zeroed (same SHA-256
+`9713a9ca…` on three downloads and on a byte-range probe, 2026-09-24); no other UCI endpoint
+serves the CSV. The authors' page points to Kaggle, whose v1 download endpoint redirects to a
+signed URL without credentials. Decision: the registry's primary RecGym source is the Kaggle
+archive (116,851,172 B, SHA-256 `0abc140f…`), the UCI URL is kept as `alt_urls` for the record,
+and the manifest row says why. Consequences: if Kaggle changes the redirect, the fetch fails
+loudly with both URLs in the message; the CSV inside has one extra trailing byte compared with
+the UCI listing but the same content.
+
+## ADR-0014 · RecGym is kept in normalised units and never mixed into SI training · 2026-09-24 · accepted
+Context: every RecGym signal column is min-max scaled to [0, 1] with no timestamps; the
+implied full scale is implausible (~76 g) so gravity and physical units cannot be recovered.
+Decision: `recgym.load_stream` centres the values (`x − 0.5`), builds a synthetic 20 Hz clock
+and sets a new `IMUStream` column `units = "normalized"` (SI streams carry `"si"`);
+`schema.validate_imu_stream` skips magnitude checks for normalised streams, and windowing /
+training refuse to combine the two. RecGym is used only for within-dataset checks (20 Hz
+resampling, curl/squat recognition). Consequences: the "second domain" claim in
+`docs/04-datasets.md` §3 is weaker than planned; cross-dataset transfer is RecoFit ↔ MM-Fit.
+
+## ADR-0015 · Canonical label vocabulary and what counts as idle · 2026-09-24 · accepted
+Context: three label sets (75 RecoFit, 10 MM-Fit, 12 RecGym) must map onto the gate's
+`active` flag and the four v1 exercises. Decision (`src/formcoach/data/labels.py`): canonical
+labels are `curl, press, raise, squat, other, idle`; `active = label != idle`. Idle =
+Non-Exercise, Device on Table, Rest, `<Initial Activity>` and **Walk** (the camera must stay
+off while walking between stations); static holds (plank, wall squat) and machines are
+`other` (the athlete is exercising). RecoFit junk labels (device taps, arm-band adjustment,
+notes, "Invalid", "Unlisted Exercise") stay `idle` in the stream with the raw name in
+`label_raw`, and windowing drops any window that overlaps them. Curl includes the band curl
+and the alternating curl; squat includes goblet / hands-behind-head / arms-forward / dumbbell
+variants but not squat jumps or wall squats; press includes the rack shoulder press.
+Consequences: label choices are one table, testable (`test_every_recofit_label_is_mapped`),
+and changing them is a one-file PR plus a rerun of `make eval`.
+
+## ADR-0016 · Placement vocabulary extended · 2026-09-24 · accepted
+Context: §5 lists `wrist_l, wrist_r, upper_arm, pocket, ear`; RecoFit's sensor is on the right
+forearm and RecGym's wrist side is unknown, its third position is the calf. Decision: add
+`forearm_r`, `wrist` (side unknown) and `calf` to `schema.PLACEMENTS`; nothing is renamed.
+Consequences: filters that select "wrist-like" placements must include `wrist`, `wrist_l`,
+`wrist_r` and `forearm_r`.

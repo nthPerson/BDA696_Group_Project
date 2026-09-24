@@ -253,7 +253,8 @@ def describe(root: Path = DEFAULT_ROOT) -> dict:
             d["workouts"] += 1
             d["minutes"] += float((ts[-1] - ts[0]) / 60000.0)
             dt = np.diff(ts)
-            d["rates"].append(1000.0 / float(np.median(dt[dt > 0])) if np.any(dt > 0) else 0.0)
+            span_s = float(ts[-1] - ts[0]) / 1000.0
+            d["rates"].append(len(ts) / span_s if span_s > 0 else 0.0)  # rows per second
             d["dup_ts"] += int((dt == 0).sum())
     for dev, d in per_dev.items():
         out["devices"][dev] = {

@@ -12,7 +12,7 @@ SOURCE  ?= replay
 PORT    ?=
 MODEL   ?= cnn
 
-.PHONY: help setup setup-all lint format test data features train-gate eval demo record \
+.PHONY: help setup setup-all lint format test data convert profile features train-gate eval demo record \
 	    fw-build fw-upload fw-monitor clean
 
 help: ## list targets
@@ -40,6 +40,12 @@ test: ## run the pytest suite
 
 data: ## fetch a public dataset into data/external/ (DATASET=mmfit|recofit|recgym)
 	$(RUN) formcoach data fetch --dataset $(DATASET)
+
+convert: ## convert raw downloads into IMUStream Parquet under data/processed/<dataset>/streams/
+	$(RUN) formcoach data convert
+
+profile: ## write reports/data_profile.md from the datasets on disk
+	$(RUN) formcoach data profile
 
 features: ## build windows + features into data/processed/
 	$(RUN) formcoach features build

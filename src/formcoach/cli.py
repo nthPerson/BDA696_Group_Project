@@ -137,19 +137,53 @@ def data_fetch(
         raise typer.Exit(1)
 
 
+@data_app.command("convert")
+def data_convert(
+    dataset: Annotated[
+        Dataset | None, typer.Option(help="Convert one dataset (default: all present).")
+    ] = None,
+    force: Annotated[bool, typer.Option(help="Rewrite existing Parquet files.")] = False,
+) -> None:
+    """Convert raw downloads into IMUStream Parquet under data/processed/<dataset>/streams/."""
+    from formcoach.data import convert, loader
+
+    names = [dataset.value] if dataset else [n for n in ("mmfit", "recofit", "recgym")]
+    for name in names:
+        mod = loader(name)
+        if not mod.available(mod.DEFAULT_ROOT):
+            console.print(f"[yellow]{name}: raw data not found, skipped (run `make data`)[/]")
+            continue
+        written = convert.convert_dataset(name, None, force=force)
+        console.print(f"[green]{name}[/]: {len(written)} stream file(s) written")
+    console.print(f"streams: {len(convert.list_streams())} under {convert.PROCESSED_ROOT}")
+
+
 @data_app.command("profile")
 def data_profile(
     dataset: Annotated[
         Dataset | None, typer.Option(help="Profile one dataset (default: all present).")
     ] = None,
+    out: Annotated[
+        Path | None, typer.Option(help="Report path (default reports/data_profile.md)")
+    ] = None,
 ) -> None:
     """Write reports/data_profile.md: subjects, minutes, class balance, sampling checks."""
-    stub(
-        "data profile",
-        1,
-        f"describe {dataset.value if dataset else 'every downloaded dataset'} and write "
-        "reports/data_profile.md with tables and figures.",
-    )
+    from formcoach.data import profile
+
+    roots = profile.default_roots()
+    if dataset:
+        roots = {dataset.value: roots[dataset.value]}
+    path = profile.write_profile(roots, out or profile.DEFAULT_OUT)
+    console.print(f"[green]wrote[/] {path}")
+
+
+@data_app.command("make-fixtures", hidden=True)
+def data_make_fixtures() -> None:
+    """Rebuild the small raw-format fixtures under data/fixtures/ (deterministic)."""
+    from formcoach.data import fixtures
+
+    for p in fixtures.build_all():
+        console.print(f"  {p.stat().st_size:>9,} {p.relative_to(fixtures.FIXTURE_ROOT)}")
 
 
 # ---- features --------------------------------------------------------------------------------
