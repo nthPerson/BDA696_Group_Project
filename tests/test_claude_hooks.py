@@ -20,7 +20,11 @@ SESSION_START = ROOT / ".claude" / "hooks" / "session_start.py"
 def run_guard(command: str, tool_name: str = "Bash") -> dict:
     payload = json.dumps({"tool_name": tool_name, "tool_input": {"command": command}})
     proc = subprocess.run(
-        [sys.executable, str(GUARD)], input=payload, capture_output=True, text=True, check=False
+        [sys.executable, str(GUARD)],
+        input=payload,
+        capture_output=True,
+        encoding="utf-8",
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout) if proc.stdout.strip() else {}
@@ -84,7 +88,11 @@ def test_reason_names_the_rule_and_robert():
 def test_ignores_other_tools_and_garbage_input():
     assert run_guard("git add data/team/S1", tool_name="Read") == {}
     proc = subprocess.run(
-        [sys.executable, str(GUARD)], input="not json", capture_output=True, text=True, check=False
+        [sys.executable, str(GUARD)],
+        input="not json",
+        capture_output=True,
+        encoding="utf-8",
+        check=False,
     )
     assert proc.returncode == 0
     assert proc.stdout.strip() == ""
@@ -95,7 +103,7 @@ def test_session_start_prints_status_and_branch():
         [sys.executable, str(SESSION_START)],
         input="{}",
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
         cwd=ROOT,
     )

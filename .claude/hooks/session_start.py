@@ -48,6 +48,9 @@ def _status_head(path: Path) -> list[str]:
 
 
 def main() -> int:
+    # Windows consoles default to cp1252; STATUS.md and our banner contain UTF-8 punctuation.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     root = Path(_git("rev-parse", "--show-toplevel") or ".")
     branch = _git("rev-parse", "--abbrev-ref", "HEAD") or "(not a git repo)"
     dirty = _git("status", "--porcelain")
