@@ -19,7 +19,7 @@ from rich.console import Console
 
 from formcoach import __version__
 
-console = Console()
+console = Console(soft_wrap=True)  # no hard wrapping: output is parsed by tests and logs
 app = typer.Typer(
     name="formcoach",
     help="Sensor-gated webcam form coaching (BDA 696, SDSU Fall 2026).",
@@ -339,24 +339,65 @@ def eval_transfer() -> None:
 def demo(
     source: Annotated[Source, typer.Option(help="replay | serial | ble")] = Source.replay,
     session: Annotated[
-        str | None, typer.Option(help="Replay session id (dataset stream or data/team dir).")
+        Path | None, typer.Option(help="Replay session dir (default: the 30 s MM-Fit fixture).")
     ] = None,
-    gate: Annotated[Gate, typer.Option(help="Gate implementation to use.")] = Gate.device,
+    gate: Annotated[Gate, typer.Option(help="Gate implementation to use.")] = Gate.always_on,
+    exercise: Annotated[
+        str | None, typer.Option(help="curl | press | raise | squat (default: session meta)")
+    ] = None,
     headless: Annotated[bool, typer.Option(help="No window; print rep/fault events.")] = False,
     port: Annotated[str | None, typer.Option(help="Serial port for --source serial.")] = None,
+    out: Annotated[Path | None, typer.Option(help="Write events/frames/session.json here.")] = None,
+    speed: Annotated[float, typer.Option(help="Replay pacing: 0 = fastest, 1 = real time.")] = 0.0,
 ) -> None:
     """Run the full pipeline: IMU source -> gate -> pose -> reps -> rules -> overlay.
 
     `--source replay` needs no hardware and must always work; it is the demo of record.
     """
-    where = f"session {session}" if session else "the bundled 30-second fixture"
-    mode = "headless (events to stdout)" if headless else "with the OpenCV overlay window"
-    stub(
-        f"demo --source {source.value}",
-        3 if source is Source.replay else 4,
-        f"replay {where} from {source.value}{f' on {port}' if port else ''} through gate="
-        f"{gate.value}, pose, rep segmentation and rules, {mode}.",
+    if source is not Source.replay:
+        stub(
+            f"demo --source {source.value}",
+            4,
+            f"stream from {source.value}{f' on {port}' if port else ''} through gate={gate.value}"
+            " (Checkpoint 4 wires the serial/BLE sources).",
+        )
+        return
+    from formcoach.app import pipeline
+    from formcoach.io.replay import FIXTURE_SESSION
+
+    def show(e):
+        if e.kind == "rep":
+            m = e.payload["metrics"]
+            console.print(
+                f"[green]rep[/] {e.payload['rep_id'] + 1:>3}  t={e.t:8.2f}s  "
+                f"dur={e.payload['duration_s']:.2f}s  "
+                f"elbow {m['elbow_min']:.0f}-{m['elbow_max']:.0f} deg"
+            )
+        elif e.kind == "fault":
+            console.print(f"[red]fault[/] {e.payload.get('code')}: {e.payload.get('message', '')}")
+        elif e.kind in ("gate_open", "gate_close"):
+            console.print(f"[cyan]{e.kind}[/] t={e.t:.2f}s")
+
+    session_dir = session or FIXTURE_SESSION
+    console.print(f"replaying {session_dir} (gate={gate.value}, exercise={exercise or 'meta'})")
+    try:
+        result = pipeline.run_replay(
+            session_dir, gate=gate.value, exercise=exercise, headless=headless, out_dir=out,
+            on_event=show, speed=speed,
+        )  # fmt: skip
+    except (FileNotFoundError, ImportError) as exc:
+        console.print(f"[bold red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    s = result.summary
+    expected = pipeline.ReplaySource(session_dir).meta.get("expected_reps")
+    console.print(
+        f"reps {s['reps']} (pose) / {s['reps_imu']} (imu) / {s['reps_fused']} (fused)"
+        + (f", expected {expected}" if expected is not None else "")
+        + f" · faults {s['faults']} · frames processed {s['frames_processed']}/{s['frames_total']}"
+        f" ({s['frames_processed_pct']}%) · gated {s['gated_seconds']}s of {s['imu_seconds']}s"
     )
+    if out:
+        console.print(f"wrote {out}/events.parquet frames.parquet session.json")
 
 
 @app.command("record")

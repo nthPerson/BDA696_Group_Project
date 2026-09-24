@@ -184,10 +184,59 @@ def build_recgym(root: Path, rng) -> None:
         wr.writerows(rows)
 
 
+REPLAY_WORKOUT, REPLAY_DEVICE, REPLAY_ACTIVITY = "w00", "sw_l", "bicep_curls"
+REPLAY_BEFORE_S, REPLAY_LENGTH_S = 5.0, 30.0
+
+
+def build_replay_fixture(root: Path = FIXTURE_ROOT, mmfit_root: Path | None = None) -> Path | None:
+    """30 s of real MM-Fit (w00, left watch + 3-D pose) around the first bicep-curl set →
+    ``data/fixtures/replay/mmfit_w00_curls/{imu,pose}.parquet + meta.json`` (MIT-licensed
+    data, ~0.5 MB). Needs the raw MM-Fit download; returns ``None`` when it is absent."""
+    import json
+
+    from formcoach.data import mmfit
+    from formcoach.pose.store import write_pose
+
+    mroot = mmfit_root or mmfit.DEFAULT_ROOT
+    if not mmfit.available(mroot) or REPLAY_WORKOUT not in mmfit.list_workouts(mroot):
+        return None
+    out = root / "replay" / "mmfit_w00_curls"
+    out.mkdir(parents=True, exist_ok=True)
+    sets = mmfit.load_sets(mroot, REPLAY_WORKOUT)
+    first = sets[sets["activity"] == REPLAY_ACTIVITY].iloc[0]
+    t0 = float(first.t_start) - REPLAY_BEFORE_S
+    t1 = t0 + REPLAY_LENGTH_S
+    df = mmfit.load_stream(mroot, REPLAY_WORKOUT, REPLAY_DEVICE)
+    seg = df[(df["t"] >= t0) & (df["t"] <= t1)].reset_index(drop=True)
+    seg.to_parquet(out / "imu.parquet", index=False)
+    frames, xyz, t = mmfit.load_pose3d(mroot, REPLAY_WORKOUT)
+    m = (t >= t0) & (t <= t1)
+    write_pose(out / "pose.parquet", session=REPLAY_WORKOUT, frames=frames[m], t=t[m], world=xyz[m], skeleton="h36m17")
+    sets_in = sets[(sets["t_end"] >= t0) & (sets["t_start"] <= t1)]
+    meta = {
+        "dataset": "mmfit",
+        "workout": REPLAY_WORKOUT,
+        "subject": mmfit.subject_id(REPLAY_WORKOUT),
+        "device": REPLAY_DEVICE,
+        "placement": "wrist_l",
+        "exercise": "curl",
+        "expected_reps": int(first.reps),
+        "sets": [{"activity": s.activity, "exercise": s.exercise, "t_start": float(s.t_start), "t_end": float(s.t_end), "reps": int(s.reps)} for s in sets_in.itertuples(index=False)],
+        "t_range": [t0, t1],
+        "skeleton": "h36m17",
+        "pose_units": "mm, camera frame (MM-Fit pose_3d)",
+        "license": "MIT (MM-Fit sensor/pose data; Strömbäck, Huang & Radu, IMWUT 2020)",
+        "source": "https://mmfit.github.io/",
+    }
+    (out / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    return out
+
+
 def build_all(root: Path = FIXTURE_ROOT) -> list[Path]:
-    """Build every raw-format fixture; returns the files written."""
+    """Build every raw-format fixture (and the replay session when MM-Fit is on disk)."""
     rng = np.random.default_rng(SEED)
     build_mmfit(root, rng)
     build_recofit(root, rng)
     build_recgym(root, rng)
+    build_replay_fixture(root)
     return sorted(p for p in root.rglob("*") if p.is_file())

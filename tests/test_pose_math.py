@@ -170,3 +170,17 @@ def test_segment_reps_above_mode_and_min_duration():
     assert fast == []
     with pytest.raises(ValueError):
         reps.segment_reps(abd, t, enter=75.0, exit=40.0, mode="sideways")
+
+
+def test_adaptive_segmenter_finds_reps_at_a_different_angle_scale():
+    t = np.arange(0, 14, 1 / 30)
+    # MM-Fit-like curl: elbow swings 140 -> 95 -> 140 (never below 60 or above 150)
+    elbow = 140 - 45 * np.clip(np.sin(2 * np.pi * 0.5 * t), 0, None) ** 2
+    fixed = reps.segment_reps(elbow, t, enter=60.0, exit=150.0, mode="below")
+    assert fixed == []
+    adaptive = reps.segment_reps(elbow, t, enter=60.0, exit=150.0, mode="below", adaptive=True)
+    assert 5 <= len(adaptive) <= 7
+    assert adaptive[2].extreme_value == pytest.approx(95, abs=3)
+    # a series with too little range yields nothing
+    flat = 140 - 5 * np.sin(2 * np.pi * 0.5 * t)
+    assert reps.segment_reps(flat, t, enter=60.0, exit=150.0, mode="below", adaptive=True) == []
