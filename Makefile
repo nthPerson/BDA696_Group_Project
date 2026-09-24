@@ -71,8 +71,8 @@ fw-upload: ## flash the firmware over USB-C (PORT=COM5 | /dev/ttyACM0; omit to a
 fw-monitor: ## open the serial monitor at 115200 baud (PORT=COM5 | /dev/ttyACM0)
 	$(PIO) device monitor -d firmware -b 115200 $(if $(PORT),-p $(PORT),)
 
-fw-libtest: ## compile-test the candidate BMI160 / TFLite Micro libraries (no hardware)
-	$(PIO) run -d firmware -e libtest_tflm_chirale -e libtest_tflm_arduino -e libtest_tflm_tanaka -e libtest_bmi160_dfrobot -e libtest_bmi160_hanyazou
+fw-libtest: ## compile-test every candidate library env (only libtest_tflm_chirale is expected to pass, ADR-0020/0021)
+	-$(PIO) run -d firmware -e libtest_tflm_chirale -e libtest_tflm_arduino -e libtest_tflm_tanaka -e libtest_bmi160_dfrobot -e libtest_bmi160_hanyazou
 
 clean: ## remove caches and build artifacts (never touches data/)
 	rm -rf .pytest_cache .ruff_cache htmlcov .coverage firmware/.pio

@@ -8,6 +8,7 @@ accounting are unit-tested without a port. Ports: ``/dev/ttyACM0`` (Linux, add y
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
