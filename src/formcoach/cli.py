@@ -86,20 +86,55 @@ def main(
 def data_fetch(
     dataset: Annotated[Dataset, typer.Option(help="Which public dataset to download.")],
     with_video: Annotated[
-        bool, typer.Option(help="MM-Fit only: also download video for selected sessions.")
+        bool, typer.Option(help="MM-Fit only: also download RGB video for --session workouts.")
     ] = False,
     session: Annotated[
-        list[str] | None, typer.Option(help="MM-Fit session ids for --with-video, e.g. w00.")
+        list[str] | None, typer.Option(help="MM-Fit workout ids for --with-video, e.g. w00.")
+    ] = None,
+    root: Annotated[
+        Path | None, typer.Option(help="Download root (default: data/external).")
+    ] = None,
+    verify_only: Annotated[
+        bool, typer.Option(help="Only check files already on disk; never download.")
+    ] = False,
+    by: Annotated[
+        str | None, typer.Option(help="Name written to the manifest 'By' column.")
     ] = None,
 ) -> None:
-    """Download a dataset into data/external/<name>/, verify SHA-256, update MANIFEST.md."""
-    extra = f" with video for {session or ['w00', 'w01', 'w09']}" if with_video else ""
-    stub(
-        f"data fetch --dataset {dataset.value}",
-        1,
-        f"download {dataset.value} into data/external/{dataset.value}/{extra}, verify SHA-256, "
-        "append the entry to data/MANIFEST.md.",
-    )
+    """Download a dataset into data/external/<name>/, verify SHA-256, update MANIFEST.md.
+
+    Resumable: interrupted downloads continue from the `.partial` file. Files that do not match
+    the registry are reported, never deleted (rule 7). See docs/howto/datasets.md.
+    """
+    from formcoach.data import fetch
+
+    manifest_path = fetch.default_manifest_path() if root is None else None
+    try:
+        results = fetch.fetch_dataset(
+            dataset.value,
+            root,
+            with_video=with_video,
+            sessions=session or ["w00"],
+            manifest_path=manifest_path,
+            by=by,
+            verify_only=verify_only,
+        )
+    except fetch.IntegrityError as exc:
+        console.print(f"[bold red]integrity error:[/] {exc}")
+        raise typer.Exit(2) from exc
+    missing = 0
+    for r in results:
+        colour = {"downloaded": "green", "verified": "cyan", "missing": "red"}[r.status]
+        extra = " (extracted)" if r.extracted else ""
+        console.print(f"[{colour}]{r.status:10s}[/] {r.path}{extra}")
+        missing += r.status == "missing"
+    if manifest_path is not None:
+        console.print(f"manifest: {manifest_path}")
+    if missing:
+        console.print(
+            f"[yellow]{missing} file(s) missing; run without --verify-only to download.[/]"
+        )
+        raise typer.Exit(1)
 
 
 @data_app.command("profile")
