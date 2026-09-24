@@ -1,0 +1,43 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# ---- Data: raw, processed and team recordings are NEVER committed ----
+# (see data/MANIFEST.md; small fixtures under data/fixtures/ are the only exception)
+data/external/*
+!data/external/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/team/*
+!data/team/.gitkeep
+*.mp4
+*.npy
+*.mat
+*.parquet
+*.zip
+!data/fixtures/**
+
+# ---- Downloaded model files (make setup fetches them; firmware/model/ is committed) ----
+models/
+
+# ---- Firmware build artifacts ----
+firmware/.pio/
+firmware/.vscode/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+.env
