@@ -1,0 +1,73 @@
+# STATUS
+
+Newest entry first. Every work session ends with an entry: what changed, what's next, open
+questions, blockers. This is how teammates and future Claude Code sessions pick up context.
+Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
+
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 0 done → 1 next
+**Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-24 — Checkpoint 0: repository skeleton (Claude Code with Robert)
+
+### What changed
+- Moved the kickoff docs from `formcoach-kickoff/` into `docs/` and replaced the kickoff
+  `CLAUDE.md` with the top-level `CLAUDE.md` (persistent agent directive).
+- `pyproject.toml` (uv, Python 3.11, `src/` layout, hatchling), `uv.lock`, `.python-version`.
+  Core deps are light; MediaPipe/OpenCV, BLE/serial, TensorFlow/PyTorch (CPU index) and
+  Streamlit are optional extras (ADR-0002).
+- `src/formcoach/` package with all eight sub-packages documented by docstring, a typer CLI
+  (`formcoach --help`) whose commands are labelled stubs that print what they will do, and
+  `io/protocol.py`, the Python mirror of the BLE packet contract.
+- `firmware/` PlatformIO project (espressif32 6.x, `seeed_xiao_esp32s3`, NimBLE-Arduino 2.x)
+  with `include/protocol.h` (packed structs + `static_assert` sizes) and a bring-up
+  `main.cpp` that prints chip info, scans I2C for the BMI160 at 0x68/0x69, debounces the
+  button, blinks the LED and advertises the FormCoach BLE service. It compiles in CI.
+- `Makefile` with `setup lint format test data features train-gate eval demo record fw-*`.
+- `.github/workflows/ci.yml`: ruff on Ubuntu; pytest + replay-demo smoke test on Ubuntu,
+  macOS and Windows; `pio run` for firmware. `.pre-commit-config.yaml` (ruff, hygiene hooks,
+  block direct commits to `main`).
+- `README.md` quickstart for Linux/macOS/Windows; `data/MANIFEST.md` template; `.gitignore`
+  for raw/processed/team data with the fixtures exception; `docs/devices.md`, `case/README.md`.
+- Tests: protocol round-trip and size pins (Python ↔ C header constants), CLI smoke tests,
+  repo-contract tests (Makefile targets, gitignore patterns, layout).
+- `docs/DECISIONS.md` with ADR-0001 … ADR-0008.
+
+### Next (Checkpoint 1, owner: Ruby with Claude Code)
+1. `formcoach data fetch --dataset mmfit` (sensor + pose zip only), SHA-256 verify, manifest row.
+2. `data/mmfit.py` loader → common `IMUStream` schema; `describe()`; tiny fixture in `data/fixtures/`.
+3. Same for RecoFit (`.mat` via scipy, follow `load_exercise_data.m`) and RecGym (CSV, 20 Hz).
+4. `formcoach data profile` → `reports/data_profile.md`.
+5. Update `docs/04-datasets.md` wherever the real files differ from the expectations.
+
+### Next (hardware, owner: Robert) — as soon as parts arrive 2026-09-25
+1. Flash the bring-up firmware to one bare XIAO: `make fw-upload`, then `make fw-monitor`.
+   Confirm the version banner, the LED blink, and that the board shows up as `FormCoach-XXXX`
+   in a BLE scanner. Note the I2C scan result before wiring the IMU (should find nothing).
+2. Wire one IMU on a breadboard/jumpers, re-run: confirm 0x68 or 0x69. Record in
+   `docs/DECISIONS.md` which BMI160 Arduino library builds cleanly (Checkpoint 4).
+3. Caliper the real parts and pick the band-width family for the case (`case/README.md`).
+
+### Resolved versions worth knowing (from `uv.lock`, 2026-09-24)
+The resolver picked major versions newer than the design doc assumed. Treat the doc's API
+notes as **(verify)** against these: `mediapipe 1.0.1` (Tasks API may have moved since 0.10),
+`opencv-python 5.0`, `pandas 3.0` (copy-on-write and string dtype defaults changed),
+`bleak 3.0`, `tensorflow 2.21`, `torch 2.14+cpu`, `scikit-learn 1.9`, `typer 0.27`, `ruff 0.16`.
+Pin tighter in `pyproject.toml` if any of them bites.
+
+### Open questions
+- **Packet size:** `docs/02-system-design.md` §3 lists a per-sample `seq` field but computes
+  the batch as 5 × 17 + 4 = 89 bytes; with `seq` a sample is 19 bytes and a batch is 99.
+  Implemented 19/99 (ADR-0004). Confirm or drop `seq` before firmware v1 ships to devices.
+- **License** for the repository (MIT is the natural choice given MM-Fit's code license).
+- **Course due dates** for the Written Report Outline / First Draft / Slides / Report are
+  still blank in `docs/05-roadmap.md` §1.
+- **OneDrive:** Robert's clone lives under OneDrive on a 9p mount from WSL. `.venv` inside a
+  synced folder is slow and OneDrive will try to sync thousands of files. Recommend cloning to
+  the Linux filesystem (`~/src/formcoach`) or excluding `.venv/` from OneDrive sync.
+- Repository is named `BDA696_Group_Project`; README clones it as `formcoach`. Rename is
+  Robert's call (GitHub redirects old URLs).
+
+### Blockers
+- None. Hardware is not required for Checkpoints 1–3.
