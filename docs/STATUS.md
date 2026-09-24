@@ -9,6 +9,50 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-09-24 — Claude Code project configuration (Claude Code with Robert)
+
+### What changed
+- `.claude/settings.json` (committed, so every clone gets it) registers two hooks:
+  - **SessionStart** → `.claude/hooks/session_start.py` prints the branch (warns on `main`),
+    the uncommitted-change count and the top `docs/STATUS.md` entry into the session context.
+  - **PreToolUse on Bash** → `.claude/hooks/data_guard.py` denies `git add`/`git commit` of
+    anything under `data/external|processed|team/` or any `*.mp4 *.npy *.mat *.parquet *.zip`
+    outside `data/fixtures/`, `rm`/`find -delete` under `data/`, and `git clean -x` (rules 4, 7).
+  - Both are stdlib-only Python run via `uv run --no-sync python`, so they work on a fresh
+    clone on Linux, macOS and Windows before `make setup`. `tests/test_claude_hooks.py` (27
+    tests) pins the behaviour; `ruff check .` covers `.claude/`.
+- Skills: `.claude/skills/firmware-bringup/` (XIAO ESP32-S3 flashing from Windows or WSL2 via
+  usbipd-win, expected serial output, IMU wiring check, LiPo text) and
+  `.claude/skills/howto-doc/` (the exact shape of a `docs/howto/<topic>.md` hand-over).
+- Subagents: `.claude/agents/verify-claim.md` (checks one **(verify)** claim against the
+  real file/package/board and reports a doc change) and `.claude/agents/formcoach-reviewer.md`
+  (pre-PR review against CLAUDE.md rules and the §5 schema contracts).
+- Each skill was written test-first: a subagent did the task without the skill (baseline:
+  invented a polars API in the howto; a 367-line hardware procedure with no battery-safety
+  text), then again with it. `docs/howto/claude-code-config.md` is the howto produced under
+  the skill, kept as the first howto (Bryce: read it first, then the two hook scripts).
+- `.gitignore`: `.claude/settings.local.json` (personal overrides) stays local.
+- `verify-claim` trial run settled two firmware **(verify)** comments: `LED_BUILTIN` is
+  GPIO21 and active-low (installed variant header + vendor page); `Wire` defaults are
+  SDA=D4/GPIO5, SCL=D5/GPIO6 (`pins_arduino.h`). The comments in `main.cpp` can drop the
+  markers in the next firmware PR; polarity still worth a glance on the real board.
+
+### Next
+- Unchanged: Checkpoint 1 (Ruby) and hardware bring-up (Robert, use the `firmware-bringup`
+  skill; the Makefile `fw-upload` target still needs a `PORT` argument — add it in that PR).
+- Robert: after this PR merges, open `/hooks` once or restart Claude Code so the hooks load.
+- Not implemented (offered, declined for now): ruff-on-save, protocol-drift and STATUS-nudge
+  hooks; loader/eval-report/session-wrapup skills; PR template, CODEOWNERS, `make ci`.
+
+### Open questions
+- Hooks were exercised on Linux/WSL2 only; first Windows teammate to open Claude Code here
+  should confirm the session banner appears (`docs/howto/claude-code-config.md` §5).
+
+### Blockers
+- None.
+
+---
+
 ## 2026-09-24 — Checkpoint 0: repository skeleton (Claude Code with Robert)
 
 ### What changed
