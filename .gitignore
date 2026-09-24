@@ -28,7 +28,7 @@ data/team/*
 !data/fixtures/**
 
 # ---- Downloaded model files (make setup fetches them; firmware/model/ is committed) ----
-models/
+/models/
 
 # ---- Firmware build artifacts ----
 firmware/.pio/
