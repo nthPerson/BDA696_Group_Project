@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-sync python .claude/hooks/session_start.py",
+            "command": "uv run --no-sync python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py\"",
             "timeout": 20,
             "statusMessage": "FormCoach: loading docs/STATUS.md"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-sync python .claude/hooks/data_guard.py",
+            "command": "uv run --no-sync python \"$CLAUDE_PROJECT_DIR/.claude/hooks/data_guard.py\"",
             "timeout": 15,
             "statusMessage": "FormCoach: data-hygiene guard"
           }

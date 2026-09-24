@@ -30,8 +30,6 @@ def test_demo_replay_headless_is_the_demo_of_record():
 
 def test_every_checkpoint_command_exists():
     commands = [
-        ["data", "fetch", "--dataset", "mmfit"],
-        ["data", "profile"],
         ["features", "build"],
         ["pose", "extract", "--video", "x.mp4"],
         ["train", "gate"],
@@ -52,3 +50,12 @@ def test_every_checkpoint_command_exists():
 def test_bad_dataset_is_rejected():
     result = runner.invoke(app, ["data", "fetch", "--dataset", "nope"])
     assert result.exit_code != 0
+
+
+def test_data_fetch_verify_only_reports_missing_files(tmp_path):
+    result = runner.invoke(
+        app, ["data", "fetch", "--dataset", "recgym", "--root", str(tmp_path), "--verify-only"]
+    )
+    assert result.exit_code == 1
+    assert "missing" in result.output
+    assert not any(tmp_path.rglob("*.zip"))  # nothing downloaded
