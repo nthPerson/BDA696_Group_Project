@@ -215,9 +215,20 @@ def features_build(
 def pose_extract(
     video: Annotated[Path, typer.Option(help="Video file to process.")],
     model: Annotated[str, typer.Option(help="lite | full | heavy")] = "lite",
+    out: Annotated[
+        Path | None, typer.Option(help="Output pose.parquet (default next to video)")
+    ] = None,
+    force: Annotated[bool, typer.Option(help="Re-run even if the .done marker exists.")] = False,
 ) -> None:
     """Run MediaPipe PoseLandmarker over a video -> pose.parquet next to it (checkpointed)."""
-    stub("pose extract", 3, f"extract {model} pose landmarks from {video} into pose.parquet.")
+    from formcoach.pose import landmarker
+
+    try:
+        path = landmarker.extract_video(video, out, variant=model, force=force)
+    except (FileNotFoundError, ImportError) as exc:
+        console.print(f"[bold red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    console.print(f"[green]wrote[/] {path}")
 
 
 # ---- train -----------------------------------------------------------------------------------
