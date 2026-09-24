@@ -47,6 +47,7 @@ def decision(command: str) -> str | None:
         "find data/processed -name '*.parquet' -delete",
         "git clean -fdx",
         "git clean -X -f",
+        "rm data/fixtures/mmfit/w00_small.npy",  # fixtures may be committed, never deleted
     ],
 )
 def test_blocks_data_hygiene_violations(command):
