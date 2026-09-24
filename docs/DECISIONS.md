@@ -89,3 +89,20 @@ and exit 0 so `make` chains and CI smoke tests pass. Consequences: a teammate im
 command keeps its signature, replaces the stub body and removes the `"STUB" in output`
 assertion in `tests/test_cli.py`; option names in the CLI are the vocabulary used throughout
 the docs (`--source replay|serial|ble`, `--gate always_on|energy|laptop|device`).
+
+## ADR-0009 · Claude Code configuration lives in the repository · 2026-09-24 · accepted
+Context: five teammates will run Claude Code on three operating systems, and the working
+rules with the highest cost of violation (committing raw data or teammate video, deleting
+data, skipping the STATUS read) are advisory prose in `CLAUDE.md`. Decision: hooks, skills and
+subagents live under `.claude/` and are committed; `.claude/settings.local.json` is gitignored
+for personal overrides. Hooks are stdlib-only Python invoked as `uv run --no-sync python
+.claude/hooks/<name>.py` rather than shell scripts, because `uv` is the one tool every clone
+already needs, `--no-sync` keeps the hook fast and works before `make setup`, and the same
+command runs under bash and PowerShell; each hook is covered by `tests/test_claude_hooks.py`
+and linted by `ruff check .` in CI. The data guard only ever *denies*; anything it does not
+recognise falls through to the normal permission flow. Skills are written test-first
+(baseline subagent without the skill, then with it) per the writing-skills process.
+Consequences: a teammate who never uses Claude Code is unaffected; one who does inherits the
+guard, the session banner, the two skills and the two agents on `git clone`. Hook paths are
+relative to the repository root, so Claude Code must be started from the repo (or a
+subdirectory of it).

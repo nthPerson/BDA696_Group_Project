@@ -70,6 +70,7 @@ Serial ports on Windows are `COM3`, `COM5`, ... (Device Manager → Ports). On L
 
 ```
 CLAUDE.md            agent + contributor working rules (read this first)
+.claude/             Claude Code hooks, skills and subagents shared by the team (docs/howto/claude-code-config.md)
 docs/                00-START-HERE … 05-roadmap, STATUS.md (what's happening), DECISIONS.md (why)
 src/formcoach/       the Python package: data/ signal/ pose/ rules/ models/ io/ app/ eval/ cli.py
 firmware/            PlatformIO project for the wearable; include/protocol.h is the BLE contract
@@ -105,6 +106,7 @@ notebooks/           exploration only; nothing production lives here
 | `docs/05-roadmap.md` | phases, milestones, roles, definition of done |
 | `docs/STATUS.md` | latest state, next steps, open questions, blockers |
 | `docs/DECISIONS.md` | architecture decision records |
+| `docs/howto/` | hand-over guides for work done on a teammate's behalf |
 
 ## Datasets and citations
 
