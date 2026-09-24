@@ -61,7 +61,6 @@ def convert_dataset(
                 written.append(path)
     elif name == "recofit":
         for si, v in mod.list_visits(root):
-            df = None
             # subject id is only known after loading; derive the stem from the loader
             df = mod.load_stream(root, si, v)
             path = out_dir / f"{_stem(df['subject'].iloc[0], df['session'].iloc[0], None)}.parquet"
