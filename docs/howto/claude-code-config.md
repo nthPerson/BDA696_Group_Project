@@ -53,7 +53,7 @@ branch: chore/claude-code-config · uncommitted changes: 3
 
 | Path | What it is |
 |---|---|
-| `.claude/settings.json` | Registers two hooks: `SessionStart` → `session_start.py`; `PreToolUse` (matcher `Bash`) → `data_guard.py` |
+| `.claude/settings.json` | Registers two hooks: `SessionStart` → `session_start.py`; `PreToolUse` (matcher `Bash`) → `data_guard.py`. Both are invoked as `uv run --no-sync python "$CLAUDE_PROJECT_DIR/.claude/hooks/<name>.py"` (absolute, ADR-0010) so they keep working after a Bash call has changed directory. The commands in §1 use the relative form and must be run from the repo root |
 | `.claude/hooks/data_guard.py` | `PreToolUse` hook. Reads the tool call JSON on stdin, calls `check(command: str) -> str \| None`, and if it returns a reason, writes a `permissionDecision: "deny"` JSON to stdout via `main()` |
 | `.claude/hooks/session_start.py` | `SessionStart` hook. No JSON output — prints plain text (branch, dirty-file count, `docs/STATUS.md` top entry) via `main()`; Claude Code adds stdout to context |
 | `tests/test_claude_hooks.py` | pytest suite; drives both hooks as subprocesses with JSON on stdin, exactly as Claude Code does |

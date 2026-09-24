@@ -9,6 +9,37 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-09-24 — Pre-hardware build: assessment, plan, data downloads (Claude Code with Robert)
+
+### What changed
+- `docs/superpowers/specs/2026-09-24-pre-hardware-build-design.md`: what can be built before
+  the boards exist (all of Phase 1, all Phase 2 code, about half of Phase 3), the stacked PR
+  sequence (Checkpoint 1 → 2 → 3 → firmware v1 → rules → CNN), and the dataset facts found
+  today (URLs, sizes, RecoFit is Git LFS, RecoFit units g/dps/s, Zenodo per-file md5).
+- Datasets downloaded to `data/external/` (gitignored): RecoFit `.mat` ×2 + text files,
+  RecGym zip; MM-Fit `mm-fit.zip` was still downloading when the session stalled — confirm
+  its size is 1,742,309,258 bytes before loading it.
+- Branch `feat/checkpoint-1-data` created; no code yet.
+
+### Next
+1. Robert: fix the hook path (below), restart Claude Code from the repo root, resume PR 1.
+2. PR 1 (Checkpoint 1): `data fetch` verifies/resumes the downloads above and writes manifest
+   rows; loaders + `describe()` + fixtures; `data profile`; corrections to `docs/04-datasets.md`.
+
+### Open questions
+- RecoFit `.mat` version (v7 → scipy, v7.3 → h5py) is still **(verify)**.
+- MM-Fit workout→subject mapping is not on the website; look in the starter repo / paper.
+
+### Blockers
+- **Resolved, pending restart (ADR-0010):** `.claude/settings.json` ran the hooks with a path
+  relative to the shell cwd; after a Bash call moved the shell into `data/external/recofit`,
+  every Bash call was denied by the guard failing to find its own script. Both hook commands
+  now use `"$CLAUDE_PROJECT_DIR/.claude/hooks/<name>.py"`. Takes effect on the next Claude
+  Code start; this session's changes (design note, STATUS, DECISIONS, howto, settings) are
+  uncommitted on `feat/checkpoint-1-data` and should go into PR 1 or a small `chore:` PR.
+
+---
+
 ## 2026-09-24 — Claude Code project configuration (Claude Code with Robert)
 
 ### What changed

@@ -105,4 +105,21 @@ recognise falls through to the normal permission flow. Skills are written test-f
 Consequences: a teammate who never uses Claude Code is unaffected; one who does inherits the
 guard, the session banner, the two skills and the two agents on `git clone`. Hook paths are
 relative to the repository root, so Claude Code must be started from the repo (or a
-subdirectory of it).
+subdirectory of it). *Amended by ADR-0010: hook paths are now absolute.*
+
+## ADR-0010 · Hook commands resolve through `$CLAUDE_PROJECT_DIR` · 2026-09-24 · accepted
+Context: the ADR-0009 hook commands used a path relative to the shell's current directory
+(`.claude/hooks/data_guard.py`). Claude Code's Bash tool keeps one persistent shell, so a
+single `cd data/external/recofit && ...` left every later hook invocation looking for
+`data/external/recofit/.claude/hooks/data_guard.py`; Python exits 2 when it cannot open the
+script, and Claude Code treats exit 2 from a PreToolUse hook as a block. The whole session
+lost shell access with no in-session recovery. Decision: both hook commands are now
+`uv run --no-sync python "$CLAUDE_PROJECT_DIR/.claude/hooks/<name>.py"`. Claude Code sets
+`CLAUDE_PROJECT_DIR` to the launch directory for every hook and runs hook commands through a
+POSIX shell on all three operating systems (Git Bash on Windows), so the quoted variable
+expands everywhere; `session_start.py` already finds the repo root via `git rev-parse`, so it
+needs no change. Alternatives rejected: a `cd "$CLAUDE_PROJECT_DIR" &&` prefix (same effect,
+more to get wrong), and making the guard tolerate a missing script (it would silently stop
+guarding). Consequences: hooks work from any cwd inside the repo; settings are read at
+session start, so the change takes effect on the next restart; the ADR-0009 sentence about
+starting Claude Code from the repo root still holds for `CLAUDE_PROJECT_DIR` itself.
