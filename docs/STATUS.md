@@ -45,8 +45,10 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
   hooks; loader/eval-report/session-wrapup skills; PR template, CODEOWNERS, `make ci`.
 
 ### Open questions
-- Hooks were exercised on Linux/WSL2 only; first Windows teammate to open Claude Code here
-  should confirm the session banner appears (`docs/howto/claude-code-config.md` §5).
+- CI's `windows-latest` job now runs both hook scripts through pytest (first run failed with
+  `UnicodeEncodeError: 'charmap'` because Windows consoles default to cp1252 and STATUS.md
+  contains `→`; fixed by forcing UTF-8 stdout in the hooks). A live Claude Code session on
+  Windows has not been tried yet; first Windows teammate should confirm the session banner.
 
 ### Blockers
 - None.

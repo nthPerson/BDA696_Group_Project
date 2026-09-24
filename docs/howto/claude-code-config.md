@@ -77,7 +77,8 @@ Update together: if `PROTECTED_DIRS`/`RAW_EXTENSIONS`/`VIDEO` patterns in `data_
 
 - No **(verify)** items from the design docs are touched by this config — it only encodes CLAUDE.md working rules 4 and 7, not third-party hardware/data formats.
 - Not yet exercised: how Claude Code's real hook runner behaves on Windows (`uv run --no-sync python .claude/hooks/...`); only Linux/WSL2 was available this session. The scripts are stdlib-only and path-agnostic (`re` patterns use `[\\/]` for both slash styles), so this should work unchanged, but Bryce should confirm on his OS.
-- Hooks were built on Linux/WSL2; see the Windows note above.
+- Hooks were built on Linux/WSL2; CI runs the tests on Windows and macOS too (a cp1252
+  console-encoding crash was found and fixed that way). A live Windows session is untested.
 
 ## 6. Next steps for Bryce
 
