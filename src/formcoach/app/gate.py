@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from formcoach.io.protocol import (
+    GATE_ENERGY_THRESHOLD_MS2SQ,
     GATE_OFF_WINDOWS,
     GATE_ON_WINDOWS,
     WINDOW_SAMPLES,
@@ -21,7 +22,9 @@ from formcoach.io.protocol import (
 )
 from formcoach.io.source import SISample
 
-DEFAULT_ENERGY_THRESHOLD = 3.0  # var(|a|) in (m/s²)²; balanced-accuracy fit on RecoFit windows
+# var(|a|) in (m/s²)², balanced-accuracy fit on RecoFit windows; one constant shared with the
+# firmware through protocol.py / protocol.h (ADR-0019)
+DEFAULT_ENERGY_THRESHOLD = GATE_ENERGY_THRESHOLD_MS2SQ
 DEFAULT_LAPTOP_MODEL = Path(__file__).resolve().parents[3] / "models" / "gate_rf.joblib"
 GATE_NAMES = ("always_on", "energy", "laptop", "device")
 

@@ -12,7 +12,7 @@ SOURCE  ?= replay
 PORT    ?=
 MODEL   ?= cnn
 
-.PHONY: help setup setup-all lint format test data convert profile features train-gate eval demo record \
+.PHONY: help setup setup-all lint format test data convert profile features session-check train-gate eval demo record \
 	    fw-build fw-upload fw-monitor clean
 
 help: ## list targets
@@ -61,6 +61,9 @@ demo: ## run the full pipeline (SOURCE=replay|serial|ble; replay needs no hardwa
 
 record: ## record a team session (SOURCE=serial|ble PORT=/dev/ttyACM0|COM5)
 	$(RUN) formcoach record --source $(SOURCE) $(if $(PORT),--port $(PORT),)
+
+session-check: ## quality-check a recorded session (DIR=data/team/S1/<id>)
+	$(RUN) formcoach session check $(DIR)
 
 fw-build: ## compile the firmware (PlatformIO via uvx; also runs in CI)
 	$(PIO) run -d firmware

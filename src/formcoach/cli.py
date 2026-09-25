@@ -457,7 +457,7 @@ def record(
 
     try:
         src = _open_source(source, port, duration)
-    except (ImportError, FileNotFoundError) as exc:
+    except (ImportError, FileNotFoundError, OSError, RuntimeError) as exc:  # OSError: pyserial
         console.print(f"[bold red]{exc}[/]")
         raise typer.Exit(2) from exc
     if camera is not None:

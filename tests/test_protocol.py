@@ -97,3 +97,9 @@ def test_serial_commands_and_energy_threshold_match_header():
     assert len(set(p.SERIAL_COMMANDS.values())) == len(p.SERIAL_COMMANDS)
     c = _header_constants()
     assert float(c["GATE_ENERGY_THRESHOLD_MS2SQ"].rstrip("f")) == p.GATE_ENERGY_THRESHOLD_MS2SQ
+
+
+def test_laptop_energy_gate_uses_the_shared_threshold():
+    from formcoach.app import gate
+
+    assert gate.DEFAULT_ENERGY_THRESHOLD == p.GATE_ENERGY_THRESHOLD_MS2SQ

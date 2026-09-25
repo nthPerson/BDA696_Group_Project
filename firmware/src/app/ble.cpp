@@ -53,6 +53,7 @@ void BleLink::begin(const char* name, CommandHandler handler) {
 
 void BleLink::onConnected(bool up) {
   connected_ = up;
+  batch_.header.n = 0;  // never carry a partial batch across a (re)connect
   Serial.printf("# ble %s\n", up ? "connected" : "disconnected");
 }
 
