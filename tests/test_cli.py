@@ -29,9 +29,7 @@ def test_demo_replay_headless_is_the_demo_of_record():
 
 
 def test_every_checkpoint_command_exists():
-    commands = [
-        ["train", "gate"],
-    ]
+    commands = []
     for cmd in commands:
         result = runner.invoke(app, cmd)
         assert result.exit_code == 0, (cmd, result.output)

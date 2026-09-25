@@ -243,21 +243,32 @@ def train_gate(
     out: Annotated[
         Path | None, typer.Option(help="Model path (default models/gate_rf.joblib)")
     ] = None,
+    epochs: Annotated[int, typer.Option(help="CNN training epochs (early stopping applies).")] = 30,
 ) -> None:
-    """Train the gate / exercise model on RecoFit + MM-Fit windows (LOSO validation)."""
-    if model == "rf":
-        from formcoach.models import train
+    """Train the gate / exercise model on RecoFit + MM-Fit windows.
 
-        names = tuple(d.value for d in dataset) if dataset else ("recofit", "mmfit")
+    `--model rf` writes models/gate_rf.joblib for `--gate laptop`; `--model cnn` (needs
+    `uv sync --extra train`) trains the 6-class 1D-CNN, exports int8 TFLite + .cc + preprocess
+    header into firmware/model/ and writes reports/gate_cnn_export.md.
+    """
+    from formcoach.models import train
+
+    names = tuple(d.value for d in dataset) if dataset else ("recofit", "mmfit")
+    if model == "rf":
         path = train.train_rf_gate(datasets=names, out=out or train.DEFAULT_OUT)
         console.print(f"[green]wrote[/] {path} (+ .json); use it with `demo --gate laptop`")
         return
-    stub(
-        "train gate",
-        5,
-        f"train the {model} gate model, report LOSO metrics"
-        + (", export int8 TFLite to firmware/model/." if export_int8 else "."),
-    )
+    if model != "cnn":
+        raise typer.BadParameter("model must be rf or cnn")
+    try:
+        result = train.train_cnn_gate(
+            datasets=names, export_int8=export_int8, epochs=epochs, log=console.print
+        )
+    except ImportError as exc:
+        console.print(f"[bold red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    for k, v in result.items():
+        console.print(f"  {k}: {v}")
 
 
 # ---- eval ------------------------------------------------------------------------------------
@@ -362,20 +373,26 @@ def eval_loso(
         Dataset | None, typer.Option(help="Cross-dataset: train on --dataset, test on this.")
     ] = None,
     out: Annotated[Path | None, typer.Option(help="Report path override.")] = None,
+    epochs: Annotated[int, typer.Option(help="CNN epochs per fold (early stopping applies).")] = 30,
 ) -> None:
     """Leave-one-subject-out accuracy / macro-F1 / confusion matrix -> reports/loso_<...>.md."""
     from formcoach.eval import loso_cli
 
-    path = loso_cli.run(
-        model=model,
-        dataset=dataset.value,
-        task=task.value,
-        folds=folds,
-        min_purity=min_purity,
-        test_dataset=test_dataset.value if test_dataset else None,
-        out=out,
-        log=console.print,
-    )
+    try:
+        path = loso_cli.run(
+            model=model,
+            dataset=dataset.value,
+            task=task.value,
+            folds=folds,
+            min_purity=min_purity,
+            test_dataset=test_dataset.value if test_dataset else None,
+            out=out,
+            log=console.print,
+            epochs=epochs,
+        )
+    except ImportError as exc:
+        console.print(f"[bold red]{exc}[/]")
+        raise typer.Exit(2) from exc
     console.print(f"[green]wrote[/] {path}")
 
 
@@ -469,9 +486,15 @@ def eval_latency() -> None:
 
 
 @eval_app.command("device")
-def eval_device(log: Annotated[Path | None, typer.Option(help="Firmware log file")] = None):
-    """Parse a firmware log: inference ms, arena bytes, flash bytes."""
-    stub("eval device", 5, f"parse on-device metrics from {log or 'the serial log'}.")
+def eval_device(log: Annotated[Path | None, typer.Option(help="Firmware serial log file")] = None):
+    """Parse a firmware serial log (# infer us=... lines) -> reports/device.md."""
+    from formcoach.eval import device
+
+    if log is None or not log.exists():
+        console.print("[yellow]pass --log <captured serial output>; see docs/howto/cnn-gate.md[/]")
+        raise typer.Exit(1)
+    out = device.evaluate(log)
+    console.print(f"[green]wrote[/] {out}")
 
 
 @eval_app.command("transfer")
