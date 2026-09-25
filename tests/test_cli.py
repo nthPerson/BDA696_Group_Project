@@ -31,7 +31,6 @@ def test_demo_replay_headless_is_the_demo_of_record():
 def test_every_checkpoint_command_exists():
     commands = [
         ["train", "gate"],
-        ["eval", "all"],
     ]
     for cmd in commands:
         result = runner.invoke(app, cmd)
@@ -51,3 +50,8 @@ def test_data_fetch_verify_only_reports_missing_files(tmp_path):
     assert result.exit_code == 1
     assert "missing" in result.output
     assert not any(tmp_path.rglob("*.zip"))  # nothing downloaded
+
+
+def test_eval_all_lists_its_steps_in_help():
+    result = runner.invoke(app, ["eval", "all", "--help"])
+    assert result.exit_code == 0 and "quick" in result.output

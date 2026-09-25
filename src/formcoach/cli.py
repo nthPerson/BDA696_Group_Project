@@ -262,9 +262,88 @@ def train_gate(
 
 # ---- eval ------------------------------------------------------------------------------------
 @eval_app.command("all")
-def eval_all() -> None:
-    """Regenerate every table and figure under reports/ (what `make eval` runs)."""
-    stub("eval all", 6, "run loso, repcount, rules, gating, pose-ablation, latency, device.")
+def eval_all(
+    quick: Annotated[
+        bool, typer.Option(help="Skip the 94-fold RecoFit RF runs (use 10 subject-grouped folds).")
+    ] = False,
+) -> None:
+    """Regenerate every table and figure under reports/ (what `make eval` runs).
+
+    Runs, in order: data profile, LOSO (energy + RF on RecoFit and MM-Fit, active and
+    exercise), RecoFit -> MM-Fit transfer, rep-count baseline, rules validation, gating
+    benchmark. Full run is about an hour on a 16-core laptop; --quick is ~15 minutes.
+    """
+    import subprocess
+    import sys
+
+    folds = "10" if quick else "loso"
+    steps = [
+        ["data", "profile"],
+        ["eval", "loso", "--model", "energy", "--dataset", "recofit", "--task", "active"],
+        ["eval", "loso", "--model", "energy", "--dataset", "mmfit", "--task", "active"],
+        ["eval", "loso", "--model", "rf", "--dataset", "mmfit", "--task", "active"],
+        ["eval", "loso", "--model", "rf", "--dataset", "mmfit", "--task", "exercise"],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "active",
+            "--folds",
+            folds,
+        ],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "exercise",
+            "--folds",
+            folds,
+        ],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "active",
+            "--test-dataset",
+            "mmfit",
+        ],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "exercise",
+            "--test-dataset",
+            "mmfit",
+        ],
+        ["eval", "loso", "--model", "rf", "--dataset", "recgym", "--task", "active"],
+        ["eval", "loso", "--model", "rf", "--dataset", "recgym", "--task", "exercise"],
+        ["eval", "repcount"],
+        ["eval", "rules", "--calibrate-out", "src/formcoach/rules/rules.mmfit-pose3d.yaml"],
+        ["eval", "gating"],
+    ]
+    for step in steps:
+        console.print(f"[cyan]$ formcoach {' '.join(step)}[/]")
+        rc = subprocess.call([sys.executable, "-m", "formcoach.cli", *step])
+        if rc != 0:
+            console.print(f"[bold red]step failed (exit {rc}); stopping[/]")
+            raise typer.Exit(rc)
+    console.print("[green]reports/ regenerated[/]")
 
 
 class Task(StrEnum):
