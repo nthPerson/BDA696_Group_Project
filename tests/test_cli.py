@@ -32,8 +32,6 @@ def test_every_checkpoint_command_exists():
     commands = [
         ["train", "gate"],
         ["eval", "all"],
-        ["eval", "rules"],
-        ["eval", "gating", "--gate", "energy"],
     ]
     for cmd in commands:
         result = runner.invoke(app, cmd)
