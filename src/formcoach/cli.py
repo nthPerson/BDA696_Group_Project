@@ -400,7 +400,7 @@ def demo(
         console.print(f"[bold red]{exc}[/]")
         raise typer.Exit(2) from exc
     s = result.summary
-    expected = pipeline.ReplaySource(session_dir).meta.get("expected_reps")
+    expected = result.summary.get("meta", {}).get("expected_reps")
     console.print(
         f"reps {s['reps']} (pose) / {s['reps_imu']} (imu) / {s['reps_fused']} (fused)"
         + (f", expected {expected}" if expected is not None else "")

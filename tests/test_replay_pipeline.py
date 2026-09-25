@@ -133,7 +133,9 @@ def test_headless_pipeline_counts_the_curls_on_the_fixture(tmp_path):
     assert summary["reps"] == len(reps) and summary["gate"] == "always_on"
     r = reps[0].payload
     assert r["exercise"] == "curl" and 0.3 < r["duration_s"] < 6
-    assert "elbow_min" in r["metrics"] and r["metrics"]["elbow_min"] < 110  # MM-Fit lifted pose: ~95
+    assert (
+        "elbow_min" in r["metrics"] and r["metrics"]["elbow_min"] < 110
+    )  # MM-Fit lifted pose: ~95
 
 
 def test_energy_gate_skips_frames_but_finds_the_same_reps(tmp_path):
@@ -156,3 +158,36 @@ def test_demo_cli_replay_headless_runs_the_real_pipeline():
     assert result.exit_code == 0, result.output
     assert "STUB" not in result.output
     assert "rep" in result.output and "frames processed" in result.output
+
+
+def test_event_log_with_no_events_still_writes_files(tmp_path):
+    from formcoach.app.events import EventLog
+
+    log = EventLog()
+    log.frame(0.0, False, False)
+    log.write(tmp_path, {"reps": 0})
+    ev = pd.read_parquet(tmp_path / "events.parquet")
+    assert len(ev) == 0 and list(ev.columns) == ["kind", "t", "payload"]
+    assert len(pd.read_parquet(tmp_path / "frames.parquet")) == 1
+
+
+def test_pipeline_bridges_short_invalid_gaps_and_survives_long_ones(tmp_path):
+    """docs/02 §4.3: gaps <= 3 frames are bridged; longer gaps give NaN angles, no crash."""
+    import shutil
+
+    from formcoach.pose import store
+
+    sess = tmp_path / "sess"
+    shutil.copytree(SESSION, sess)
+    seq = store.read_pose(sess / "pose.parquet")
+    valid = seq.valid.copy()
+    valid[200:203] = False  # 3-frame gap: bridged
+    valid[500:510] = False  # 10-frame gap: invalid
+    store.write_pose(sess / "pose.parquet", session=seq.session, frames=seq.frames, t=seq.t,
+                     world=seq.world, skeleton=seq.skeleton.name, valid=valid)  # fmt: skip
+    res = pipeline.run_replay(sess, gate="always_on", headless=True, out_dir=tmp_path / "out")
+    reps = [e for e in res.events if e.kind == "rep"]
+    assert 8 <= len(reps) <= 12
+    # online bridging cannot know a gap's length in advance: the first 3 frames of every gap
+    # are bridged (3 + 3), the remaining 7 of the long gap are invalid
+    assert res.summary["frames_bridged"] == 6 and res.summary["frames_invalid"] == 7

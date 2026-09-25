@@ -31,6 +31,7 @@ from formcoach.pose.skeletons import Skeleton, joint
 
 REP_STEPS = 30
 TRACKED = angles_mod.ANGLE_NAMES
+MAX_GAP_FRAMES = 3  # docs/02 §4.3: bridge gaps <= 3 frames, longer gaps are invalid
 
 
 @dataclass
@@ -202,16 +203,30 @@ def run_pipeline(
         if on_event:
             on_event(e)
 
+    last_angles: dict[str, float] | None = None
+    gap = 0
+    counts = {"invalid": 0, "bridged": 0}
+
     def process_frame(fr: PoseFrame) -> None:
-        nonlocal reps
+        """Angles for one frame; invalid frames reuse the last good angles for up to
+        MAX_GAP_FRAMES consecutive frames (docs/02 §4.3), longer gaps become NaN."""
+        nonlocal reps, last_angles, gap
         if not fr.valid or not np.isfinite(fr.world).all():
-            a = dict.fromkeys(TRACKED, float("nan"))
+            gap += 1
+            if last_angles is not None and gap <= MAX_GAP_FRAMES:
+                a = dict(last_angles)
+                counts["bridged"] += 1
+            else:
+                a = dict.fromkeys(TRACKED, float("nan"))
+                counts["invalid"] += 1
         else:
+            gap = 0
             u = up.update(fr.world, fr.skeleton)
             a = {
                 k: float(v[0])
                 for k, v in angles_mod.joint_angles(fr.world[None], fr.skeleton, u).items()
             }
+            last_angles = a
         buf_t.append(fr.t)
         for k in TRACKED:
             buf_a[k].append(a[k])
@@ -232,8 +247,9 @@ def run_pipeline(
                 emit("fault", rep.t_end, rep_id=rm.rep_id, **f)
 
     def reset_pose_state() -> None:
-        nonlocal seg
+        nonlocal seg, last_angles, gap
         seg = new_segmenter()
+        last_angles, gap = None, 0
         buf_t.clear()
         for v in buf_a.values():
             v.clear()
@@ -278,6 +294,8 @@ def run_pipeline(
         "frames_total": log.frames_total,
         "frames_processed": log.frames_processed,
         "frames_processed_pct": round(100.0 * log.frames_processed / max(log.frames_total, 1), 1),
+        "frames_bridged": counts["bridged"],
+        "frames_invalid": counts["invalid"],
         "gated_seconds": round(sum(b - a for a, b in gated_segments), 2),
         "imu_seconds": round((imu_t[-1] - imu_t[0]) if len(imu_t) > 1 else 0.0, 2),
     }
@@ -342,6 +360,7 @@ def run_replay(
         src, frames, exercise=exercise, gate=g, rules=rules, log=log, on_event=on_event
     )
     result.summary["session"] = str(session)
+    result.summary["meta"] = src.meta
     if out_dir is not None:
         log.write(Path(out_dir), result.summary)
         result.out_dir = Path(out_dir)

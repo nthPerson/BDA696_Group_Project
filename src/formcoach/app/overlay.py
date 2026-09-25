@@ -94,7 +94,9 @@ class Overlay:
             raise KeyboardInterrupt
 
     def wrap(self, frames: Iterable[PoseFrame]) -> Iterator[PoseFrame]:
-        for fr in frames:
-            self.draw(fr)
-            yield fr
-        self.cv2.destroyAllWindows()
+        try:
+            for fr in frames:
+                self.draw(fr)
+                yield fr
+        finally:
+            self.cv2.destroyAllWindows()

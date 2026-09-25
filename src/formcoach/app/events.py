@@ -41,17 +41,13 @@ class EventLog:
     def write(self, out_dir: Path, summary: dict) -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
         ev = pd.DataFrame(
-            [
-                {"kind": e.kind, "t": e.t, "payload": json.dumps(e.payload, default=_json_default)}
-                for e in self.events
-            ]
-            or [
-                {
-                    "kind": pd.Series(dtype=str),
-                    "t": pd.Series(dtype=float),
-                    "payload": pd.Series(dtype=str),
-                }
-            ]
+            {
+                "kind": pd.Series([e.kind for e in self.events], dtype="str"),
+                "t": pd.Series([e.t for e in self.events], dtype="float64"),
+                "payload": pd.Series(
+                    [json.dumps(e.payload, default=_json_default) for e in self.events], dtype="str"
+                ),
+            }
         )
         ev.to_parquet(out_dir / "events.parquet", index=False)
         fr = pd.DataFrame(self.frames, columns=["t", "processed", "gate_state"])
