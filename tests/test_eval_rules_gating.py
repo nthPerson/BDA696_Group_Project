@@ -34,6 +34,7 @@ def test_eval_rules_writes_pass_rates_and_perturbation_table(tmp_path):
     # +25° trunk lean only crosses the 45° design threshold when the base lean is > 20°:
     # the detection rate is a finding the report shows, not a pass condition
     assert 0.0 <= pert[("squat", "trunk_lean_25", "SQUAT_FORWARD_LEAN")] <= 1.0
+    assert pert[("curl", "rom_x0.7", "CURL_PARTIAL_ROM")] >= 0.9
     assert (tmp_path / "reports" / "figures").exists()
 
 

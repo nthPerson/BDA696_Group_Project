@@ -92,7 +92,7 @@ exercises:
       when:
       - metric: elbow_top_asymmetry
         op: gt
-        threshold: 20.0
+        threshold: 19.166
     - code: PRESS_TOO_FAST
       severity: info
       message: Slow down - control the press.

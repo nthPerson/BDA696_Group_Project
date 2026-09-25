@@ -29,6 +29,7 @@ from formcoach.rules.engine import RuleEngine
 
 DEFAULT_OUT = report.REPORTS_DIR / "rules_validation.md"
 PRIMARY = {"curl": "elbow", "press": "elbow", "raise": "shoulder_abd", "squat": "knee"}
+MMFIT_CONTEXT = frozenset({"two_arm", "frontal_view"})  # MM-Fit: both arms, frontal camera
 # perturbation name -> (exercise, expected code, function(angles, duration) -> (angles, duration))
 PERTURBATIONS: dict[str, tuple[str, str]] = {
     "rom_x0.7": ("curl", "CURL_PARTIAL_ROM"),
@@ -70,9 +71,9 @@ def _perturb(
         for s in ("l", "r"):
             a[f"elbow_{s}"] = np.minimum(a[f"elbow_{s}"], 120.0)
     elif name == "raise_partial":
-        for s in ("l", "r"):
-            v = a[f"shoulder_abd_{s}"]
-            a[f"shoulder_abd_{s}"] = np.nanmin(v) + (v - np.nanmin(v)) * 0.5
+        # a half-hearted raise: the whole abduction curve scaled toward zero (peak x 0.55)
+        for side in ("l", "r"):
+            a[f"shoulder_abd_{side}"] = a[f"shoulder_abd_{side}"] * 0.55
     elif name == "knee_valgus":
         for s in ("l", "r"):
             a[f"knee_track_{s}"] = a[f"knee_track_{s}"] - 0.15
@@ -188,7 +189,10 @@ def evaluate(
     for ex in PRIMARY:
         g = by_ex.get(ex, [])
         for rule in engine.rules_for(ex):
-            flagged = sum(any(f.code == rule.code for f in engine.evaluate(r)) for r in g)
+            flagged = sum(
+                any(f.code == rule.code for f in engine.evaluate(r, context=MMFIT_CONTEXT))
+                for r in g
+            )
             rate = 1 - flagged / len(g) if g else float("nan")
             result["pass_rate"][(ex, rule.code)] = rate
             thr = " or ".join(f"{c.metric} {c.op} {c.threshold:g}" for c in rule.when)
@@ -213,7 +217,9 @@ def evaluate(
             m2 = metrics_from_angles(a2, d2)
             hits += any(
                 f.code == code
-                for f in engine.evaluate(RepMetrics(ex, 0, 0, d2, d2, "pose", a2, m2))
+                for f in engine.evaluate(
+                    RepMetrics(ex, 0, 0, d2, d2, "pose", a2, m2), context=MMFIT_CONTEXT
+                )
             )
         rate = hits / len(g) if g else float("nan")
         result["perturbation"][(ex, name, code)] = rate
@@ -242,6 +248,7 @@ def evaluate(
         "knee_min",
         "trunk_incl_at_bottom",
         "knee_track_at_bottom",
+        "elbow_top_asymmetry",
         "hip_knee_height_at_bottom",
         "elbow_asymmetry",
     )

@@ -96,7 +96,8 @@ def primary_angle(exercise: str, a: dict[str, float], side: str = "both") -> flo
 def resample_rep_angles(
     rep: PoseRep, ts: np.ndarray, series: dict[str, np.ndarray]
 ) -> dict[str, np.ndarray]:
-    """Every tracked angle over ``[i_start, i_end]`` resampled to ``REP_STEPS`` points."""
+    """Every tracked angle series (degrees, or torso units for the offset metrics) over
+    ``[i_start, i_end]`` resampled to ``REP_STEPS`` points: ``{name: (REP_STEPS,) float}``."""
     i0, i1 = rep.i_start, rep.i_end
     t_seg = ts[i0 : i1 + 1]
     grid = np.linspace(t_seg[0], t_seg[-1], REP_STEPS)
@@ -111,7 +112,8 @@ def resample_rep_angles(
 
 
 def metrics_from_angles(res: dict[str, np.ndarray], duration_s: float) -> dict[str, float]:
-    """Scalar rep metrics from 30-step angle series (keys consumed by rules.yaml)."""
+    """Scalar rep metrics (degrees, seconds, torso units) from the 30-step angle series; the
+    keys are the metric names rules.yaml refers to."""
 
     def mn(k):
         return float(np.nanmin(res[k])) if np.isfinite(res[k]).any() else float("nan")
@@ -183,8 +185,16 @@ def run_pipeline(
     on_event: Callable[[Event], None] | None = None,
     side: str = "both",
     rep_config: dict | None = None,
+    view: str = "frontal",
 ) -> PipelineResult:
-    """Run IMU + pose through gate → angles → reps → rules; returns events and counts."""
+    """Run IMU + pose through gate → angles → reps → rules; returns events and counts.
+
+    ``side`` = ``both`` (two-arm exercise, enables ``requires: two_arm`` rules) or ``l``/``r``;
+    ``view`` = ``frontal`` (enables ``requires: frontal_view`` rules) or ``side``.
+    """
+    context = {"two_arm"} if side == "both" else set()
+    if view == "frontal":
+        context.add("frontal_view")
     cfg = {**DEFAULT_REP_CONFIG[exercise], "adaptive": True}
     if rules is not None and hasattr(rules, "rep_config"):
         cfg.update(rules.rep_config(exercise))
@@ -255,7 +265,7 @@ def run_pipeline(
             series = {k: np.asarray(v) for k, v in buf_a.items()}
             rm = compute_rep_metrics(exercise, rep, ts, series)
             if rules is not None:
-                rm.faults = [f.as_dict() for f in rules.evaluate(rm)]
+                rm.faults = [f.as_dict() for f in rules.evaluate(rm, context=context)]
             reps.append(rm)
             emit("rep", rep.t_end, **rm.as_payload())
             for f in rm.faults:
@@ -354,9 +364,11 @@ def run_replay(
     speed: float = 0.0,
     on_event: Callable[[Event], None] | None = None,
     gate_kwargs: dict | None = None,
+    side: str = "both",
+    view: str = "frontal",
 ) -> PipelineResult:
     """Replay a session directory through the pipeline; writes events/frames/session.json to
-    ``out_dir`` when given."""
+    ``out_dir`` when given. ``side``/``view`` default to the session's ``meta.json`` values."""
     session = Path(session)
     src = ReplaySource(session, speed=speed)
     exercise = exercise or src.meta.get("exercise", "curl")

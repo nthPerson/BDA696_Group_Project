@@ -177,3 +177,14 @@ def test_engine_plugs_into_the_replay_pipeline(tmp_path):
     faults = [x for x in res.events if x.kind == "fault"]
     assert faults and all("code" in x.payload for x in faults)
     assert res.summary["faults"] == len(faults)
+
+
+def test_requires_tags_are_honoured_when_a_context_is_given(eng):
+    m = {**CORRECT["curl"], "elbow_asymmetry": 25.0}
+    assert [f.code for f in eng.evaluate(_rep("curl", m))] == ["CURL_ASYMMETRY"]
+    assert eng.evaluate(_rep("curl", m), context={"frontal_view"}) == []  # single-arm curl
+    m2 = {**CORRECT["squat"], "knee_track_at_bottom": -0.15}
+    assert eng.evaluate(_rep("squat", m2), context={"two_arm"}) == []  # side view
+    assert [f.code for f in eng.evaluate(_rep("squat", m2), context={"frontal_view"})] == [
+        "SQUAT_KNEE_VALGUS"
+    ]
