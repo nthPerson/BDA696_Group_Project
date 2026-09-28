@@ -43,8 +43,8 @@ uv run formcoach demo --source replay   # = make demo
 Serial ports on Windows are `COM3`, `COM5`, ... (Device Manager → Ports). On Linux they are
 `/dev/ttyACM0` (add yourself to the `dialout` group), on macOS `/dev/cu.usbmodem*`.
 
-> **Current state (Checkpoint 0):** the commands run and print what they *will* do. Real data
-> loading lands in Checkpoint 1, the replay demo in Checkpoint 3. See `docs/STATUS.md`.
+> **Current state:** Checkpoint 1 done — `make data`, `make convert`, `make profile` work on
+> MM-Fit, RecoFit and RecGym; later commands still print what they *will* do. See `docs/STATUS.md`.
 
 ## Everyday commands
 
@@ -54,7 +54,9 @@ Serial ports on Windows are `COM3`, `COM5`, ... (Device Manager → Ports). On L
 | `make setup-all` | `uv sync --all-extras --group dev` | + MediaPipe/OpenCV, BLE/serial, TensorFlow/PyTorch, Streamlit |
 | `make lint` / `make format` | `uv run ruff check .` / `uv run ruff format .` | lint and format (CI runs lint) |
 | `make test` | `uv run pytest` | unit + integration tests |
-| `make data DATASET=mmfit` | `uv run formcoach data fetch --dataset mmfit` | download + verify a dataset |
+| `make data DATASET=mmfit` | `uv run formcoach data fetch --dataset mmfit` | download + verify a dataset (resumable) |
+| `make convert` | `uv run formcoach data convert` | raw downloads → IMUStream Parquet under `data/processed/` |
+| `make profile` | `uv run formcoach data profile` | write `reports/data_profile.md` |
 | `make features` | `uv run formcoach features build` | windows + features → `data/processed/` |
 | `make train-gate` | `uv run formcoach train gate` | train the gate model, export int8 |
 | `make eval` | `uv run formcoach eval all` | regenerate every table/figure in `reports/` |

@@ -4,8 +4,78 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 0 done → 1 next
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 1 done (PR #3 open) → 2 next
 **Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-24 — Checkpoint 1: public data loads (Claude Code, autonomous run for Robert)
+
+### What changed
+- **PR #3 `feat/checkpoint-1-data`** (stacked base for the pre-hardware series; plan in
+  `docs/superpowers/plans/2026-09-24-pre-hardware-build.md`).
+- `formcoach data fetch`: registry of every raw file (URL, exact size, SHA-256, license),
+  resumable downloads, checksum verification, zip extraction, manifest rows. All eight raw
+  files verified on disk; `data/MANIFEST.md` rows written.
+- `formcoach data convert` → 314 IMUStream Parquet files (MM-Fit 42, RecoFit 126, RecGym 146)
+  under `data/processed/<dataset>/streams/` in 41 s. `formcoach data profile` →
+  `reports/data_profile.md` + 2 figures (committed).
+- Loaders `mmfit.py`, `recofit.py`, `recgym.py`, label map `labels.py`, schema `schema.py`,
+  manifest writer, fixture builder (`data/fixtures/`, raw formats, < 400 KB each), 51 tests.
+- `docs/04-datasets.md` corrected from the real files (MM-Fit units/joints/subject mapping,
+  RecoFit 94 subjects / CDLA license / 7-column labels, RecGym columns + normalised units +
+  corrupt UCI zip); ADR-0011 … ADR-0016.
+- `Ruby`: read `docs/howto/datasets.md` first, then `src/formcoach/data/schema.py` and
+  `src/formcoach/data/recgym.py` (the smallest loader).
+
+### Facts that differed from the docs (all now in docs/04 and DECISIONS)
+- RecoFit has **94 subjects**, not 200+; files are MATLAB v5 (scipy); license CDLA-Permissive-2.0.
+- MM-Fit smartwatch data is already m/s² and rad/s; pose_3d has 17 joints (H3.6M), pose_2d 18 (COCO).
+- RecGym: UCI zip served corrupt → Kaggle mirror; signals min-max normalised (no units);
+  columns `Subject, Position, Session, …`; 4,703,320 rows.
+
+### Next
+- PR 2 `feat/checkpoint-2-signal` (targets this branch): resample/filters/gravity/windows/
+  features, LOSO, energy + RF baselines, peak rep counter, `reports/loso_*.md`,
+  `reports/baseline_repcount.md`.
+
+### Open questions
+- Should RecoFit's junk-labelled minutes (device taps etc.) be used as extra idle negatives
+  instead of dropped? Currently dropped (ADR-0015).
+
+### Blockers
+- None.
+
+---
+
+## 2026-09-24 — Pre-hardware build: assessment, plan, data downloads (Claude Code with Robert)
+
+### What changed
+- `docs/superpowers/specs/2026-09-24-pre-hardware-build-design.md`: what can be built before
+  the boards exist (all of Phase 1, all Phase 2 code, about half of Phase 3), the stacked PR
+  sequence (Checkpoint 1 → 2 → 3 → firmware v1 → rules → CNN), and the dataset facts found
+  today (URLs, sizes, RecoFit is Git LFS, RecoFit units g/dps/s, Zenodo per-file md5).
+- Datasets downloaded to `data/external/` (gitignored): RecoFit `.mat` ×2 + text files,
+  RecGym zip; MM-Fit `mm-fit.zip` was still downloading when the session stalled — confirm
+  its size is 1,742,309,258 bytes before loading it.
+- Branch `feat/checkpoint-1-data` created; no code yet.
+
+### Next
+1. Robert: fix the hook path (below), restart Claude Code from the repo root, resume PR 1.
+2. PR 1 (Checkpoint 1): `data fetch` verifies/resumes the downloads above and writes manifest
+   rows; loaders + `describe()` + fixtures; `data profile`; corrections to `docs/04-datasets.md`.
+
+### Open questions
+- RecoFit `.mat` version (v7 → scipy, v7.3 → h5py) is still **(verify)**.
+- MM-Fit workout→subject mapping is not on the website; look in the starter repo / paper.
+
+### Blockers
+- **Resolved, pending restart (ADR-0010):** `.claude/settings.json` ran the hooks with a path
+  relative to the shell cwd; after a Bash call moved the shell into `data/external/recofit`,
+  every Bash call was denied by the guard failing to find its own script. Both hook commands
+  now use `"$CLAUDE_PROJECT_DIR/.claude/hooks/<name>.py"`. Takes effect on the next Claude
+  Code start; this session's changes (design note, STATUS, DECISIONS, howto, settings) are
+  uncommitted on `feat/checkpoint-1-data` and should go into PR 1 or a small `chore:` PR.
 
 ---
 
