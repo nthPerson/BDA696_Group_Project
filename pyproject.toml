@@ -35,9 +35,11 @@ vision = ["mediapipe>=0.10.14", "opencv-python>=4.10"]
 device = ["bleak>=0.22", "pyserial>=3.5"]
 # Training the gate model and experiments (Checkpoint 2/5 onwards)
 train = ["tensorflow>=2.16", "torch>=2.3", "optuna>=3.6"]
+# Same, with the CUDA libraries for an NVIDIA GPU on Linux (Robert's eGPU); CPU is the default
+train-gpu = ["tensorflow[and-cuda]>=2.16; sys_platform == 'linux'", "torch>=2.3", "optuna>=3.6"]
 # Session dashboard + CPU counters for the gating benchmark
 app = ["streamlit>=1.36", "psutil>=6"]
-all = ["formcoach[vision,device,train,app]"]
+all = ["formcoach[vision,device,train,app]"]  # train-gpu is opt-in
 
 [project.scripts]
 formcoach = "formcoach.cli:app"
