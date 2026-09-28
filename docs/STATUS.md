@@ -4,8 +4,38 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 3 done (PR #5 open) → 4 next
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 4 software done (PR #6 open; board pending) → 6 rules next
 **Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-24 — Checkpoint 4: firmware v1 and the device-side sources (Claude Code, autonomous run for Robert)
+
+### What changed
+- **PR #6 `fw/checkpoint-4-firmware-v1`** (stacked on PR #5). Compiles in CI (9.6 % RAM,
+  16.6 % flash); **nothing has run on a board**.
+- Firmware v1: in-tree BMI160 driver (ADR-0020), 100 Hz reads averaged to 50 Hz, 2 s ring
+  buffer, energy gate + hysteresis from `protocol.h`, NimBLE service (IMU notify batches,
+  control writes, 12-byte status), serial CSV + one-letter commands, button (short = session,
+  long = 3 s calibration to NVS), LED patterns, deep sleep after 10 min idle.
+- `protocol.h`/`protocol.py`: `FcStatus` (12 B), serial command letters, shared energy
+  threshold; pinned by `tests/test_protocol.py`.
+- Python: `io/serial_source.py`, `io/ble.py` (lazy `device` extra), `io/fake.py` (software
+  wearable), `io/recorder.py`, `io/session_check.py`; `formcoach record --source
+  serial|ble|fake` and `formcoach session check`; `make fw-upload PORT=… fw-monitor PORT=…
+  fw-libtest`. Library compile tests decided ADR-0020/0021.
+- `Robert`/`Christian`: read `docs/howto/flashing-firmware.md` first.
+
+### Next
+- PR 7 (`feat/checkpoint-6-rules`): rules.yaml v1, engine, eval rules, eval gating.
+
+### Open questions / hardware day
+- BMI160 register sequence, I2C address, LED polarity, NimBLE MTU/notify rate, deep-sleep
+  wake on GPIO2, serial + BLE at 50 Hz simultaneously: all unverified until a board is flashed.
+- Camera capture during `record --camera` is not wired.
+
+### Blockers
+- None for software; hardware verification waits for the parts.
 
 ---
 

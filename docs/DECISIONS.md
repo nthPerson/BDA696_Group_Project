@@ -230,3 +230,24 @@ for angle computation is estimated per session from the median hip→shoulder di
 than assumed from the pose source's axes. Consequences: any recorded team session replays
 through `formcoach demo --source replay --session <dir>` unchanged; the demo of record finds
 10 of 10 reps with always-on and energy gating (83 % of frames processed).
+
+## ADR-0020 · BMI160 driver is in-tree · 2026-09-24 · accepted
+Context: docs/02 §2.2 named `hanyazou/BMI160-Arduino` and `DFRobot_BMI160`. Compile-tested
+both for `seeed_xiao_esp32s3` with espressif32 6.x (`firmware/platformio.ini`
+`libtest_bmi160_*` envs, `make fw-libtest`): DFRobot's header includes `arduino.h` in lower
+case, which fails on Linux CI (case-sensitive), and hanyazou's fork carries Intel Curie SPI
+sources that do not build for the ESP32. Decision: a 120-line register driver
+(`firmware/src/app/bmi160.{h,cpp}`: chip-id check, soft reset, ODR 100 Hz, ±8 g, ±1000 dps,
+burst read of 12 data bytes) with the same LSB scaling as `protocol.h`. Both library envs are
+kept so hardware day can switch with one `lib_deps` line if the register sequence misbehaves.
+Consequences: no third-party IMU code; the register values are from the datasheet and are
+**(verify)** on the first board.
+
+## ADR-0021 · TFLite Micro library: Chirale_TensorFlowLite · 2026-09-24 · accepted
+Context: docs/02 §2.2 listed `Chirale_TensorFlowLite`, `tanakamasayuki/TensorFlowLite_ESP32`
+and an Edge Impulse export. Compile tests: Chirale (git, current TFLM API) builds in 3 m 49 s
+(RAM 10.8 %, flash 9.3 % for an empty interpreter); tanaka's library builds only with the
+older `ErrorReporter` constructor; TensorFlow's `tflite-micro-arduino-examples` fails with
+"unsupported board". Decision: `https://github.com/spaziochirale/Chirale_TensorFlowLite.git`
+(not in the PlatformIO registry under that name). CI builds the app env and the Chirale
+libtest env. Consequences: the model export (PR 8) targets this library's op resolver.

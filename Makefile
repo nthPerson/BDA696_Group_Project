@@ -12,7 +12,7 @@ SOURCE  ?= replay
 PORT    ?=
 MODEL   ?= cnn
 
-.PHONY: help setup setup-all lint format test data convert profile features train-gate eval demo record \
+.PHONY: help setup setup-all lint format test data convert profile features session-check train-gate eval demo record \
 	    fw-build fw-upload fw-monitor clean
 
 help: ## list targets
@@ -62,14 +62,20 @@ demo: ## run the full pipeline (SOURCE=replay|serial|ble; replay needs no hardwa
 record: ## record a team session (SOURCE=serial|ble PORT=/dev/ttyACM0|COM5)
 	$(RUN) formcoach record --source $(SOURCE) $(if $(PORT),--port $(PORT),)
 
+session-check: ## quality-check a recorded session (DIR=data/team/S1/<id>)
+	$(RUN) formcoach session check $(DIR)
+
 fw-build: ## compile the firmware (PlatformIO via uvx; also runs in CI)
 	$(PIO) run -d firmware
 
-fw-upload: ## flash the firmware over USB-C
-	$(PIO) run -d firmware -t upload
+fw-upload: ## flash the firmware over USB-C (PORT=COM5 | /dev/ttyACM0; omit to auto-detect)
+	$(PIO) run -d firmware -e xiao_esp32s3 -t upload $(if $(PORT),--upload-port $(PORT),)
 
-fw-monitor: ## open the serial monitor (115200 baud)
-	$(PIO) device monitor -d firmware
+fw-monitor: ## open the serial monitor at 115200 baud (PORT=COM5 | /dev/ttyACM0)
+	$(PIO) device monitor -d firmware -b 115200 $(if $(PORT),-p $(PORT),)
+
+fw-libtest: ## compile-test every candidate library env (only libtest_tflm_chirale is expected to pass, ADR-0020/0021)
+	-$(PIO) run -d firmware -e libtest_tflm_chirale -e libtest_tflm_arduino -e libtest_tflm_tanaka -e libtest_bmi160_dfrobot -e libtest_bmi160_hanyazou
 
 clean: ## remove caches and build artifacts (never touches data/)
 	rm -rf .pytest_cache .ruff_cache htmlcov .coverage firmware/.pio

@@ -53,4 +53,7 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
           restore-keys: pio-${{ runner.os }}-
       - run: pip install --upgrade platformio
-      - run: pio run -d firmware
+      - name: firmware v1 (the app)
+        run: pio run -d firmware -e xiao_esp32s3
+      - name: TFLite Micro library compile test (chosen library, ADR-0021)
+        run: pio run -d firmware -e libtest_tflm_chirale
