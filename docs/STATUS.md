@@ -25,6 +25,9 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
   arena; 22.3 % RAM, 19.2 % flash), logs `# infer us=… arena=…`; `xiao_esp32s3_energy` env keeps
   the v1 rule; `formcoach eval device --log` parses those lines.
 - `train-gpu` extra (TensorFlow + CUDA wheels on Linux) and the WSL2 `LD_LIBRARY_PATH` note.
+- Known cosmetic issue: `reports/gate_cnn_export.md` prints integer counts as `371929.0000`;
+  the formatter was fixed after that run and the report was not regenerated (23-minute
+  retrain). Numbers are correct; the next `train gate --model cnn` run rewrites it.
 - README command table brought up to date. `Christian`: read `docs/howto/cnn-gate.md` first.
 
 ### What remains for hardware day (everything below needs a board or a teammate recording)

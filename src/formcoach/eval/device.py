@@ -24,6 +24,8 @@ FW = re.compile(r"#\s*FormCoach fw\s+(\S+)")
 
 
 def parse(text: str) -> dict:
+    """Parse a serial capture: ``infer_us`` (per-inference microseconds, array), ``arena``
+    (max tensor-arena bytes), ``flash`` (app bytes), ``firmware`` version, ``classes``."""
     us, arena, classes = [], [], []
     flash = None
     fw = None
@@ -46,6 +48,8 @@ def parse(text: str) -> dict:
 
 
 def evaluate(log: Path, out: Path = DEFAULT_OUT) -> Path:
+    """Write ``reports/device.md`` (inference ms median/p95/max, arena and flash bytes) from
+    ``log`` and return its path."""
     d = parse(Path(log).read_text(encoding="utf-8", errors="replace"))
     rows = []
     if d["n"]:
