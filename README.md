@@ -109,6 +109,7 @@ notebooks/           exploration only; nothing production lives here
 | `docs/01-project-brief.md` | course context, deliverables, grading, success criteria |
 | `docs/02-system-design.md` | firmware, BLE protocol, pipeline, schema, model, rules, evaluation |
 | `docs/03-hardware.md` | BOM, wiring, flashing, case, **LiPo safety** |
+| `docs/assembly-day.md` | build-session runbook: wiring tables, per-kit flash/test procedure, checklists |
 | `docs/04-datasets.md` | MM-Fit, RecoFit, RecGym: formats, splits, licenses, known issues |
 | `docs/05-roadmap.md` | phases, milestones, roles, definition of done |
 | `docs/STATUS.md` | latest state, next steps, open questions, blockers |

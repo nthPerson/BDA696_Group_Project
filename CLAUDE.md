@@ -31,6 +31,7 @@ components or files that must be checked against the real thing and corrected in
 | `docs/05-roadmap.md` | phases, milestones, roles, stretch goals, definition of done |
 | `docs/STATUS.md` / `docs/DECISIONS.md` | running log / ADRs |
 | `docs/devices.md` | kit registry (MAC, firmware version, owner) |
+| `docs/assembly-day.md` | build-session runbook (wiring tables, per-kit flash/test steps, checklists) |
 
 ## People
 

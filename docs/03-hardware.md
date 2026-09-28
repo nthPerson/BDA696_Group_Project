@@ -49,7 +49,7 @@ graph LR
   XIAO -- D1 --> BTN -- --> XIAO
 ```
 
-Assembly order for the build session (write this up with photos in `docs/wiring-guide.md`): (1) flash test firmware to the bare XIAO over USB-C and confirm the serial monitor; (2) solder IMU wires, run the I2C scan sketch, confirm 0x68/0x69 and live readings; (3) solder button; (4) meter the battery lead, solder switch + battery to the BAT pads, insulate with heat-shrink, confirm the charge LED with USB connected and the board running on battery with USB removed; (5) Kapton over the BAT pads; (6) fit into the case; (7) label kit number (K1–K6) and record MAC address in `docs/devices.md`.
+Assembly order for the build session (the runbook is `docs/assembly-day.md`; photos go into `docs/wiring-guide.md` afterwards): (1) flash test firmware to the bare XIAO over USB-C and confirm the serial monitor; (2) solder IMU wires, run the I2C scan sketch, confirm 0x68/0x69 and live readings; (3) solder button; (4) meter the battery lead, solder switch + battery to the BAT pads, insulate with heat-shrink, confirm the charge LED with USB connected and the board running on battery with USB removed; (5) Kapton over the BAT pads; (6) fit into the case; (7) label kit number (K1–K6) and record MAC address in `docs/devices.md`.
 
 ## 3. Flashing and serial
 
