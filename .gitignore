@@ -29,6 +29,7 @@ data/team/*
 
 # ---- Downloaded model files (make setup fetches them; firmware/model/ is committed) ----
 /models/
+firmware/model/*.keras
 
 # ---- Firmware build artifacts ----
 firmware/.pio/

@@ -2,6 +2,7 @@
 // (protocol.h constants). Default: int8 1D-CNN via TFLite Micro (model/); with
 // -DFC_GATE_ENERGY=1 the v1 motion-energy rule is used instead.
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 #include "protocol.h"
 

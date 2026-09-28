@@ -208,11 +208,19 @@ def predict(model, pre: Preprocess, X: np.ndarray, batch_size: int = 1024) -> np
 
 class CnnClassifier:
     """sklearn-like wrapper so :func:`formcoach.eval.loso.run_loso` can fit a CNN per fold.
-    ``int8=True`` quantises after training and predicts through the TFLite interpreter."""
 
-    def __init__(self, classes, seed=0, epochs=30, batch_size=256, augment=True, int8=False):
+    ``int8=True`` quantises after training and predicts through the TFLite interpreter;
+    ``int8="both"`` predicts float but also quantises and stores the int8 predictions of every
+    ``predict`` call in ``int8_predictions`` (a list shared across folds when passed in), so one
+    training per fold yields both the float and the int8 LOSO tables."""
+
+    def __init__(
+        self, classes, seed=0, epochs=30, batch_size=256, augment=True, int8=False,
+        int8_predictions: list | None = None,
+    ):  # fmt: skip
         self.classes, self.seed, self.epochs = tuple(classes), seed, epochs
         self.batch_size, self.augment, self.int8 = batch_size, augment, int8
+        self.int8_predictions = int8_predictions
         self.result: TrainResult | None = None
         self.tflite: Path | None = None
 
@@ -232,14 +240,22 @@ class CnnClassifier:
 
     def predict(self, X):
         assert self.result is not None
-        if self.int8 and self.tflite is not None:
-            from formcoach.models import export
+        from formcoach.models import export
 
-            idx = export.tflite_predict(self.tflite, self.result.preprocess.apply(X))
+        z = self.result.preprocess.apply(X)
+        if self.int8 == "both":
+            idx8 = export.tflite_predict(self.tflite, z)
+            if self.int8_predictions is not None:
+                self.int8_predictions.append(np.array(self.classes)[idx8])
+            idx = predict(self.result.model, self.result.preprocess, X)
+        elif self.int8 and self.tflite is not None:
+            idx = export.tflite_predict(self.tflite, z)
         else:
             idx = predict(self.result.model, self.result.preprocess, X)
         return np.array(self.classes)[idx]
 
 
-def loso_factory(classes, seed=0, epochs=30, batch_size=256, augment=True, int8=False):
-    return lambda: CnnClassifier(classes, seed, epochs, batch_size, augment, int8)
+def loso_factory(
+    classes, seed=0, epochs=30, batch_size=256, augment=True, int8=False, int8_predictions=None
+):
+    return lambda: CnnClassifier(classes, seed, epochs, batch_size, augment, int8, int8_predictions)

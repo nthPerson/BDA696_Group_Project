@@ -134,7 +134,11 @@ def train_cnn_gate(
             res.preprocess, cnn.CLASSES6, model_dir / "preprocess.h", tfl
         )
         export.to_tflite_float(res.model, model_dir / "gate_model_float.tflite")
-    rows = pd.DataFrame([{"metric": k, "value": v} for k, v in summary.items()])
+
+    def _fmt(v):
+        return f"{v:.4f}" if isinstance(v, float) else str(v)
+
+    rows = pd.DataFrame([{"metric": k, "value": _fmt(v)} for k, v in summary.items()])
     out = report.REPORTS_DIR / "gate_cnn_export.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join([

@@ -82,7 +82,8 @@ def test_train_predict_and_int8_export_agree(tmp_path):
     assert (pred_q == pred).mean() > 0.9
     cc = export.write_cc(tfl, tmp_path / "gate_model_data.cc")
     text = cc.read_text()
-    assert "const unsigned char gate_model_data[]" in text and "gate_model_data_len" in text
+    assert "extern const unsigned char gate_model_data[] = {" in text
+    assert "extern const size_t gate_model_data_len" in text
     assert "alignas(16)" in text
     h = export.write_preprocess_header(res.preprocess, CLASSES, tmp_path / "preprocess.h", tfl)
     ht = h.read_text()
@@ -94,7 +95,15 @@ def test_cnn_loso_factory_runs_two_grouped_folds():
     from formcoach.eval import loso
 
     X, y, groups = _data(60)
-    make = cnn.loso_factory(classes=CLASSES, seed=0, epochs=12, batch_size=32, augment=False)
+    store: list = []
+    make = cnn.loso_factory(
+        classes=CLASSES, seed=0, epochs=12, batch_size=32, augment=False, int8="both",
+        int8_predictions=store,
+    )  # fmt: skip
     res = loso.run_loso(X, y, groups, make, folds=2)
     assert len(res.per_fold) == 2 and res.pooled["accuracy"] > 0.5  # plumbing, not accuracy
     assert set(res.labels) == set(CLASSES)
+    assert len(store) == 2  # one int8 prediction array per fold
+    res8 = loso.result_from_predictions(y, groups, store, folds=2)
+    assert res8.pooled["n"] == len(y)
+    assert abs(res8.pooled["accuracy"] - res.pooled["accuracy"]) < 0.3
