@@ -1,0 +1,26 @@
+{
+  "dataset": "mmfit",
+  "workout": "w00",
+  "subject": "P2",
+  "device": "sw_l",
+  "placement": "wrist_l",
+  "exercise": "curl",
+  "expected_reps": 10,
+  "sets": [
+    {
+      "activity": "bicep_curls",
+      "exercise": "curl",
+      "t_start": 1702.69431426311,
+      "t_end": 1719.869957036758,
+      "reps": 10
+    }
+  ],
+  "t_range": [
+    1697.69431426311,
+    1727.69431426311
+  ],
+  "skeleton": "h36m17",
+  "pose_units": "mm, camera frame (MM-Fit pose_3d)",
+  "license": "MIT (MM-Fit sensor/pose data; Str\u00f6mb\u00e4ck, Huang & Radu, IMWUT 2020)",
+  "source": "https://mmfit.github.io/"
+}

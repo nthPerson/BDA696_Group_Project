@@ -25,12 +25,11 @@ def test_demo_replay_headless_is_the_demo_of_record():
     result = runner.invoke(app, ["demo", "--source", "replay", "--headless"])
     assert result.exit_code == 0
     assert "replay" in result.output
-    assert "STUB" in result.output  # remove this assertion when Checkpoint 3 lands
+    assert "STUB" not in result.output  # Checkpoint 3: the real pipeline runs on the fixture
 
 
 def test_every_checkpoint_command_exists():
     commands = [
-        ["pose", "extract", "--video", "x.mp4"],
         ["train", "gate"],
         ["eval", "all"],
         ["eval", "rules"],
