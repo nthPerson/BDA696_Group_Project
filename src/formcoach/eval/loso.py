@@ -126,6 +126,50 @@ def run_loso(
     return LosoResult(per_fold, pooled, cm, [str(lab) for lab in labels], y, y_pred, groups)
 
 
+def result_from_predictions(
+    y: np.ndarray,
+    groups: np.ndarray,
+    fold_predictions: list[np.ndarray],
+    folds: str | int = "loso",
+    seed: int = SEED,
+) -> LosoResult:
+    """Assemble a :class:`LosoResult` from per-fold prediction arrays recorded in the same fold
+    order :func:`run_loso` uses (e.g. int8 predictions captured alongside the float ones)."""
+    y = np.asarray(y)
+    groups = np.asarray(groups)
+    splits = (
+        loso_splits(groups) if folds == "loso" else group_kfold_splits(groups, int(folds), seed)
+    )
+    if len(splits) != len(fold_predictions):
+        raise ValueError(f"{len(fold_predictions)} prediction arrays for {len(splits)} folds")
+    labels = sorted(set(y.tolist()))
+    y_pred = np.empty_like(y)
+    rows = []
+    for (_train, test, name), pred in zip(splits, fold_predictions, strict=True):
+        pred = np.asarray(pred)
+        y_pred[test] = pred
+        rows.append(
+            {
+                "fold": name,
+                "n_test": len(test),
+                "accuracy": float(accuracy_score(y[test], pred)),
+                "macro_f1": float(
+                    f1_score(y[test], pred, labels=labels, average="macro", zero_division=0)
+                ),
+            }
+        )
+    pooled = {
+        "accuracy": float(accuracy_score(y, y_pred)),
+        "macro_f1": float(f1_score(y, y_pred, labels=labels, average="macro", zero_division=0)),
+        "n": len(y),
+        "folds": len(splits),
+    }
+    cm = confusion_matrix(y, y_pred, labels=labels)
+    return LosoResult(
+        pd.DataFrame(rows), pooled, cm, [str(lab) for lab in labels], y, y_pred, groups
+    )
+
+
 def _fig_confusion(res: LosoResult, path: Path, title: str) -> None:
     import matplotlib
 

@@ -43,8 +43,10 @@ uv run formcoach demo --source replay   # = make demo
 Serial ports on Windows are `COM3`, `COM5`, ... (Device Manager → Ports). On Linux they are
 `/dev/ttyACM0` (add yourself to the `dialout` group), on macOS `/dev/cu.usbmodem*`.
 
-> **Current state:** Checkpoint 1 done — `make data`, `make convert`, `make profile` work on
-> MM-Fit, RecoFit and RecGym; later commands still print what they *will* do. See `docs/STATUS.md`.
+> **Current state (2026-09-27):** Checkpoints 1–3 and the software halves of 4–6 are built:
+> data → windows → LOSO baselines, the replay demo with pose rep segmentation, firmware v1.1
+> (compiles in CI, not yet flashed), rules v1 + `eval rules`/`eval gating`, and the int8 CNN gate.
+> What still needs a board is listed in the top entry of `docs/STATUS.md`.
 
 ## Everyday commands
 
@@ -58,15 +60,18 @@ Serial ports on Windows are `COM3`, `COM5`, ... (Device Manager → Ports). On L
 | `make convert` | `uv run formcoach data convert` | raw downloads → IMUStream Parquet under `data/processed/` |
 | `make profile` | `uv run formcoach data profile` | write `reports/data_profile.md` |
 | `make features` | `uv run formcoach features build` | windows + features → `data/processed/` |
-| `make train-gate` | `uv run formcoach train gate` | train the gate model, export int8 |
-| `make eval` | `uv run formcoach eval all` | regenerate every table/figure in `reports/` |
-| `make demo` | `uv run formcoach demo --source replay` | the demo of record (add `SOURCE=ble` with hardware) |
-| `make record PORT=COM5` | `uv run formcoach record --source serial --port COM5` | record a team session |
-| `make fw-build` | `uvx platformio run -d firmware` | compile the wearable firmware |
+| `make train-gate MODEL=rf\|cnn` | `uv run formcoach train gate --model cnn` | RF laptop gate, or the CNN + int8 export into `firmware/model/` (needs `--extra train`) |
+| `make eval` | `uv run formcoach eval all` | regenerate every table/figure in `reports/` (`--quick` for 10-fold RecoFit) |
+| `make demo` | `uv run formcoach demo --source replay --headless` | the demo of record on the 30 s MM-Fit fixture (`--gate energy`, `--rules <yaml>`) |
+| `make record PORT=COM5` | `uv run formcoach record --source serial --port COM5` | record a team session (`--source fake` for a dry run without a board) |
+| `make session-check DIR=…` | `uv run formcoach session check <dir>` | drops, gate timeline, reps vs expected |
+| `make fw-build` | `uvx platformio run -d firmware` | compile the wearable firmware (`fw-upload PORT=COM5`, `fw-monitor PORT=COM5`, `fw-libtest`) |
 
 `uv run formcoach --help` lists every command. Optional extras install with
 `uv sync --extra vision` (webcam + pose), `--extra device` (BLE/serial), `--extra train`
-(Keras/PyTorch, CPU wheels), `--extra app` (dashboard).
+(Keras/PyTorch, CPU wheels; `--extra train-gpu` adds the CUDA libraries on Linux), `--extra app`
+(dashboard). Evaluation commands: `eval loso`, `eval repcount`, `eval rules`, `eval gating`,
+`eval device` (see `docs/howto/`).
 
 ## Repository map
 

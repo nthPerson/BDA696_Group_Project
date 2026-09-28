@@ -265,3 +265,16 @@ source, and both files ship. The engine, pipeline and demo take `--rules <file>`
 is v1 for the webcam path is decided after the first MediaPipe run (Rochelle). Consequences:
 the report's pass-rate and perturbation tables are the evidence for the go/no-go on the
 vision path; every threshold change is a YAML diff plus a rerun of `eval rules`.
+
+## ADR-0023 · CNN evaluation folds, GPU extra, and one-training float/int8 tables · 2026-09-27 · accepted
+Context: strict 94-fold LOSO of the CNN would train 94 networks per task; on the CPU the full
+model took an hour per 30 epochs and did not finish, on the RTX 3070 eGPU 23 minutes.
+Decision: `eval loso --model cnn` defaults to subject-grouped folds (`--folds 5` used for the
+committed reports, 10 epochs per fold) — still unseen-subject — and writes the `cnn-int8`
+table from the same trained folds (quantised after training, scored with the TFLite
+interpreter) instead of training twice. The RF and energy baselines are re-run on exactly those
+folds (`reports/*_5fold.md`) so the comparison table is like-for-like. Training needs the
+`train` extra; a new `train-gpu` extra adds the CUDA wheels on Linux (WSL2 additionally needs
+`LD_LIBRARY_PATH` pointing at the pip `nvjitlink` library, or TensorFlow falls back to CPU).
+Consequences: CNN numbers are 5-fold, RF headline numbers remain 94-fold (both stated in the
+reports); GPU runs are not bit-reproducible, so the seed pins the split, not the weights.

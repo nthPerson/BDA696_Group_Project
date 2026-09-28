@@ -31,12 +31,20 @@ def _xy(w: pd.DataFrame, model: str, task: str) -> tuple[np.ndarray, np.ndarray]
         X = loso.energy_features(w)
     elif model == "rf":
         X = loso.feature_matrix(w)
+    elif model in ("cnn", "cnn-int8"):
+        from formcoach.signal.windows import windows_to_array
+
+        X = windows_to_array(w)
+        if task == "active":
+            y = np.where(y == 1, "active", "idle")
     else:
-        raise ValueError(f"model {model!r} is not available in this PR (CNN lands in PR 6)")
+        raise ValueError(f"unknown model {model!r}; choose from {MODELS}")
     return X, y
 
 
-def _factory(model: str) -> Callable[[], object]:
+def _factory(
+    model: str, task: str = "active", epochs: int = 30, int8_store: list | None = None
+) -> Callable[[], object]:
     if model == "energy":
         from formcoach.models.energy import EnergyGate
 
@@ -45,6 +53,20 @@ def _factory(model: str) -> Callable[[], object]:
         from formcoach.models.rf import make_rf
 
         return lambda: make_rf(seed=report.SEED)
+    if model in ("cnn", "cnn-int8"):
+        from formcoach.models import cnn
+
+        classes = (
+            ("idle", "active") if task == "active" else ("curl", "press", "raise", "squat", "other")
+        )
+        # "cnn" trains once per fold and records int8 predictions too (see run())
+        return cnn.loso_factory(
+            classes,
+            seed=report.SEED,
+            epochs=epochs,
+            int8="both" if model == "cnn" else True,
+            int8_predictions=int8_store,
+        )
     raise ValueError(model)
 
 
@@ -66,7 +88,10 @@ def run(
     test_dataset: str | None = None,
     out: Path | None = None,
     log: Callable[[str], None] = print,
+    epochs: int = 30,
 ) -> Path:
+    if model.startswith("cnn") and folds == "loso":
+        folds = "10"  # ADR-0023: subject-grouped 10 folds for the CNN (still unseen-subject)
     w = _load(dataset, task, min_purity)
     X, y = _xy(w, model, task)
     meta = {
@@ -82,19 +107,33 @@ def run(
         meta["folds"] = (
             "leave-one-subject-out" if folds_arg == "loso" else f"{folds_arg} subject-grouped folds"
         )
-        res = loso.run_loso(X, y, w["subject"].to_numpy(), _factory(model), folds=folds_arg,
-                            progress=lambda f: log(f"  fold {f}"))  # fmt: skip
+        int8_store: list = []
+        groups = w["subject"].to_numpy()
+        res = loso.run_loso(
+            X, y, groups, _factory(model, task, epochs, int8_store), folds=folds_arg,
+            progress=lambda f: log(f"  fold {f}"),
+        )  # fmt: skip
         path = out or report.REPORTS_DIR / f"loso_{model}_{task}_{dataset}.md"
         title = f"LOSO · {model} · {task} · {dataset}"
         command = (
             f"formcoach eval loso --model {model} --dataset {dataset} --task {task} --folds {folds}"
         )
+        if model == "cnn" and int8_store:
+            # same folds in the same order: rebuild the int8 result from the recorded predictions
+            res8 = loso.result_from_predictions(y, groups, int8_store, folds=folds_arg)
+            path8 = path.with_name(path.name.replace("loso_cnn_", "loso_cnn-int8_"))
+            meta8 = {**meta, "model": "cnn-int8 (same training as cnn; TFLite int8 inference)"}
+            loso.write_loso_report(
+                res8, path8, title=title.replace("cnn", "cnn-int8"),
+                command=command.replace("--model cnn", "--model cnn-int8"), meta=meta8,
+            )  # fmt: skip
+            log(f"wrote {path8}")
     else:
         wt = _load(test_dataset, task, min_purity)
         if wt["units"].iloc[0] != w["units"].iloc[0]:
             raise ValueError("cannot transfer between si and normalized datasets (ADR-0014)")
         Xt, yt = _xy(wt, model, task)
-        m = _factory(model)()
+        m = _factory(model, task, epochs)()
         m.fit(X, y)
         pred = np.asarray(m.predict(Xt))
         labels = sorted(set(y.tolist()) | set(yt.tolist()))

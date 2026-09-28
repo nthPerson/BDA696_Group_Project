@@ -4,8 +4,50 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 6 software done (PR #7 open) → 5 CNN next
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 5 laptop half done (PR #8 open) → hardware day
 **Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-27 — Checkpoint 5 (laptop half): CNN gate trained on the eGPU, int8 export, TFLM firmware (Claude Code, autonomous run for Robert)
+
+### What changed
+- **PR #8 `feat/checkpoint-5-cnn-gate`** (stacked on PR #7).
+- `formcoach train gate --model cnn` (GPU, 23 min): 6-class 1D-CNN, 6,390 parameters, trained
+  on 371,929 RecoFit + MM-Fit windows (104 subjects, 16 held out); int8 TFLite 16,760 B;
+  held-out macro-F1 0.71 float / 0.73 int8 (no quantisation loss) → `reports/gate_cnn_export.md`,
+  `firmware/model/{gate_model.tflite,gate_model_data.cc,preprocess.h,preprocess.json}` committed.
+- `formcoach eval loso --model cnn` (5 subject-grouped folds, 10 epochs; writes the `cnn-int8`
+  table from the same folds) with RF and energy re-run on the same folds (ADR-0023):
+  energy 0.668 · RF 0.867 · **CNN 0.837 float / 0.832 int8** (macro-F1; the RF still leads the
+  10-epoch CNN by 3 points; float→int8 costs 0.5 points)
+- Firmware v1.1.0: `Gate::decideModel()` runs the model with TFLite Micro (Chirale, 40 KB
+  arena; 22.3 % RAM, 19.2 % flash), logs `# infer us=… arena=…`; `xiao_esp32s3_energy` env keeps
+  the v1 rule; `formcoach eval device --log` parses those lines.
+- `train-gpu` extra (TensorFlow + CUDA wheels on Linux) and the WSL2 `LD_LIBRARY_PATH` note.
+- Known cosmetic issue: `reports/gate_cnn_export.md` prints integer counts as `371929.0000`;
+  the formatter was fixed after that run and the report was not regenerated (23-minute
+  retrain). Numbers are correct; the next `train gate --model cnn` run rewrites it.
+- README command table brought up to date. `Christian`: read `docs/howto/cnn-gate.md` first.
+
+### What remains for hardware day (everything below needs a board or a teammate recording)
+1. Flash `xiao_esp32s3`; confirm the boot banner (`# bmi160 ok at 0x69`, `# gate: tflm ok arena=…`),
+   LED polarity, button on D1, I2C address; register the kit in `docs/devices.md` (skill
+   `firmware-bringup`). Settle the **(verify)** items in ADR-0020 in DECISIONS.
+2. `formcoach record --source serial --port COMx` and `--source ble` (from Windows Python; WSL2
+   has no Bluetooth): MTU 185, 50 Hz notify rate, drop counts via `session check`.
+3. `formcoach eval device --log <serial capture>` → inference ms, arena, flash; battery test.
+4. `formcoach demo --source ble` opening/closing the camera from `flags.gate_state`
+   (`--gate device`); `eval gating --gate device` rows; `eval latency`.
+5. MediaPipe path: `uv sync --extra vision`, `pose extract` on one MM-Fit video or a webcam clip;
+   rerun `eval rules` on MediaPipe landmarks and choose the shipped thresholds (ADR-0022).
+6. Team validation recordings (docs/04 §6) → `eval transfer`; pose-model ablation.
+
+### Open questions
+- Exercise-class CNN LOSO and MM-Fit-only CNN LOSO are not run yet (one command each on the GPU).
+
+### Blockers
+- None for software. Hardware verification waits for the boards.
 
 ---
 

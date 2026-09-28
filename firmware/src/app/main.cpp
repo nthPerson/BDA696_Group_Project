@@ -180,6 +180,10 @@ void sampleImu() {
   for (int i = 0; i < 3; ++i) acc_sum[i] = gyr_sum[i] = 0;
   bool decided = gate.push(aa, gg);
   if (decided && gate.state()) last_activity_ms = millis();
+  if (decided && gate.usingModel()) {
+    Serial.printf("# infer us=%lu arena=%u class=%d p_active=%.2f\n", (unsigned long)gate.lastInferUs(),
+                  (unsigned)gate.arenaUsed(), gate.lastClass(), gate.lastPActive());
+  }
   emitSample(millis(), aa, gg);
 }
 }  // namespace
@@ -195,6 +199,7 @@ void setup() {
                 ESP.getChipRevision());
   Serial.printf("# sample=%u B batch=%u B status=%u B rate=%u Hz\n", (unsigned)sizeof(FcSample),
                 (unsigned)sizeof(FcBatch), (unsigned)sizeof(FcStatus), FC_SAMPLE_RATE_HZ);
+  Serial.printf("# flash app=%u\n", (unsigned)ESP.getSketchSize());
 
   Wire.begin();  // SDA=D4/GPIO5, SCL=D5/GPIO6 (pins_arduino.h of the XIAO ESP32-S3 variant)
   Wire.setClock(400000);
@@ -204,6 +209,8 @@ void setup() {
   loadCalibration();
   Serial.printf("# calibration %s\n", calibrated ? "loaded from NVS" : "none (long-press to calibrate)");
 
+  bool model_ok = gate.begin();
+  Serial.printf("# gate: %s\n", model_ok ? "int8 CNN (TFLite Micro)" : "motion-energy rule");
   ble.begin(deviceName().c_str(), handleCommand);
   Serial.printf("# ble advertising as %s\n", deviceName().c_str());
   led.set(LedMode::Advertising);
