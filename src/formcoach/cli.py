@@ -190,14 +190,24 @@ def data_make_fixtures() -> None:
 @features_app.command("build")
 def features_build(
     dataset: Annotated[Dataset | None, typer.Option(help="Limit to one dataset.")] = None,
+    fs: Annotated[float, typer.Option(help="Target sampling rate (Hz).")] = 50.0,
+    win: Annotated[float, typer.Option(help="Window length (s).")] = 2.0,
+    stride: Annotated[float, typer.Option(help="Window stride (s).")] = 1.0,
+    force: Annotated[bool, typer.Option(help="Rewrite existing window files.")] = False,
+    jobs: Annotated[int, typer.Option(help="Parallel workers (stream files).")] = 4,
 ) -> None:
-    """Resample to 50 Hz, filter, window (2 s / 50 %), featurize -> data/processed/."""
-    stub(
-        "features build",
-        2,
-        f"build windows + features for {dataset.value if dataset else 'all datasets'} into "
-        "data/processed/<dataset>/<subject>-<session>.parquet.",
+    """Resample to 50 Hz, window (2 s / 1 s stride), featurize -> data/processed/<ds>/windows/."""
+    from formcoach.signal import build
+
+    written = build.build_features(
+        dataset=dataset.value if dataset else None,
+        fs=fs,
+        win_s=win,
+        stride_s=stride,
+        force=force,
+        jobs=jobs,
     )
+    console.print(f"[green]{len(written)}[/] window file(s) written")
 
 
 # ---- pose ------------------------------------------------------------------------------------
@@ -232,19 +242,60 @@ def eval_all() -> None:
     stub("eval all", 6, "run loso, repcount, rules, gating, pose-ablation, latency, device.")
 
 
+class Task(StrEnum):
+    active = "active"
+    exercise = "exercise"
+
+
 @eval_app.command("loso")
 def eval_loso(
     model: Annotated[str, typer.Option(help="energy | rf | cnn | cnn-int8")] = "rf",
     dataset: Annotated[Dataset, typer.Option()] = Dataset.recofit,
+    task: Annotated[Task, typer.Option(help="active (gate) | exercise (5 classes)")] = Task.active,
+    folds: Annotated[str, typer.Option(help="'loso' or a fold count (unseen-subject)")] = "loso",
+    min_purity: Annotated[float, typer.Option(help="Drop windows below this label purity.")] = 0.8,
+    test_dataset: Annotated[
+        Dataset | None, typer.Option(help="Cross-dataset: train on --dataset, test on this.")
+    ] = None,
+    out: Annotated[Path | None, typer.Option(help="Report path override.")] = None,
 ) -> None:
-    """Leave-one-subject-out accuracy / macro-F1 / confusion matrix."""
-    stub("eval loso", 2, f"LOSO-evaluate {model} on {dataset.value} -> reports/loso_{model}.md.")
+    """Leave-one-subject-out accuracy / macro-F1 / confusion matrix -> reports/loso_<...>.md."""
+    from formcoach.eval import loso_cli
+
+    path = loso_cli.run(
+        model=model,
+        dataset=dataset.value,
+        task=task.value,
+        folds=folds,
+        min_purity=min_purity,
+        test_dataset=test_dataset.value if test_dataset else None,
+        out=out,
+        log=console.print,
+    )
+    console.print(f"[green]wrote[/] {path}")
 
 
 @eval_app.command("repcount")
-def eval_repcount(source: Annotated[str, typer.Option(help="imu|pose|fused|peaks")] = "peaks"):
-    """Rep-count MAE against MM-Fit labels."""
-    stub("eval repcount", 2, f"rep-count MAE for {source} on MM-Fit -> reports/repcount.md.")
+def eval_repcount(
+    source: Annotated[str, typer.Option(help="peaks (imu | pose | fused land later)")] = "peaks",
+    device: Annotated[str, typer.Option(help="sw_l | sw_r | both")] = "both",
+    mode: Annotated[str, typer.Option(help="axis | magnitude")] = "axis",
+    prominence_g: Annotated[float, typer.Option(help="Peak prominence in g.")] = 0.15,
+    min_distance_s: Annotated[float, typer.Option(help="Minimum peak spacing in s.")] = 0.8,
+) -> None:
+    """Rep-count MAE against MM-Fit set labels -> reports/baseline_repcount.md."""
+    from formcoach.data import convert, mmfit
+    from formcoach.eval import repcount
+
+    if source != "peaks":
+        stub("eval repcount", 3, f"rep-count MAE for source={source} (pose/fused land in PR 3).")
+        return
+    devices = ("sw_l", "sw_r") if device == "both" else (device,)
+    table = repcount.evaluate(
+        convert.PROCESSED_ROOT, mmfit.DEFAULT_ROOT, devices=devices, mode=mode
+    )
+    console.print(table.to_string(index=False))
+    console.print(f"[green]wrote[/] {repcount.DEFAULT_OUT}")
 
 
 @eval_app.command("rules")
