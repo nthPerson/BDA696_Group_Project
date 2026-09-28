@@ -201,3 +201,32 @@ models; both are unseen-subject, and every report states which it used. RecGym i
 only within RecGym (ADR-0014). Consequences: `make features` takes ~35 s; RecoFit RF LOSO
 takes 15–60 min on 16 cores; per-fold numbers on RecoFit vary widely because many subjects
 performed only one or two of the four target exercises, so the pooled table is the headline.
+
+## ADR-0018 · Pose rep segmentation uses adaptive thresholds · 2026-09-24 · accepted
+Context: docs/02 §4.4 defines a rep as one excursion of the primary joint angle beyond fixed
+thresholds (curl: elbow < 60° then > 150°). On MM-Fit's lifted 3-D pose (Human3.6M joints
+from video) a two-arm curl reads as an elbow swing of 95–140° and a press tops out at ~108°,
+so the fixed thresholds never fire; MediaPipe world landmarks will have yet another scale.
+Decision: `pose.reps.RepSegmenter(adaptive=True)` recomputes `enter`/`exit` from the 10th/90th
+percentiles of the last 6 s of the smoothed primary angle (`enter = lo + 0.3·range`,
+`exit = hi − 0.3·range`, mirrored for "above" modes) and counts nothing until the observed
+range exceeds 25°; the docs/02 values remain the initial thresholds and the fixed mode is kept
+for the rules-engine tests. Rules (§7) keep absolute thresholds — segmentation and form
+judgement are separate concerns. Consequences: on MM-Fit the pipeline finds 586/599 curl,
+557/559 raise and 637/639 squat reps (press 540/598 is the weak case); the first rep of a set
+is detected only once the range has built up (~1 rep of latency at set start); `min_range`
+may need to be per exercise.
+
+## ADR-0019 · Replay session layout and the laptop energy-gate threshold · 2026-09-24 · accepted
+Context: the replay demo must exercise the same code path as a live session, and the
+energy gate needs one number. Decision: a *session directory* (`imu.parquet` in the
+IMUStream schema, optional `pose.parquet` in the Pose schema with a `skeleton` column, and
+`meta.json`) is the contract shared by `ReplaySource`, `SessionRecorder` and `session check`;
+the committed 30 s fixture `data/fixtures/replay/mmfit_w00_curls` is MM-Fit w00's left watch
+plus 3-D pose around its first curl set (MIT). The energy gate threshold is var(|a|) = 3.0
+(m/s²)², the balanced-accuracy optimum on all RecoFit windows (MM-Fit alone gives 1.05); it
+lives in `protocol.h`/`protocol.py`/`rules.yaml` so laptop and firmware agree. The vertical
+for angle computation is estimated per session from the median hip→shoulder direction rather
+than assumed from the pose source's axes. Consequences: any recorded team session replays
+through `formcoach demo --source replay --session <dir>` unchanged; the demo of record finds
+10 of 10 reps with always-on and energy gating (83 % of frames processed).

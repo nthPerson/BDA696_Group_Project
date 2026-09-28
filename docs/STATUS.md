@@ -4,8 +4,39 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 2 done (PR #4 open) → 3 next
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 3 done (PR #5 open) → 4 next
 **Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-24 — Checkpoint 3: pose pipeline in replay mode (Claude Code, autonomous run for Robert)
+
+### What changed
+- **PR #5 `feat/checkpoint-3-replay`** (stacked on PR #4).
+- `formcoach demo --source replay --headless` now runs the real pipeline on the committed 30 s
+  MM-Fit session (`data/fixtures/replay/mmfit_w00_curls`): IMU → gate → 3-D pose → joint
+  angles → adaptive rep segmentation → rep metrics → events. Output: 10 pose reps / 10 fused
+  (expected 10), 83 % of frames processed with the energy gate. It is the CI smoke test.
+- `pose/{skeletons,angles,normalize,reps,store,landmarker}.py`, `io/{source,replay}.py`,
+  `app/{gate,events,pipeline,overlay}.py`; `formcoach pose extract` (MediaPipe, lazy import,
+  not executed here); 33 tests including hand-computed angle cases.
+- `Rochelle` and `Bryce`: read `docs/howto/replay-demo.md` first, then
+  `src/formcoach/app/pipeline.py`.
+
+### Facts that differed from the docs
+- MM-Fit's lifted 3-D pose reads a curl as elbow 95–140°, not 60–150°: fixed rep thresholds
+  never fire → adaptive segmentation (ADR-0018); the rules catalogue (§7) needs per-pose-source
+  calibration (PR 7).
+
+### Next
+- PR 6 (`fw/checkpoint-4-firmware-v1`): firmware v1, serial/BLE sources, recorder.
+
+### Open questions
+- The MediaPipe path (`pose extract`, overlay window) is untested: needs `uv sync --extra
+  vision` and one MM-Fit video (w00_rgb.mp4, 2.17 GB) or a webcam clip.
+
+### Blockers
+- None.
 
 ---
 
