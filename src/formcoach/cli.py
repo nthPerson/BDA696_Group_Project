@@ -280,6 +280,8 @@ def eval_repcount(
     source: Annotated[str, typer.Option(help="peaks (imu | pose | fused land later)")] = "peaks",
     device: Annotated[str, typer.Option(help="sw_l | sw_r | both")] = "both",
     mode: Annotated[str, typer.Option(help="axis | magnitude")] = "axis",
+    prominence_g: Annotated[float, typer.Option(help="Peak prominence in g.")] = 0.15,
+    min_distance_s: Annotated[float, typer.Option(help="Minimum peak spacing in s.")] = 0.8,
 ) -> None:
     """Rep-count MAE against MM-Fit set labels -> reports/baseline_repcount.md."""
     from formcoach.data import convert, mmfit

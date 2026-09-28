@@ -78,9 +78,9 @@ def summarize(counts: pd.DataFrame, by: str) -> pd.DataFrame:
     table = counts.groupby(by, sort=True).apply(agg, include_groups=False).reset_index()
     total = agg(counts)
     total[by] = "all"
-    return pd.concat([table, pd.DataFrame([total])], ignore_index=True)[
-        [by, "n_sets", "mae", "bias", "exact_pct", "within1_pct"]
-    ]
+    out = pd.concat([table, pd.DataFrame([total])], ignore_index=True)
+    out["n_sets"] = out["n_sets"].astype(int)
+    return out[[by, "n_sets", "mae", "bias", "exact_pct", "within1_pct"]]
 
 
 def evaluate(

@@ -184,3 +184,20 @@ forearm and RecGym's wrist side is unknown, its third position is the calf. Deci
 `forearm_r`, `wrist` (side unknown) and `calf` to `schema.PLACEMENTS`; nothing is renamed.
 Consequences: filters that select "wrist-like" placements must include `wrist`, `wrist_l`,
 `wrist_r` and `forearm_r`.
+
+## ADR-0017 · Windowing, features and LOSO conventions for the baselines · 2026-09-24 · accepted
+Context: docs/02 §5–§6 fix 2 s windows at 50 Hz and "~30 hand-crafted features" but leave the
+labelling of mixed windows, the treatment of RecoFit junk labels, the feature list and the
+fold scheme open. Decision: windows are cut every 1 s (50 % overlap) and carry the majority
+canonical label plus `label_purity`; evaluation keeps windows with purity ≥ 0.8; any window
+overlapping a RecoFit junk label (device taps, arm-band adjustment, notes) is dropped
+(ADR-0015). Features are 9 statistics × 7 channels (ax..gz and |a|): mean, std, min, max,
+energy, dominant frequency in 0.3–8 Hz, spectral entropy, autocorrelation peak lag and height
+in 0.3–3 s = 63 `feat_*` columns; the raw window is kept as a flat float32 list column `x` so
+the CNN reads the same files. The RF baseline is a balanced random forest (200 trees,
+`min_samples_leaf=2`, seed 20260924). `eval loso` defaults to strict leave-one-subject-out
+(94 folds on RecoFit, 10 on MM-Fit) and offers `--folds N` subject-grouped folds for slow
+models; both are unseen-subject, and every report states which it used. RecGym is evaluated
+only within RecGym (ADR-0014). Consequences: `make features` takes ~35 s; RecoFit RF LOSO
+takes 15–60 min on 16 cores; per-fold numbers on RecoFit vary widely because many subjects
+performed only one or two of the four target exercises, so the pooled table is the headline.
