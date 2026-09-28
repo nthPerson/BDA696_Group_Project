@@ -69,14 +69,26 @@ def build_mmfit(root: Path, rng) -> None:
     for j, p in base.items():
         joints[:, j, :] = p
     flex = active * (0.5 - 0.5 * np.cos(2 * np.pi * 1.0 * frames_t))  # 0..1 per rep
+    arm = np.zeros(n_frames)
+    leg = np.zeros(n_frames)
+    for s, e, _, name in sets:
+        (arm if name == "bicep_curls" else leg)[s : e + 1] = 1.0
     for wrist, elbow in ((13, 12), (16, 15)):
-        joints[:, wrist, 1] = joints[:, elbow, 1] - 280 * (1 - flex) + 200 * flex
-        joints[:, wrist, 2] = -280 * flex
+        joints[:, wrist, 1] = joints[:, elbow, 1] - 280 * (1 - flex * arm) + 200 * flex * arm
+        joints[:, wrist, 2] = -280 * flex * arm
+    # squat set: hips drop ~350 mm and knees travel forward so the knee angle closes to ~90°
+    squat = flex * leg
+    for j in (0, 1, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16):
+        joints[:, j, 1] -= 350 * squat
+    for knee in (2, 5):
+        joints[:, knee, 1] -= 150 * squat
+        joints[:, knee, 2] += 250 * squat
     pose3d = np.concatenate(
         [np.broadcast_to(np.arange(n_frames)[None, :, None], (3, n_frames, 1)),
          np.transpose(joints, (2, 0, 1))], axis=2,
     )  # fmt: skip
-    np.save(d / f"{w}_pose_3d.npy", pose3d + rng.normal(0, 1.0, pose3d.shape) * np.array([0, 1, 1])[:, None, None] * 0)
+    rng.normal(0, 1.0, pose3d.shape)  # draw kept so the pose_2d noise below stays identical
+    np.save(d / f"{w}_pose_3d.npy", pose3d)
     pose2d = np.zeros((2, n_frames, 19))
     pose2d[:, :, 0] = np.arange(n_frames)
     pose2d[:, :, 1:] = 320 + rng.normal(0, 5, (2, n_frames, 18))

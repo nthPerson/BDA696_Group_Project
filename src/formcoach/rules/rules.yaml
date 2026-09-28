@@ -1,0 +1,120 @@
+# FormCoach form rules v1 (docs/02-system-design.md §7). Thresholds are (default, calibrate):
+# starting values from the design; `formcoach eval rules --calibrate-out` writes a copy with
+# 5th/95th-percentile thresholds from correct-form MM-Fit reps for a given pose source.
+# Every metric name is a key of RepMetrics.metrics (src/formcoach/app/pipeline.py).
+version: 1
+pose_source: design-defaults
+
+gate:            # laptop-side gate, same constants as firmware/include/protocol.h
+  on_windows: 2
+  off_windows: 12
+  energy_threshold_ms2sq: 3.0
+
+rep_segmentation:      # pose/reps.py; adaptive thresholds derive from the running angle range
+  adaptive: true
+  window_s: 6.0
+  min_range_deg: 25.0
+  frac: 0.3
+  curl: {angle: elbow, mode: below, enter: 60.0, exit: 150.0}
+  press: {angle: elbow, mode: below, enter: 90.0, exit: 160.0}
+  raise: {angle: shoulder_abd, mode: above, enter: 75.0, exit: 40.0}
+  squat: {angle: knee, mode: below, enter: 100.0, exit: 160.0}
+
+exercises:
+  curl:
+    primary: elbow
+    rules:
+      - code: CURL_PARTIAL_ROM
+        severity: warn
+        message: "Curl through the full range: squeeze at the top and straighten at the bottom."
+        when:   # any condition fires the rule
+          - {metric: elbow_min, op: gt, threshold: 75.0}
+          - {metric: elbow_max, op: lt, threshold: 140.0}
+      - code: CURL_SWING
+        severity: warn
+        message: "Keep your upper arm still - the elbow is drifting forward."
+        when:
+          - {metric: upper_arm_trunk_drift, op: gt, threshold: 20.0}
+          - {metric: elbow_drift_max, op: gt, threshold: 0.15}
+      - code: CURL_TOO_FAST
+        severity: info
+        message: "Slow down - control the weight on the way down."
+        when:
+          - {metric: duration_s, op: lt, threshold: 1.0}
+      - code: CURL_ASYMMETRY
+        severity: info
+        message: "Both arms should curl the same distance."
+        requires: two_arm
+        when:
+          - {metric: elbow_asymmetry, op: gt, threshold: 20.0}
+  press:
+    primary: elbow
+    rules:
+      - code: PRESS_NO_LOCKOUT
+        severity: warn
+        message: "Press all the way up until your elbows lock out."
+        when:
+          - {metric: elbow_max, op: lt, threshold: 155.0}
+      - code: PRESS_TRUNK_LEAN
+        severity: warn
+        message: "Brace your core - you are leaning back on the press."
+        when:
+          - {metric: trunk_incl_max, op: gt, threshold: 15.0}
+      - code: PRESS_ASYMMETRY
+        severity: info
+        message: "Lock out both arms together at the top."
+        when:
+          - {metric: elbow_top_asymmetry, op: gt, threshold: 20.0}
+      - code: PRESS_TOO_FAST
+        severity: info
+        message: "Slow down - control the press."
+        when:
+          - {metric: duration_s, op: lt, threshold: 1.0}
+  raise:
+    primary: shoulder_abd
+    rules:
+      - code: RAISE_OVER
+        severity: info
+        message: "Stop at shoulder height - no need to raise above it."
+        when:
+          - {metric: abd_peak, op: gt, threshold: 100.0}
+      - code: RAISE_PARTIAL
+        severity: warn
+        message: "Raise to shoulder height."
+        when:
+          - {metric: abd_peak, op: lt, threshold: 65.0}
+      - code: RAISE_BENT_ELBOW
+        severity: warn
+        message: "Keep a soft, nearly straight elbow through the raise."
+        when:
+          - {metric: elbow_at_abd_peak, op: lt, threshold: 140.0}
+      - code: RAISE_TOO_FAST
+        severity: info
+        message: "Slow down - lower the dumbbells under control."
+        when:
+          - {metric: duration_s, op: lt, threshold: 1.0}
+  squat:
+    primary: knee
+    rules:
+      - code: SQUAT_SHALLOW
+        severity: warn
+        message: "Go deeper - hips down to at least knee height."
+        when:
+          - {metric: knee_min, op: gt, threshold: 110.0}
+          - {metric: hip_knee_height_at_bottom, op: gt, threshold: 0.0}
+      - code: SQUAT_FORWARD_LEAN
+        severity: warn
+        message: "Keep your chest up - you are folding forward at the bottom."
+        when:
+          - {metric: trunk_incl_at_bottom, op: gt, threshold: 45.0}
+      - code: SQUAT_KNEE_VALGUS
+        severity: warn
+        message: "Push your knees out over your toes."
+        requires: frontal_view
+        when:
+          - {metric: knee_track_at_bottom, op: lt, threshold: -0.10}
+      - code: SQUAT_TOO_FAST
+        severity: info
+        message: "Slow down - control the descent."
+        when:
+          - {metric: duration_s, op: lt, threshold: 1.2}

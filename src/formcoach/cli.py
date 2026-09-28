@@ -237,11 +237,24 @@ def pose_extract(
 def train_gate(
     model: Annotated[str, typer.Option(help="rf | cnn")] = "cnn",
     export_int8: Annotated[bool, typer.Option(help="Also export int8 TFLite + .cc")] = True,
+    dataset: Annotated[
+        list[Dataset] | None, typer.Option(help="Training datasets (default recofit + mmfit).")
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option(help="Model path (default models/gate_rf.joblib)")
+    ] = None,
 ) -> None:
     """Train the gate / exercise model on RecoFit + MM-Fit windows (LOSO validation)."""
+    if model == "rf":
+        from formcoach.models import train
+
+        names = tuple(d.value for d in dataset) if dataset else ("recofit", "mmfit")
+        path = train.train_rf_gate(datasets=names, out=out or train.DEFAULT_OUT)
+        console.print(f"[green]wrote[/] {path} (+ .json); use it with `demo --gate laptop`")
+        return
     stub(
         "train gate",
-        5 if model == "cnn" else 2,
+        5,
         f"train the {model} gate model, report LOSO metrics"
         + (", export int8 TFLite to firmware/model/." if export_int8 else "."),
     )
@@ -249,9 +262,88 @@ def train_gate(
 
 # ---- eval ------------------------------------------------------------------------------------
 @eval_app.command("all")
-def eval_all() -> None:
-    """Regenerate every table and figure under reports/ (what `make eval` runs)."""
-    stub("eval all", 6, "run loso, repcount, rules, gating, pose-ablation, latency, device.")
+def eval_all(
+    quick: Annotated[
+        bool, typer.Option(help="Skip the 94-fold RecoFit RF runs (use 10 subject-grouped folds).")
+    ] = False,
+) -> None:
+    """Regenerate every table and figure under reports/ (what `make eval` runs).
+
+    Runs, in order: data profile, LOSO (energy + RF on RecoFit and MM-Fit, active and
+    exercise), RecoFit -> MM-Fit transfer, rep-count baseline, rules validation, gating
+    benchmark. Full run is about an hour on a 16-core laptop; --quick is ~15 minutes.
+    """
+    import subprocess
+    import sys
+
+    folds = "10" if quick else "loso"
+    steps = [
+        ["data", "profile"],
+        ["eval", "loso", "--model", "energy", "--dataset", "recofit", "--task", "active"],
+        ["eval", "loso", "--model", "energy", "--dataset", "mmfit", "--task", "active"],
+        ["eval", "loso", "--model", "rf", "--dataset", "mmfit", "--task", "active"],
+        ["eval", "loso", "--model", "rf", "--dataset", "mmfit", "--task", "exercise"],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "active",
+            "--folds",
+            folds,
+        ],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "exercise",
+            "--folds",
+            folds,
+        ],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "active",
+            "--test-dataset",
+            "mmfit",
+        ],
+        [
+            "eval",
+            "loso",
+            "--model",
+            "rf",
+            "--dataset",
+            "recofit",
+            "--task",
+            "exercise",
+            "--test-dataset",
+            "mmfit",
+        ],
+        ["eval", "loso", "--model", "rf", "--dataset", "recgym", "--task", "active"],
+        ["eval", "loso", "--model", "rf", "--dataset", "recgym", "--task", "exercise"],
+        ["eval", "repcount"],
+        ["eval", "rules", "--calibrate-out", "src/formcoach/rules/rules.mmfit-pose3d.yaml"],
+        ["eval", "gating"],
+    ]
+    for step in steps:
+        console.print(f"[cyan]$ formcoach {' '.join(step)}[/]")
+        rc = subprocess.call([sys.executable, "-m", "formcoach.cli", *step])
+        if rc != 0:
+            console.print(f"[bold red]step failed (exit {rc}); stopping[/]")
+            raise typer.Exit(rc)
+    console.print("[green]reports/ regenerated[/]")
 
 
 class Task(StrEnum):
@@ -311,15 +403,57 @@ def eval_repcount(
 
 
 @eval_app.command("rules")
-def eval_rules() -> None:
-    """Correct-form pass rate + synthetic perturbation detection on MM-Fit pose."""
-    stub("eval rules", 6, "validate rules.yaml on MM-Fit correct-form reps and perturbations.")
+def eval_rules(
+    rules: Annotated[
+        Path | None, typer.Option(help="rules.yaml to validate (default: packaged)")
+    ] = None,
+    calibrate_out: Annotated[
+        Path | None, typer.Option(help="Also write a percentile-calibrated rules.yaml here.")
+    ] = None,
+    workout: Annotated[
+        list[str] | None, typer.Option(help="Limit to MM-Fit workouts, e.g. w00")
+    ] = None,
+) -> None:
+    """Correct-form pass rate + synthetic perturbation detection on MM-Fit pose -> reports/."""
+    from formcoach.eval import rules_eval
+
+    result = rules_eval.evaluate(
+        None, rules_path=rules, calibrate_out=calibrate_out, workouts=workout
+    )
+    console.print(f"reps per exercise: {result['reps']}")
+    console.print(
+        f"[green]wrote[/] {rules_eval.DEFAULT_OUT}"
+        + (f" and {calibrate_out}" if calibrate_out else "")
+    )
 
 
 @eval_app.command("gating")
-def eval_gating(gate: Annotated[Gate, typer.Option()] = Gate.always_on) -> None:
+def eval_gating(
+    gate: Annotated[
+        list[Gate] | None,
+        typer.Option(help="Gates to benchmark (default always_on, energy, laptop)."),
+    ] = None,
+    session: Annotated[
+        list[Path] | None,
+        typer.Option(help="Session dirs (default: the replay fixture + data/team/*/*)."),
+    ] = None,
+    rules: Annotated[Path | None, typer.Option(help="rules.yaml override")] = None,
+) -> None:
     """Gated vs always-on: frames processed, CPU %, wall time, identical events check."""
-    stub("eval gating", 6, f"benchmark gate={gate.value} on recorded sessions.")
+    from formcoach.eval import gating
+    from formcoach.io.recorder import TEAM_ROOT
+    from formcoach.io.replay import FIXTURE_SESSION
+
+    gates = tuple(g.value for g in gate) if gate else ("always_on", "energy", "laptop")
+    team = sorted(
+        p
+        for p in TEAM_ROOT.glob("*/*")
+        if (p / "imu.parquet").exists() and (p / "pose.parquet").exists()
+    )
+    sessions = session or [FIXTURE_SESSION, *team]
+    table = gating.evaluate(sessions, gates=gates, out=gating.DEFAULT_OUT, rules_path=rules)
+    console.print(table.to_string(index=False))
+    console.print(f"[green]wrote[/] {gating.DEFAULT_OUT}")
 
 
 @eval_app.command("pose-ablation")
@@ -361,6 +495,9 @@ def demo(
     port: Annotated[str | None, typer.Option(help="Serial port for --source serial.")] = None,
     out: Annotated[Path | None, typer.Option(help="Write events/frames/session.json here.")] = None,
     speed: Annotated[float, typer.Option(help="Replay pacing: 0 = fastest, 1 = real time.")] = 0.0,
+    rules: Annotated[
+        Path | None, typer.Option(help="rules.yaml override (default packaged v1)")
+    ] = None,
 ) -> None:
     """Run the full pipeline: IMU source -> gate -> pose -> reps -> rules -> overlay.
 
@@ -390,12 +527,14 @@ def demo(
         elif e.kind in ("gate_open", "gate_close"):
             console.print(f"[cyan]{e.kind}[/] t={e.t:.2f}s")
 
+    from formcoach.rules.engine import RuleEngine
+
     session_dir = session or FIXTURE_SESSION
     console.print(f"replaying {session_dir} (gate={gate.value}, exercise={exercise or 'meta'})")
     try:
         result = pipeline.run_replay(
             session_dir, gate=gate.value, exercise=exercise, headless=headless, out_dir=out,
-            on_event=show, speed=speed,
+            on_event=show, speed=speed, rules=RuleEngine.from_yaml(rules),
         )  # fmt: skip
     except (FileNotFoundError, ImportError) as exc:
         console.print(f"[bold red]{exc}[/]")

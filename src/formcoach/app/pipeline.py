@@ -93,11 +93,11 @@ def primary_angle(exercise: str, a: dict[str, float], side: str = "both") -> flo
     return float(a[f"{key}_{side}"])
 
 
-def compute_rep_metrics(
-    exercise: str, rep: PoseRep, ts: np.ndarray, series: dict[str, np.ndarray], source: str = "pose"
-) -> RepMetrics:
-    """Resample every tracked angle over the rep to ``REP_STEPS`` and derive scalar metrics
-    (documented keys consumed by rules.yaml; see docs/02 §7)."""
+def resample_rep_angles(
+    rep: PoseRep, ts: np.ndarray, series: dict[str, np.ndarray]
+) -> dict[str, np.ndarray]:
+    """Every tracked angle series (degrees, or torso units for the offset metrics) over
+    ``[i_start, i_end]`` resampled to ``REP_STEPS`` points: ``{name: (REP_STEPS,) float}``."""
     i0, i1 = rep.i_start, rep.i_end
     t_seg = ts[i0 : i1 + 1]
     grid = np.linspace(t_seg[0], t_seg[-1], REP_STEPS)
@@ -108,6 +108,12 @@ def compute_rep_metrics(
         res[k] = (
             np.interp(grid, t_seg[ok], seg[ok]) if ok.sum() >= 2 else np.full(REP_STEPS, np.nan)
         )
+    return res
+
+
+def metrics_from_angles(res: dict[str, np.ndarray], duration_s: float) -> dict[str, float]:
+    """Scalar rep metrics (degrees, seconds, torso units) from the 30-step angle series; the
+    keys are the metric names rules.yaml refers to."""
 
     def mn(k):
         return float(np.nanmin(res[k])) if np.isfinite(res[k]).any() else float("nan")
@@ -115,24 +121,22 @@ def compute_rep_metrics(
     def mx(k):
         return float(np.nanmax(res[k])) if np.isfinite(res[k]).any() else float("nan")
 
-    both = {
-        k: 0.5 * (res[f"{k}_l"] + res[f"{k}_r"])
-        for k in (
-            "elbow",
-            "shoulder_abd",
-            "knee",
-            "upper_arm_trunk",
-            "elbow_drift",
-            "knee_track",
-            "hip_knee_height",
-        )
-    }
+    pairs = (
+        "elbow",
+        "shoulder_abd",
+        "knee",
+        "upper_arm_trunk",
+        "elbow_drift",
+        "knee_track",
+        "hip_knee_height",
+    )
+    both = {k: 0.5 * (res[f"{k}_l"] + res[f"{k}_r"]) for k in pairs}
     bottom = int(np.nanargmin(both["knee"])) if np.isfinite(both["knee"]).any() else 0
     peak_abd = (
         int(np.nanargmax(both["shoulder_abd"])) if np.isfinite(both["shoulder_abd"]).any() else 0
     )
-    m = {
-        "duration_s": float(rep.duration_s),
+    return {
+        "duration_s": float(duration_s),
         "elbow_min": float(np.nanmin(both["elbow"])),
         "elbow_max": float(np.nanmax(both["elbow"])),
         "elbow_min_l": mn("elbow_l"),
@@ -158,7 +162,16 @@ def compute_rep_metrics(
         ),
         "hip_knee_height_at_bottom": float(both["hip_knee_height"][bottom]),
     }
-    return RepMetrics(exercise, rep.rep_id, rep.t_start, rep.t_end, rep.duration_s, source, res, m)
+
+
+def compute_rep_metrics(
+    exercise: str, rep: PoseRep, ts: np.ndarray, series: dict[str, np.ndarray], source: str = "pose"
+) -> RepMetrics:
+    """Resample every tracked angle over the rep to ``REP_STEPS`` and derive scalar metrics
+    (documented keys consumed by rules.yaml; see docs/02 §7)."""
+    res = resample_rep_angles(rep, ts, series)
+    return RepMetrics(exercise, rep.rep_id, rep.t_start, rep.t_end, rep.duration_s, source, res,
+                      metrics_from_angles(res, rep.duration_s))  # fmt: skip
 
 
 def run_pipeline(
@@ -172,9 +185,19 @@ def run_pipeline(
     on_event: Callable[[Event], None] | None = None,
     side: str = "both",
     rep_config: dict | None = None,
+    view: str = "frontal",
 ) -> PipelineResult:
-    """Run IMU + pose through gate → angles → reps → rules; returns events and counts."""
+    """Run IMU + pose through gate → angles → reps → rules; returns events and counts.
+
+    ``side`` = ``both`` (two-arm exercise, enables ``requires: two_arm`` rules) or ``l``/``r``;
+    ``view`` = ``frontal`` (enables ``requires: frontal_view`` rules) or ``side``.
+    """
+    context = {"two_arm"} if side == "both" else set()
+    if view == "frontal":
+        context.add("frontal_view")
     cfg = {**DEFAULT_REP_CONFIG[exercise], "adaptive": True}
+    if rules is not None and hasattr(rules, "rep_config"):
+        cfg.update(rules.rep_config(exercise))
     if rep_config:
         cfg.update(rep_config)
     log = log or EventLog()
@@ -184,8 +207,10 @@ def run_pipeline(
 
     def new_segmenter() -> RepSegmenter:
         return RepSegmenter(
-            enter=cfg["enter"], exit=cfg["exit"], mode=cfg["mode"], adaptive=cfg["adaptive"]
-        )
+            enter=cfg["enter"], exit=cfg["exit"], mode=cfg["mode"], adaptive=cfg["adaptive"],
+            window_s=cfg.get("window_s", 6.0), min_range=cfg.get("min_range", 25.0),
+            frac=cfg.get("frac", 0.3),
+        )  # fmt: skip
 
     seg = new_segmenter()
     buf_t: list[float] = []
@@ -240,7 +265,7 @@ def run_pipeline(
             series = {k: np.asarray(v) for k, v in buf_a.items()}
             rm = compute_rep_metrics(exercise, rep, ts, series)
             if rules is not None:
-                rm.faults = [f.as_dict() for f in rules.evaluate(rm)]
+                rm.faults = [f.as_dict() for f in rules.evaluate(rm, context=context)]
             reps.append(rm)
             emit("rep", rep.t_end, **rm.as_payload())
             for f in rm.faults:
@@ -339,9 +364,11 @@ def run_replay(
     speed: float = 0.0,
     on_event: Callable[[Event], None] | None = None,
     gate_kwargs: dict | None = None,
+    side: str = "both",
+    view: str = "frontal",
 ) -> PipelineResult:
     """Replay a session directory through the pipeline; writes events/frames/session.json to
-    ``out_dir`` when given."""
+    ``out_dir`` when given. ``side``/``view`` default to the session's ``meta.json`` values."""
     session = Path(session)
     src = ReplaySource(session, speed=speed)
     exercise = exercise or src.meta.get("exercise", "curl")
