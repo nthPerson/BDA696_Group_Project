@@ -251,3 +251,17 @@ older `ErrorReporter` constructor; TensorFlow's `tflite-micro-arduino-examples` 
 "unsupported board". Decision: `https://github.com/spaziochirale/Chirale_TensorFlowLite.git`
 (not in the PlatformIO registry under that name). CI builds the app env and the Chirale
 libtest env. Consequences: the model export (PR 8) targets this library's op resolver.
+
+## ADR-0022 · Rule thresholds are calibrated per pose source; v1 ships both files · 2026-09-24 · accepted
+Context: docs/02 §7 gives absolute thresholds and asks that each be set at the 5th/95th
+percentile of correct-form MM-Fit reps. `eval rules` on 2,320 MM-Fit reps shows the design
+values fire on nearly every rep for the range-of-motion rules (CURL_PARTIAL_ROM pass rate
+0.00, PRESS_NO_LOCKOUT 0.00, RAISE_OVER 0.04) because the lifted 3-D pose compresses joint
+angles, while tempo/asymmetry/valgus rules behave (SQUAT_KNEE_VALGUS 0.93, PRESS_ASYMMETRY
+0.96). Decision: `rules.yaml` keeps the design values and states `pose_source:
+design-defaults`; `formcoach eval rules --calibrate-out` writes `rules.mmfit-pose3d.yaml`
+with `gt` thresholds at the 95th and `lt` thresholds at the 5th percentile for that pose
+source, and both files ship. The engine, pipeline and demo take `--rules <file>`. Which file
+is v1 for the webcam path is decided after the first MediaPipe run (Rochelle). Consequences:
+the report's pass-rate and perturbation tables are the evidence for the go/no-go on the
+vision path; every threshold change is a YAML diff plus a rerun of `eval rules`.

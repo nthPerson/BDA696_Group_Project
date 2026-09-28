@@ -4,8 +4,35 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 4 software done (PR #6 open; board pending) → 6 rules next
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 6 software done (PR #7 open) → 5 CNN next
 **Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-24 — Checkpoint 6 (hardware-free half): rules v1, eval rules, eval gating (Claude Code, autonomous run for Robert)
+
+### What changed
+- **PR #7 `feat/checkpoint-6-rules`** (stacked on PR #6).
+- `rules/rules.yaml` (16 rules, docs/02 §7) + `rules/engine.py`; the demo and pipeline take
+  `--rules`; 27 tests (one perturbation per rule).
+- `formcoach eval rules [--calibrate-out]` → `reports/rules_validation.md`: rep segmentation
+  agreement (curl 586/599, press 540/598, raise 557/559, squat 637/639), pass rate per rule,
+  perturbation detection, metric percentiles; `rules.mmfit-pose3d.yaml` generated (ADR-0022).
+- `formcoach eval gating` → `reports/gating.md`: on the 30 s fixture the energy gate processes
+  82.9 % of frames with identical reps/faults; the RF laptop gate 79.2 % but loses one rep at a
+  gate boundary. `formcoach train gate --model rf` → `models/gate_rf.joblib`.
+- `formcoach eval all` (`make eval`) regenerates every report (`--quick` for 10-fold RecoFit).
+- `Rochelle`/`Christian`: read `docs/howto/rules.md` first.
+
+### Next
+- PR 8 (`feat/checkpoint-5-cnn-gate`): Keras CNN, int8 export, TFLM gate in firmware.
+
+### Open questions
+- Which thresholds ship for the webcam path (design vs MM-Fit-calibrated) — after the first
+  MediaPipe run.
+
+### Blockers
+- None.
 
 ---
 
