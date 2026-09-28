@@ -4,8 +4,49 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 1 done (PR #3 open) → 2 next
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 2 done (PR #4 open) → 3 next
 **Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-24 — Checkpoint 2: signal pipeline and baselines (Claude Code, autonomous run for Robert)
+
+### What changed
+- **PR #4 `feat/checkpoint-2-signal`** (stacked on PR #3).
+- `formcoach features build`: resample → 50 Hz, 2 s / 1 s windows with majority label and
+  purity, 63 features, one Parquet per stream (314 files, ~35 s with `--jobs 14`).
+- `formcoach eval loso --model energy|rf --dataset recofit|mmfit|recgym --task active|exercise
+  [--folds N] [--test-dataset mmfit]` → `reports/loso_*.md`, `reports/transfer_*.md` with
+  pooled + per-fold tables and confusion matrices; `formcoach eval repcount` →
+  `reports/baseline_repcount.md`. All reports committed, seeds logged in each header.
+- `signal/{resample,filters,gravity,windows,features,reps,build}.py`, `eval/{loso,loso_cli,
+  repcount}.py`, `models/{energy,rf}.py`; 30 tests. `formcoach.signal` imports no pose code.
+- `Christian`: read `docs/howto/signal-baselines.md` first, then `src/formcoach/eval/loso.py`.
+
+### Headline numbers (unseen-subject; pooled over folds)
+| Task | Dataset | Energy gate | RF |
+|---|---|---|---|
+| active vs idle | RecoFit (94-fold LOSO) | macro-F1 0.665 | macro-F1 0.869 |
+| active vs idle | MM-Fit (10-fold LOSO) | macro-F1 0.648 | macro-F1 0.935 |
+| exercise (5 classes) | RecoFit (94-fold LOSO) | — | acc 0.951 · macro-F1 0.797 |
+| exercise (5 classes) | MM-Fit (10-fold LOSO) | — | acc 0.970 · macro-F1 0.950 |
+| active, RecoFit → MM-Fit transfer | — | — | acc 0.770 · macro-F1 0.741 |
+| exercise, RecoFit → MM-Fit transfer | — | — | acc 0.600 · macro-F1 0.333 |
+| active vs idle | RecGym (10-fold, normalised units) | — | macro-F1 0.868 |
+| rep count (peaks, docs/02 defaults) | MM-Fit 1,232 sets | MAE 2.39 reps (curl 0.69, press 3.66, squat 3.71) | |
+
+### Next
+- PR 3 (`feat/checkpoint-3-replay`): pose angles, replay source, headless pipeline, fixture, demo.
+
+### Open questions
+- Cross-dataset exercise recognition (RecoFit forearm → MM-Fit wrist) is near chance (macro-F1
+  0.33): placement/orientation differences dominate; the sensor-transfer experiment on team
+  recordings (Phase 3) is where this must be re-measured with our own wearable.
+- The rep counter's design defaults over-count slow exercises; calibrate `min_distance_s` per
+  exercise (open for Christian).
+
+### Blockers
+- None.
 
 ---
 
