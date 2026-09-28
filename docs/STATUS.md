@@ -4,8 +4,41 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 5 laptop half done (PR #8 open) → hardware day
-**Hardware:** parts arriving 2026-09-25; case not yet designed · **Go/no-go on vision path:** ~Nov 3
+**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 1–3 + software of 4–6 merged → assembly day next
+**Hardware:** parts received 2026-09-27; case not yet designed; see `docs/assembly-day.md` · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-09-27 — PRs #3–#8 merged; hardware received; assembly-day guide (Claude Code with Robert)
+
+### What changed
+- All six pre-hardware PRs are merged into `main` in order (#3 data, #4 signal, #5 replay,
+  #6 firmware, #7 rules, #8 CNN gate). `main` is green: 176 tests, `make demo` finds 10/10 reps.
+- `docs/assembly-day.md`: the build-session runbook — wiring tables (XIAO pin → part pin, wire
+  colour), station roles, the per-kit procedure with the exact serial lines firmware v1.1
+  prints at each step, the battery step last, laptop record/check commands, troubleshooting,
+  end-of-day checklist. `docs/05-roadmap.md` checkboxes updated.
+- Parts have arrived; the team meets soon to assemble. Nothing has run on a board yet.
+
+### Next (in order)
+1. **Assembly day** (`docs/assembly-day.md`): 5 + 1 kits flashed and registered in
+   `docs/devices.md`; every **(verify)** settled in DECISIONS; boot logs → `eval device`.
+2. Wire `demo --source serial|ble` (the live path: `_open_source` exists in `cli.py`, the
+   pipeline takes any `IMUSource`; add the webcam frame source) and `eval gating --gate device`.
+3. First MediaPipe run (`uv sync --extra vision`, `pose extract` on a webcam clip or one MM-Fit
+   video) → rerun `eval rules` and choose the shipped thresholds (ADR-0022).
+4. Team validation recordings (docs/04 §6) → `eval transfer`; that is where the RecoFit → MM-Fit
+   transfer gap (macro-F1 0.33 for exercise class) gets re-measured on our own sensor.
+5. Written Report Outline from `reports/` (Phase 1 deliverable, due date still blank in docs/05 §1).
+
+### Open questions
+- CNN (macro-F1 0.837, 5-fold) is behind the RF (0.867) on the gate task with 10 epochs per
+  fold; longer training on the eGPU is cheap now — decide which model ships on the device once
+  the on-device inference time is known.
+- Case v1 is not modeled; kits can be used on a strap for the first recordings.
+
+### Blockers
+- None.
 
 ---
 

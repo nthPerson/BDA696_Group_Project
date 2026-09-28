@@ -17,27 +17,27 @@ Working weeks run late September → early December 2026. Course deliverable due
 
 ### Phase 1 — Data, baselines, pose PoC (Sep 23 – Oct 6)
 
-- [ ] Repo skeleton, CI, README quickstart (Checkpoint 0)
-- [ ] MM-Fit, RecoFit, RecGym fetch + loaders + profile report (Checkpoint 1)
-- [ ] Signal pipeline, windows/features, LOSO utility, RF baseline, peak-count baseline (Checkpoint 2)
-- [ ] Pose extraction, angle module, rep segmentation, replay demo (Checkpoint 3)
-- [ ] Parts ordered; case v1 modeled and test-printed (Robert)
-- [ ] PlatformIO project compiles in CI (no hardware needed)
+- [x] Repo skeleton, CI, README quickstart (Checkpoint 0)
+- [x] MM-Fit, RecoFit, RecGym fetch + loaders + profile report (Checkpoint 1)
+- [x] Signal pipeline, windows/features, LOSO utility, RF baseline, peak-count baseline (Checkpoint 2)
+- [x] Pose extraction, angle module, rep segmentation, replay demo (Checkpoint 3)
+- [x] Parts ordered and received (2026-09-27) · [ ] case v1 modeled and test-printed (Robert)
+- [x] PlatformIO project compiles in CI (no hardware needed)
 - [ ] `docs/report/outline.md` drafted from the profile + baseline reports → **Written Report Outline**
 
 ### Phase 2 — Build, firmware, gate on device, rules v1 (Oct 7 – Oct 27)
 
 - [ ] Build session: 5 + 1 units assembled, flashed, registered in `docs/devices.md`; wiring guide with photos
-- [ ] Firmware v0 (serial CSV) and v1 (BLE protocol); `record` and `demo --source ble` work on Linux/macOS/Windows
-- [ ] Keras 1D-CNN gate trained on RecoFit + MM-Fit; LOSO vs RF; int8 export; deployed; on-device latency/RAM/flash measured (Checkpoint 5)
-- [ ] `rules.yaml` v1 for four exercises; rules unit tests; `eval rules` on MM-Fit
+- [~] Firmware v1.1 written, compiles in CI, not yet flashed; `record --source serial|ble` written, untested on hardware; `demo --source ble` not wired (see `docs/assembly-day.md`)
+- [~] Keras 1D-CNN gate trained on RecoFit + MM-Fit; LOSO vs RF; int8 export; in the firmware build · [ ] deployed; on-device latency/RAM/flash measured (Checkpoint 5)
+- [x] `rules.yaml` v1 for four exercises; rules unit tests; `eval rules` on MM-Fit
 - [ ] End-to-end demo: wearable → gate → pose → rules → overlay + LED; 30-second demo video
 - [ ] `docs/report/draft.md` → **First Draft**
 
 ### Phase 3 — Validation, ablations, benchmark, freeze (Oct 28 – Nov 17)
 
 - [ ] Team validation recordings (~1 h) per `docs/04-datasets.md` §6; `eval transfer`
-- [ ] `eval gating` (always-on / energy / laptop / device) on recorded sessions
+- [~] `eval gating` (always-on / energy / laptop done on the replay fixture) · [ ] device gate on recorded sessions
 - [ ] `eval pose-ablation` (Lite / Full / Heavy; YOLO11n-pose optional)
 - [ ] `eval latency`, `eval device`, battery test
 - [ ] **Go/no-go on the vision path (~Nov 3)**: if rep segmentation agreement or rule validity is unacceptable, switch to the fallback in `docs/02-system-design.md` §9
