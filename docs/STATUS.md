@@ -9,6 +9,32 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-09-30 — Understand-Anything knowledge graph added (Claude Code with Christian)
+
+### What changed
+- `.ua/` now holds an Understand-Anything knowledge graph of the repo at commit `5214d94`:
+  505 nodes / 993 edges, 10 architectural layers, a 15-step guided tour, 63 test→source
+  `tested_by` links. Validation: 0 issues. Nothing in `src/`, `firmware/` or `tests/` changed.
+- `.ua/.understandignore` excludes tool state (`.serena/`, `.claude/autoharness/`, `.ua/`) and
+  binary data (`*.npy`, `*.mat`, `*.parquet`, `*.tflite`). `.gitignore` keeps `.ua/tmp/` and
+  `.ua/.trash-*/` local.
+
+### How to use it (teammates)
+- Install the `understand-anything` Claude Code plugin, then run `/understand-dashboard` for the
+  interactive graph and tour, or `/understand-chat <question>` to query it. `/understand-onboard`
+  writes an onboarding guide.
+- After merging code changes, run `/understand` — it updates incrementally from
+  `.ua/fingerprints.json`. The graph is a snapshot; re-run it before relying on it.
+
+### Next
+- Unchanged from the 2026-09-27 entry (assembly day first).
+
+### Open questions
+- Whether to commit `.ua/` long term or regenerate locally (graph diffs are noisy JSON).
+
+### Blockers
+- None.
+
 ## 2026-09-27 — PRs #3–#8 merged; hardware received; assembly-day guide (Claude Code with Robert)
 
 ### What changed
