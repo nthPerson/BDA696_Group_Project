@@ -1,0 +1,75 @@
+{
+  "checks": [
+    {
+      "name": "banner",
+      "ok": true,
+      "detail": "firmware 1.1.0",
+      "value": null
+    },
+    {
+      "name": "imu",
+      "ok": true,
+      "detail": "bmi160 ok at 0x69",
+      "value": null
+    },
+    {
+      "name": "gate",
+      "ok": true,
+      "detail": "tflm arena=6196 B",
+      "value": 6196
+    },
+    {
+      "name": "ble",
+      "ok": true,
+      "detail": "FormCoach-8428",
+      "value": null
+    },
+    {
+      "name": "ping",
+      "ok": true,
+      "detail": "'# pong' received",
+      "value": null
+    },
+    {
+      "name": "rate",
+      "ok": true,
+      "detail": "50.1 Hz over 7.7 s (384 samples)",
+      "value": 50.130548302872064
+    },
+    {
+      "name": "drops",
+      "ok": true,
+      "detail": "0 dropped, 10 bad lines",
+      "value": 0
+    },
+    {
+      "name": "gravity",
+      "ok": false,
+      "detail": "|a| = 4.013 g at rest (expect 1.0)",
+      "value": 4.0132662651735105
+    },
+    {
+      "name": "gyro_bias",
+      "ok": true,
+      "detail": "max |gyro mean| = 0 LSB (0.0 dps)",
+      "value": 0.0
+    },
+    {
+      "name": "inference",
+      "ok": true,
+      "detail": "median 13.39 ms, max 13.55 ms (12 inferences)",
+      "value": 13.3865
+    }
+  ],
+  "firmware": "1.1.0",
+  "ble_name": "FormCoach-8428",
+  "imu_address": "0x69",
+  "flash_bytes": 643536,
+  "arena_bytes": 6196,
+  "n_samples": 384,
+  "duration_s": 7.66,
+  "kit": "K1",
+  "port": "/dev/ttyACM0",
+  "when": "2026-10-08T16:46:07",
+  "passed": false
+}

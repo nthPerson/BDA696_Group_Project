@@ -295,3 +295,16 @@ scan response; `bleak` on Windows then sees both, and connects with MTU 185 as d
 `usbipd bind` covers both. Still open until an IMU is wired: BMI160 register sequence, I2C
 address, 50 Hz notify rate and serial+BLE drops, on-device inference time per window.
 
+## ADR-0025 · BMI160 is configured after power-up, and the firmware verifies it · 2026-10-08 · accepted
+Context: with the IMU wired (GY-BMI160 at 0x69), the first self-test read |a| = 4.0 g at rest
+and a gyro of exactly zero. A register read-back showed the ACC_RANGE/GYR_RANGE writes issued
+right after the soft reset (before the accelerometer/gyroscope power-mode commands) were
+dropped: ERR_REG = 0x04 and the ranges read as invalid values, leaving the ±2 g default
+(16384 LSB/g) — four times the scale the protocol assumes. Decision: `Bmi160::begin()` sends
+the two PMU commands first, then writes CONF/RANGE, then reads ERR_REG, PMU_STATUS and the
+four config registers back and only reports `ok` when they match (one `# bmi160 regs …` banner
+line; `MISCONFIGURED` otherwise, and `begin()` fails). Verified: err=0, |a| = 1.007 g at rest,
+gyro bias 0.6 dps, 50.1 Hz, 0 drops, inference 13.4 ms per window. Consequences: the in-tree
+driver (ADR-0020) stands; `device check` would have passed the first time with a wrong scale
+if gravity were not checked — keep the gravity check in the runbook.
+
