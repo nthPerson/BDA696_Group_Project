@@ -14,3 +14,11 @@ wiring, pin map and the **mandatory LiPo safety rules** are in `docs/03-hardware
 
 `include/protocol.h` is the packet contract shared with `src/formcoach/io/protocol.py`.
 `model/` will hold `gate_model.tflite`, `gate_model_data.cc` and `preprocess.json` (Checkpoint 5).
+
+## WSL2: handing the USB port to Linux
+
+Windows holds the XIAO's USB port until usbipd-win passes it through. Once per port, in an
+**admin** PowerShell: `usbipd bind --busid <id>` (find the id with `usbipd list`; the XIAO is
+`303a:1001`). After that, from WSL: `make attach-xiao` (or `firmware/tools/attach-xiao.sh`)
+attaches with auto-reattach so flashing resets do not lose the port; `firmware/tools/attach-xiao.sh
+detach` returns it to Windows. Then `make device-check PORT=/dev/ttyACM0 KIT=K1`.

@@ -32,12 +32,14 @@ pose_app = typer.Typer(help="Pose extraction from video.", no_args_is_help=True)
 train_app = typer.Typer(help="Train and export models.", no_args_is_help=True)
 eval_app = typer.Typer(help="Evaluation harness (writes reports/).", no_args_is_help=True)
 session_app = typer.Typer(help="Inspect recorded sessions.", no_args_is_help=True)
+device_app = typer.Typer(help="Talk to a wearable over USB serial.", no_args_is_help=True)
 app.add_typer(data_app, name="data")
 app.add_typer(features_app, name="features")
 app.add_typer(pose_app, name="pose")
 app.add_typer(train_app, name="train")
 app.add_typer(eval_app, name="eval")
 app.add_typer(session_app, name="session")
+app.add_typer(device_app, name="device")
 
 
 def stub(command: str, checkpoint: int, what: str) -> None:
@@ -672,6 +674,42 @@ def session_check(session_dir: Annotated[Path, typer.Argument(help="data/team/<S
     report = sc.check(session_dir)
     console.print(sc.format_report(report))
     if report["problems"]:
+        raise typer.Exit(1)
+
+
+@device_app.command("check")
+def device_check(
+    port: Annotated[str, typer.Option(help="Serial port: COM5, /dev/ttyACM0, /dev/cu.usbmodem*")],
+    kit: Annotated[str | None, typer.Option(help="Kit label for the log name, e.g. K1")] = None,
+    duration: Annotated[float, typer.Option(help="Seconds of still capture.")] = 8.0,
+    interactive: Annotated[
+        bool, typer.Option(help="Also walk through the button press and shake phases.")
+    ] = False,
+    log_dir: Annotated[
+        Path | None, typer.Option(help="Where to save the log (reports/logs).")
+    ] = None,
+) -> None:
+    """Assembly-day self-test: banner, IMU, gate, BLE, 50 Hz, drops, gravity, gyro bias, inference.
+
+    Saves the raw serial log + JSON under reports/logs/ (feed the .log to `eval device`).
+    Needs `uv sync --extra device`.
+    """
+    from formcoach.io import selftest
+
+    try:
+        rep, path = selftest.run_live(
+            port, duration_s=duration, kit=kit, interactive=interactive,
+            out_dir=log_dir or selftest.DEFAULT_LOG_DIR, say=console.print,
+        )  # fmt: skip
+    except (ImportError, OSError) as exc:
+        console.print(f"[bold red]{exc}[/]")
+        raise typer.Exit(2) from exc
+    text = selftest.format_report(rep)
+    for line in text.splitlines():
+        colour = "green" if "[PASS]" in line else ("red" if "FAIL" in line else None)
+        console.print(f"[{colour}]{line}[/]" if colour else line)
+    console.print(f"log: {path}")
+    if not rep.passed:
         raise typer.Exit(1)
 
 

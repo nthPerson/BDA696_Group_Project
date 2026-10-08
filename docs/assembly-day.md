@@ -21,6 +21,9 @@ Batteries are the **last** thing soldered (step 5), after the IMU and button are
 2. `make fw-build` once (downloads ~1 GB of toolchain; 4 min the first time). On Windows use
    PowerShell: `uvx platformio run -d firmware -e xiao_esp32s3`.
 3. `uv sync --extra device` (pyserial + bleak). Linux: `sudo usermod -aG dialout $USER`, re-login.
+   WSL2: install usbipd-win on Windows once (`winget install usbipd`), run `usbipd bind --busid
+   <id>` once in an **admin** PowerShell, then `firmware/tools/attach-xiao.sh` from WSL hands the
+   port over (`detach` gives it back).
 4. Install **nRF Connect** (phone) to see the BLE name. WSL2 has no Bluetooth: BLE tests run from
    Windows Python or the phone; USB serial works everywhere.
 5. Bring: a USB-C **data** cable per station (charge-only cables are the #1 "no port" cause).
@@ -103,7 +106,25 @@ t_ms,ax,ay,az,gx,gy,gz,flags,seq
 
 **Step 2 — solder the IMU (station A)**, power off. Four wires per the table, ~30 mm long.
 
-**Step 3 — IMU test (station B)**: plug in, open the monitor, press RESET.
+**Step 3 — IMU test (station B)**: plug in and run the self-test (it resets the board, captures
+the banner and 8 s of samples, and prints PASS/FAIL per check; `uv sync --extra device` once):
+```
+make device-check PORT=COM5 KIT=K1                 # = uv run formcoach device check --port COM5 --kit K1
+```
+```
+  [PASS] banner       firmware 1.1.0
+  [PASS] imu          bmi160 ok at 0x69
+  [PASS] gate         tflm arena=… B
+  [PASS] ble          FormCoach-XXXX
+  [PASS] rate         50.0 Hz over 8.0 s (400 samples)
+  [PASS] drops        0 dropped, 0 bad lines
+  [PASS] gravity      |a| = 1.00 g at rest (expect 1.0)
+  [PASS] gyro_bias    max |gyro mean| = … LSB
+  [PASS] inference    median … ms
+RESULT: PASS
+log: reports/logs/K1_<timestamp>.log
+```
+Then, if you want to see the raw stream, open the monitor and press RESET:
 ```
 # bmi160 ok at 0x69
 …
@@ -117,7 +138,9 @@ t_ms,ax,ay,az,gx,gy,gz,flags,seq
 - `NOT FOUND` → swap SDA/SCL first (most common), then meter 3.3 V at the module, then try
   another module. Values frozen or all zero → cold joint on SDA/SCL.
 
-**Step 4 — solder and test the button (A then B)**: short press →
+**Step 4 — solder and test the button (A then B)**: `make device-check PORT=COM5 KIT=K1
+INTERACTIVE=1` adds the button and shake phases (`[PASS] button`, `session`, `gate_flag`).
+By hand on the monitor: short press →
 `# session start id=1`, LED solid; second short press → `# session stop id=1`. Hold 2 s →
 `# calibration: keep the device flat and still for 3 s` then `# calibrated g=(…) bias=(…)`;
 after RESET the banner says `# calibration loaded from NVS`.

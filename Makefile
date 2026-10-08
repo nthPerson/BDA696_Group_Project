@@ -12,7 +12,7 @@ SOURCE  ?= replay
 PORT    ?=
 MODEL   ?= cnn
 
-.PHONY: help setup setup-all lint format test data convert profile features session-check train-gate eval demo record \
+.PHONY: help setup setup-all lint format test data convert profile features session-check device-check attach-xiao train-gate eval demo record \
 	    fw-build fw-upload fw-monitor clean
 
 help: ## list targets
@@ -64,6 +64,12 @@ record: ## record a team session (SOURCE=serial|ble PORT=/dev/ttyACM0|COM5)
 
 session-check: ## quality-check a recorded session (DIR=data/team/S1/<id>)
 	$(RUN) formcoach session check $(DIR)
+
+device-check: ## assembly-day self-test over USB serial (PORT=COM5 KIT=K1; add INTERACTIVE=1 for button/shake)
+	$(RUN) formcoach device check --port $(PORT) $(if $(KIT),--kit $(KIT),) $(if $(INTERACTIVE),--interactive,)
+
+attach-xiao: ## WSL2 only: hand the XIAO's USB port from Windows to WSL (firmware/tools/attach-xiao.sh)
+	firmware/tools/attach-xiao.sh
 
 fw-build: ## compile the firmware (PlatformIO via uvx; also runs in CI)
 	$(PIO) run -d firmware
