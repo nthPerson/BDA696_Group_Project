@@ -1,0 +1,99 @@
+{
+  "checks": [
+    {
+      "name": "banner",
+      "ok": true,
+      "detail": "firmware 1.1.0",
+      "value": null
+    },
+    {
+      "name": "imu",
+      "ok": true,
+      "detail": "bmi160 ok at 0x69",
+      "value": null
+    },
+    {
+      "name": "gate",
+      "ok": true,
+      "detail": "tflm arena=6196 B",
+      "value": 6196
+    },
+    {
+      "name": "ble",
+      "ok": true,
+      "detail": "FormCoach-8428",
+      "value": null
+    },
+    {
+      "name": "ping",
+      "ok": true,
+      "detail": "'# pong' received",
+      "value": null
+    },
+    {
+      "name": "rate",
+      "ok": true,
+      "detail": "50.1 Hz over 19.7 s (985 samples)",
+      "value": 50.05081300813007
+    },
+    {
+      "name": "drops",
+      "ok": true,
+      "detail": "0 dropped, 10 bad lines",
+      "value": 0
+    },
+    {
+      "name": "gravity",
+      "ok": false,
+      "detail": "|a| = 1.325 g at rest (expect 1.0)",
+      "value": 1.325284578379871
+    },
+    {
+      "name": "gyro_bias",
+      "ok": true,
+      "detail": "max |gyro mean| = 47 LSB (1.4 dps)",
+      "value": 47.31894934333959
+    },
+    {
+      "name": "button",
+      "ok": true,
+      "detail": "button flag seen while held",
+      "value": null
+    },
+    {
+      "name": "session",
+      "ok": false,
+      "detail": "no session start",
+      "value": null
+    },
+    {
+      "name": "gate_flag",
+      "ok": true,
+      "detail": "gate opened while shaking",
+      "value": null
+    },
+    {
+      "name": "inference",
+      "ok": true,
+      "detail": "median 13.39 ms, max 13.55 ms (36 inferences)",
+      "value": 13.386
+    },
+    {
+      "name": "calibration",
+      "ok": true,
+      "detail": "calibration stored",
+      "value": null
+    }
+  ],
+  "firmware": "1.1.0",
+  "ble_name": "FormCoach-8428",
+  "imu_address": "0x69",
+  "flash_bytes": 643792,
+  "arena_bytes": 6196,
+  "n_samples": 985,
+  "duration_s": 19.680000000000003,
+  "kit": "K1",
+  "port": "/dev/ttyACM0",
+  "when": "2026-10-08T16:56:05",
+  "passed": false
+}

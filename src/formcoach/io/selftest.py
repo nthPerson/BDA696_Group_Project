@@ -170,10 +170,11 @@ def analyze(
             * protocol.GYRO_LSB_PER_DPS
             / protocol.DPS_TO_RADS
         )
+        # gravity / gyro bias come from the initial still window only (before any phase)
         still = np.ones(len(samples), bool)
         if phases:
-            for a, b in phases.values():
-                still &= ~((t - t0 >= a) & (t - t0 <= b))
+            first_phase = min(a for a, _b in phases.values())
+            still &= t - t0 < first_phase - 0.5
         if still.sum() < 10:
             still = np.ones(len(samples), bool)
         g = float(np.linalg.norm(acc[still], axis=1).mean())
@@ -200,14 +201,30 @@ def analyze(
                 Check(
                     "button",
                     pressed,
-                    "button flag seen while held"
+                    "button flag seen while pressed"
                     if pressed
                     else "button flag never set (D1 wiring / pull-up)",
                 )
             )
             sess = bool((flags[win] & protocol.Flag.SESSION_ACTIVE).any()) or sessions > 0
             rep.checks.append(
-                Check("session", sess, "session toggled" if sess else "no session start")
+                Check(
+                    "session",
+                    sess,
+                    "short press toggled the session"
+                    if sess
+                    else "no session start (a press over 2 s is a calibration, not a toggle)",
+                )
+            )
+        if phases and "hold" in phases:
+            rep.checks.append(
+                Check(
+                    "calibration",
+                    calibrated,
+                    "long press stored a calibration"
+                    if calibrated
+                    else "no '# calibrated' line after the 3 s hold",
+                )
             )
         if phases and "shake" in phases:
             a, b = phases["shake"]
@@ -237,7 +254,7 @@ def analyze(
                 med,
             )
         )
-    if calibrated:
+    if calibrated and not (phases and "hold" in phases):
         rep.checks.append(Check("calibration", True, "calibration stored"))
     return rep
 
@@ -328,11 +345,15 @@ def run_live(
         say(f"capturing {duration_s:.0f} s — keep the board flat and still on the desk")
         pump(t_start + duration_s)
         if interactive:
-            say("now press and HOLD the button for 3 s (short press toggles the session)…")
+            say("now PRESS the button briefly (short press = session toggle)…")
             a = sample_clock()
             pump(time.monotonic() + 4.0)
             phases["button"] = (a, sample_clock())
-            say("release; now SHAKE the board for 4 s…")
+            say("now HOLD the button for 3 s (calibration); keep the board flat…")
+            a = sample_clock()
+            pump(time.monotonic() + 6.0)
+            phases["hold"] = (a, sample_clock())
+            say("now SHAKE the board for 4 s…")
             a = sample_clock()
             pump(time.monotonic() + 5.0)
             phases["shake"] = (a, sample_clock())

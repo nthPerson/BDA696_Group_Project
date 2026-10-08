@@ -149,7 +149,8 @@ Then, if you want to see the raw stream, open the monitor and press RESET:
   another module. Values frozen or all zero → cold joint on SDA/SCL.
 
 **Step 4 — solder and test the button (A then B)**: `make device-check PORT=COM5 KIT=K1
-INTERACTIVE=1` adds the button and shake phases (`[PASS] button`, `session`, `gate_flag`).
+INTERACTIVE=1` walks through a short press (session toggle), a 3 s hold (calibration, keep the
+board flat) and a shake (gate opens): `[PASS] button`, `session`, `calibration`, `gate_flag`.
 By hand on the monitor: short press →
 `# session start id=1`, LED solid; second short press → `# session stop id=1`. Hold 2 s →
 `# calibration: keep the device flat and still for 3 s` then `# calibrated g=(…) bias=(…)`;
