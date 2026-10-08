@@ -278,3 +278,20 @@ folds (`reports/*_5fold.md`) so the comparison table is like-for-like. Training 
 `LD_LIBRARY_PATH` pointing at the pip `nvjitlink` library, or TensorFlow falls back to CPU).
 Consequences: CNN numbers are 5-fold, RF headline numbers remain 94-fold (both stated in the
 reports); GPU runs are not bit-reproducible, so the seed pins the split, not the weights.
+
+## ADR-0024 · First-board findings: antenna, advertising layout, LED polarity, NVS · 2026-10-08 · accepted
+Context: firmware v1.1.0 ran on a bare XIAO ESP32-S3 for the first time (kit K1, Robert's
+bench, via usbipd from WSL2). Findings and decisions: (1) the XIAO has **no onboard antenna**;
+without the clip-on u.FL antenna it advertises at −90 to −99 dBm and laptops cannot connect,
+with it −54 dBm at desk range — `docs/assembly-day.md` now starts with the antenna. (2) A
+128-bit service UUID plus the device name exceed the 31-byte advertisement (NimBLE: "Cannot
+add UUID, data length exceeded"), so the UUID goes in the advertisement and the name in the
+scan response; `bleak` on Windows then sees both, and connects with MTU 185 as designed.
+(3) The user LED is **active-low** (verified by eye: mostly off, brief flash once a second with
+`LED_ACTIVE_LOW = true`). (4) `Preferences.begin(ns, true)` on a fresh board logs
+`nvs_open failed`; the namespace is opened read-write once at boot. (5) TFLite Micro allocates
+**6,196 B** of arena for the int8 model (budget 40 KB); the firmware uses 643,168 B of flash.
+(6) The board enumerates as USB-JTAG/serial `303a:1001` before and after flashing, so one
+`usbipd bind` covers both. Still open until an IMU is wired: BMI160 register sequence, I2C
+address, 50 Hz notify rate and serial+BLE drops, on-device inference time per window.
+

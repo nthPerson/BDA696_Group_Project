@@ -61,7 +61,7 @@ String deviceName() {
 }
 
 void loadCalibration() {
-  prefs.begin("formcoach", true);
+  prefs.begin("formcoach", false);  // read-write: creates the namespace on a fresh board (no NVS error)
   calibrated = prefs.getBool("cal", false);
   if (calibrated) {
     for (int i = 0; i < 3; ++i) {

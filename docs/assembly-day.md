@@ -21,6 +21,9 @@ Batteries are the **last** thing soldered (step 5), after the IMU and button are
 2. `make fw-build` once (downloads ~1 GB of toolchain; 4 min the first time). On Windows use
    PowerShell: `uvx platformio run -d firmware -e xiao_esp32s3`.
 3. `uv sync --extra device` (pyserial + bleak). Linux: `sudo usermod -aG dialout $USER`, re-login.
+   WSL2: install usbipd-win on Windows once (`winget install usbipd`), run `usbipd bind --busid
+   <id>` once in an **admin** PowerShell, then `firmware/tools/attach-xiao.sh` from WSL hands the
+   port over (`detach` gives it back).
 4. Install **nRF Connect** (phone) to see the BLE name. WSL2 has no Bluetooth: BLE tests run from
    Windows Python or the phone; USB serial works everywhere.
 5. Bring: a USB-C **data** cable per station (charge-only cables are the #1 "no port" cause).
@@ -77,6 +80,11 @@ pocket has an arrow); a rotated IMU still works but the team recordings will not
 Tick each box in the notes file with the kit number. Expected serial lines are what
 `firmware/src/app/main.cpp` prints; anything else is a finding.
 
+**Step 0 — clip the antenna on.** The XIAO ESP32-S3 has no onboard antenna: the small
+flexible antenna in the box snaps onto the u.FL connector next to the USB-C socket (press
+straight down until it clicks). Without it the board advertises at −90 dBm and laptops cannot
+connect; with it, −55 dBm at desk range (measured 2026-10-08).
+
 **Step 1 — bare board flash (station B, no soldering yet)**
 
 ```
@@ -86,24 +94,47 @@ make fw-monitor PORT=COM5                         # 115200 baud; press RESET aft
 ```
 Expected (bare board):
 ```
-# FormCoach fw 1.1.0  chip=ESP32-S3 rev=<n>
+# FormCoach fw 1.1.0  chip=ESP32-S3 rev=0
 # sample=19 B batch=99 B status=12 B rate=50 Hz
-# flash app=<bytes>
+# flash app=643168
 # bmi160 NOT FOUND at 0x00
 # calibration none (long-press to calibrate)
-# gate: tflm ok arena=<bytes> in=600 B classes=6      <- or "# gate: motion-energy rule" (see §5)
+# gate: tflm ok arena=6196 in=600 B classes=6        <- or "# gate: motion-energy rule" (see §5)
 # gate: int8 CNN (TFLite Micro)
-# ble advertising as FormCoach-XXXX
+# ble addr=28:84:85:b3:8f:05 advData=1 scanData=1 start=1
+# ble advertising as FormCoach-8428
 t_ms,ax,ay,az,gx,gy,gz,flags,seq
 ```
-- [ ] port found · [ ] banner as above · [ ] LED blinks ~1 Hz (slow blink = advertising) ·
-  [ ] LED polarity: note whether the LED is **on** or **off** between blinks (ADR-0020 verify) ·
-  [ ] phone sees `FormCoach-XXXX` in nRF Connect; write XXXX in `docs/devices.md`
+(real output from the first board, 2026-10-08; `make device-check PORT=… KIT=K1` prints
+PASS for banner/gate/ble/ping and FAIL for imu/rate on a bare board, which is correct.)
+- [ ] port found · [ ] banner as above · [ ] LED mostly off with a brief flash once a second
+  (slow blink = advertising; polarity verified 2026-10-08) · [ ] phone sees `FormCoach-XXXX` in
+  nRF Connect, or run the laptop BLE check (Windows/macOS, not WSL):
+  `uv run firmware/tools/ble-check.py` → connects, reads status, sends PING/START/STOP/LED;
+  expect `signal > -80 dBm`, `MTU 185`, `session id 0 -> 1`. Write the address in `docs/devices.md`
 - No port → hold **BOOT**, tap **RESET**, release **BOOT**, retry; then try another cable.
 
 **Step 2 — solder the IMU (station A)**, power off. Four wires per the table, ~30 mm long.
 
-**Step 3 — IMU test (station B)**: plug in, open the monitor, press RESET.
+**Step 3 — IMU test (station B)**: plug in and run the self-test (it resets the board, captures
+the banner and 8 s of samples, and prints PASS/FAIL per check; `uv sync --extra device` once):
+```
+make device-check PORT=COM5 KIT=K1                 # = uv run formcoach device check --port COM5 --kit K1
+```
+```
+  [PASS] banner       firmware 1.1.0
+  [PASS] imu          bmi160 ok at 0x69
+  [PASS] gate         tflm arena=… B
+  [PASS] ble          FormCoach-XXXX
+  [PASS] rate         50.0 Hz over 8.0 s (400 samples)
+  [PASS] drops        0 dropped, 0 bad lines
+  [PASS] gravity      |a| = 1.00 g at rest (expect 1.0)
+  [PASS] gyro_bias    max |gyro mean| = … LSB
+  [PASS] inference    median … ms
+RESULT: PASS
+log: reports/logs/K1_<timestamp>.log
+```
+Then, if you want to see the raw stream, open the monitor and press RESET:
 ```
 # bmi160 ok at 0x69
 …
@@ -117,7 +148,9 @@ t_ms,ax,ay,az,gx,gy,gz,flags,seq
 - `NOT FOUND` → swap SDA/SCL first (most common), then meter 3.3 V at the module, then try
   another module. Values frozen or all zero → cold joint on SDA/SCL.
 
-**Step 4 — solder and test the button (A then B)**: short press →
+**Step 4 — solder and test the button (A then B)**: `make device-check PORT=COM5 KIT=K1
+INTERACTIVE=1` adds the button and shake phases (`[PASS] button`, `session`, `gate_flag`).
+By hand on the monitor: short press →
 `# session start id=1`, LED solid; second short press → `# session stop id=1`. Hold 2 s →
 `# calibration: keep the device flat and still for 3 s` then `# calibrated g=(…) bias=(…)`;
 after RESET the banner says `# calibration loaded from NVS`.
