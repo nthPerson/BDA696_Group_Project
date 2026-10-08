@@ -34,17 +34,18 @@ STATUS = struct.Struct("<BBBHBIBB")  # mirrors FcStatus / protocol.Status (12 by
 SAMPLE, HEADER = struct.Struct("<IhhhhhhBH"), struct.Struct("<HBB")
 
 
-async def main(name_prefix: str, address: str | None, seconds: float) -> int:
+async def main(name_prefix: str, address: str | None, seconds: float, scan_s: float) -> int:
     ok = True
-    print(f"scanning 8 s for {address or name_prefix + '*'} …")
+    print(f"scanning {scan_s:.0f} s for {address or name_prefix + '*'} ...")
     found = None
     adv_uuids: list[str] = []
-    for d, adv in (await BleakScanner.discover(timeout=8.0, return_adv=True)).values():
+    rssi = None
+    for d, adv in (await BleakScanner.discover(timeout=scan_s, return_adv=True)).values():
         if (address and d.address.lower() == address.lower()) or (
             not address and d.name and d.name.startswith(name_prefix)
         ):
-            found, adv_uuids = d, [u.lower() for u in adv.service_uuids]
-            print(f"  found {d.name}  address={d.address}  rssi={adv.rssi} dBm  uuids={adv_uuids}")
+            found, adv_uuids, rssi = d, [u.lower() for u in adv.service_uuids], adv.rssi
+            print(f"  found {d.name}  address={d.address}  rssi={rssi} dBm  uuids={adv_uuids}")
             break
     if found is None:
         print("FAIL: no FormCoach device found (board on? within a few metres? phone shows it?)")
@@ -52,6 +53,10 @@ async def main(name_prefix: str, address: str | None, seconds: float) -> int:
     has_uuid = SERVICE_UUID in adv_uuids
     print(f"  [{'PASS' if has_uuid else 'FAIL'}] service UUID advertised")
     ok &= has_uuid
+    strong = rssi is not None and rssi > -80
+    print(f"  [{'PASS' if strong else 'FAIL'}] signal {rssi} dBm (expect > -80 dBm within a few metres; "
+          "is the u.FL antenna clipped on?)")
+    ok &= strong
     n_packets = 0
     n_samples = 0
     last_seq = None
@@ -108,5 +113,6 @@ if __name__ == "__main__":
     ap.add_argument("--name", default="FormCoach", help="name prefix to match (default FormCoach)")
     ap.add_argument("--address", default=None, help="connect to this address instead of scanning by name")
     ap.add_argument("--seconds", type=float, default=5.0, help="how long to subscribe to IMU notifications")
+    ap.add_argument("--scan-seconds", type=float, default=12.0, help="scan window")
     a = ap.parse_args()
-    sys.exit(asyncio.run(main(a.name, a.address, a.seconds)))
+    sys.exit(asyncio.run(main(a.name, a.address, a.seconds, a.scan_seconds)))

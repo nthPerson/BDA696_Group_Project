@@ -52,10 +52,12 @@ void BleLink::begin(const char* name, CommandHandler handler) {
   advData.addServiceUUID(FC_SERVICE_UUID);
   NimBLEAdvertisementData scanData;
   scanData.setName(name);
-  adv->setAdvertisementData(advData);
-  adv->setScanResponseData(scanData);
+  bool okAdv = adv->setAdvertisementData(advData);
+  bool okScan = adv->setScanResponseData(scanData);
   adv->enableScanResponse(true);
-  adv->start();
+  bool started = adv->start();
+  Serial.printf("# ble addr=%s advData=%d scanData=%d start=%d\n",
+                NimBLEDevice::getAddress().toString().c_str(), okAdv, okScan, started);
   batch_.header.n = 0;
 }
 
