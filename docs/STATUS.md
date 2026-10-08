@@ -5,7 +5,43 @@ questions, blockers. This is how teammates and future Claude Code sessions pick 
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
 **Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 1–3 + software of 4–6 merged → assembly day next
-**Hardware:** parts received 2026-09-27; case not yet designed; see `docs/assembly-day.md` · **Go/no-go on vision path:** ~Nov 3
+**Hardware:** K1 bare board verified 2026-10-08 (firmware + BLE); IMU wiring next; see `docs/assembly-day.md` · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-10-08 — First board: firmware v1.1 verified on a bare XIAO, BLE end-to-end, self-test tooling (Claude Code with Robert)
+
+### What changed
+- **Firmware ran on hardware for the first time** (kit K1, bench, USB via usbipd from WSL2):
+  boot banner, TFLite Micro model loads (arena 6,196 B of the 40 KB budget), BLE advertises
+  `FormCoach-8428`, serial `P` → `# pong`. Two bugs found and fixed on the board: the service
+  UUID did not fit the advertisement next to the name (now adv = UUID, scan response = name) and
+  a spurious NVS error on first boot (ADR-0024).
+- **BLE verified from Windows** (`firmware/tools/ble-check.py`, standalone bleak script run with
+  `uv run`): scan shows name + service UUID at −48 dBm, connect with MTU 185, status read,
+  PING/START/STOP/LED commands all acted on (serial shows `# pong`, `# session start id=…`).
+  Without the clip-on u.FL antenna the board sat at −90 dBm and could not be connected to —
+  the antenna is now step 0 of `docs/assembly-day.md`.
+- **LED polarity settled**: active-low as assumed (mostly off, brief flash once a second).
+- `formcoach device check --port … --kit K1 [--interactive]` (`make device-check`): the
+  assembly-day self-test (banner, IMU, gate, BLE name, ping, 50 Hz, drops, gravity, gyro bias,
+  inference, button/session/gate phases), saving `reports/logs/<kit>_<ts>.log/.json`.
+- `firmware/tools/attach-xiao.sh` (`make attach-xiao`): usbipd hand-off to WSL2 with auto
+  re-attach across flashing resets; documented in `firmware/README.md`.
+- `docs/devices.md`: K1 row (MAC 28:84:85:B3:8F:05).
+
+### Next
+1. Wire the BMI160 (jumpers are fine for the bench unit) → `make device-check PORT=… KIT=K1
+   INTERACTIVE=1` and `ble-check.py` again: I2C address, 50 Hz over serial and BLE, drops,
+   gravity, button flags, gate flag, on-device inference time (`# infer us=`).
+2. Assembly day per `docs/assembly-day.md`; K2–K6 rows in `docs/devices.md`.
+3. Wire `demo --source serial|ble` with a webcam frame source (the live demo).
+
+### Open questions
+- Serial CSV + BLE notifications simultaneously at 50 Hz (needs the IMU).
+
+### Blockers
+- None.
 
 ---
 

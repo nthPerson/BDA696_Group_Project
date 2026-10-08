@@ -37,18 +37,33 @@ SAMPLE, HEADER = struct.Struct("<IhhhhhhBH"), struct.Struct("<HBB")
 async def main(name_prefix: str, address: str | None, seconds: float, scan_s: float) -> int:
     ok = True
     print(f"scanning {scan_s:.0f} s for {address or name_prefix + '*'} ...")
+    # Windows delivers the advertisement and the scan response as separate records, so
+    # accumulate names/UUIDs/RSSI per address across every record seen during the window.
+    seen: dict[str, dict] = {}
+
+    def on_detect(d, adv):
+        rec = seen.setdefault(d.address, {"dev": d, "name": None, "uuids": set(), "rssi": None})
+        if adv.local_name:
+            rec["name"] = adv.local_name
+        rec["uuids"].update(u.lower() for u in adv.service_uuids)
+        rec["rssi"] = adv.rssi if rec["rssi"] is None else max(rec["rssi"], adv.rssi)
+
+    scanner = BleakScanner(detection_callback=on_detect)
+    await scanner.start()
+    await asyncio.sleep(scan_s)
+    await scanner.stop()
     found = None
     adv_uuids: list[str] = []
     rssi = None
-    for d, adv in (await BleakScanner.discover(timeout=scan_s, return_adv=True)).values():
-        if (address and d.address.lower() == address.lower()) or (
-            not address and d.name and d.name.startswith(name_prefix)
+    for addr, rec in seen.items():
+        if (address and addr.lower() == address.lower()) or (
+            not address and rec["name"] and rec["name"].startswith(name_prefix)
         ):
-            found, adv_uuids, rssi = d, [u.lower() for u in adv.service_uuids], adv.rssi
-            print(f"  found {d.name}  address={d.address}  rssi={rssi} dBm  uuids={adv_uuids}")
+            found, adv_uuids, rssi = rec["dev"], sorted(rec["uuids"]), rec["rssi"]
+            print(f"  found {rec['name']}  address={addr}  rssi={rssi} dBm  uuids={adv_uuids}")
             break
     if found is None:
-        print("FAIL: no FormCoach device found (board on? within a few metres? phone shows it?)")
+        print("FAIL: no FormCoach device found (board on? antenna clipped on? within a few metres?)")
         return 1
     has_uuid = SERVICE_UUID in adv_uuids
     print(f"  [{'PASS' if has_uuid else 'FAIL'}] service UUID advertised")

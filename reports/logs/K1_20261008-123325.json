@@ -1,0 +1,51 @@
+{
+  "checks": [
+    {
+      "name": "banner",
+      "ok": true,
+      "detail": "firmware 1.1.0",
+      "value": null
+    },
+    {
+      "name": "imu",
+      "ok": false,
+      "detail": "bmi160 NOT FOUND at 0x00",
+      "value": null
+    },
+    {
+      "name": "gate",
+      "ok": true,
+      "detail": "tflm arena=6196 B",
+      "value": 6196
+    },
+    {
+      "name": "ble",
+      "ok": true,
+      "detail": "FormCoach-8428",
+      "value": null
+    },
+    {
+      "name": "ping",
+      "ok": true,
+      "detail": "'# pong' received",
+      "value": null
+    },
+    {
+      "name": "rate",
+      "ok": false,
+      "detail": "no CSV samples (IMU missing, or the monitor is not at 115200)",
+      "value": null
+    }
+  ],
+  "firmware": "1.1.0",
+  "ble_name": "FormCoach-8428",
+  "imu_address": null,
+  "flash_bytes": 643168,
+  "arena_bytes": 6196,
+  "n_samples": 0,
+  "duration_s": 0.0,
+  "kit": "K1",
+  "port": "/dev/ttyACM0",
+  "when": "2026-10-08T12:33:25",
+  "passed": false
+}
