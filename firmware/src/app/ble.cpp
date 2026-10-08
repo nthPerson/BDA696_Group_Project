@@ -44,9 +44,17 @@ void BleLink::begin(const char* name, CommandHandler handler) {
   status_ = svc->createCharacteristic(FC_STATUS_CHAR_UUID,
                                       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
   svc->start();
+  // 31-byte advertisement: flags (3) + 128-bit service UUID (18); the name goes in the scan
+  // response (a name + a 128-bit UUID together exceed 31 bytes: "data length exceeded").
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-  adv->setName(name);
-  adv->addServiceUUID(FC_SERVICE_UUID);
+  NimBLEAdvertisementData advData;
+  advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  advData.addServiceUUID(FC_SERVICE_UUID);
+  NimBLEAdvertisementData scanData;
+  scanData.setName(name);
+  adv->setAdvertisementData(advData);
+  adv->setScanResponseData(scanData);
+  adv->enableScanResponse(true);
   adv->start();
   batch_.header.n = 0;
 }
