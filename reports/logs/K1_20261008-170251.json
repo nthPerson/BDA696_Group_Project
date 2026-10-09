@@ -1,0 +1,99 @@
+{
+  "checks": [
+    {
+      "name": "banner",
+      "ok": true,
+      "detail": "firmware 1.1.0",
+      "value": null
+    },
+    {
+      "name": "imu",
+      "ok": true,
+      "detail": "bmi160 ok at 0x69",
+      "value": null
+    },
+    {
+      "name": "gate",
+      "ok": true,
+      "detail": "tflm arena=6196 B",
+      "value": 6196
+    },
+    {
+      "name": "ble",
+      "ok": true,
+      "detail": "FormCoach-8428",
+      "value": null
+    },
+    {
+      "name": "ping",
+      "ok": true,
+      "detail": "'# pong' received",
+      "value": null
+    },
+    {
+      "name": "rate",
+      "ok": true,
+      "detail": "50.0 Hz over 25.7 s (1287 samples)",
+      "value": 50.03888024883359
+    },
+    {
+      "name": "drops",
+      "ok": true,
+      "detail": "0 dropped, 10 bad lines",
+      "value": 0
+    },
+    {
+      "name": "gravity",
+      "ok": true,
+      "detail": "|a| = 0.965 g at rest (expect 1.0)",
+      "value": 0.9653560306210326
+    },
+    {
+      "name": "gyro_bias",
+      "ok": true,
+      "detail": "max |gyro mean| = 90 LSB (2.8 dps)",
+      "value": 90.42892156862744
+    },
+    {
+      "name": "button",
+      "ok": true,
+      "detail": "button flag seen while pressed",
+      "value": null
+    },
+    {
+      "name": "session",
+      "ok": true,
+      "detail": "short press toggled the session",
+      "value": null
+    },
+    {
+      "name": "calibration",
+      "ok": true,
+      "detail": "long press stored a calibration",
+      "value": null
+    },
+    {
+      "name": "gate_flag",
+      "ok": false,
+      "detail": "gate never opened (shake harder / longer than 1 s, check IMU)",
+      "value": null
+    },
+    {
+      "name": "inference",
+      "ok": true,
+      "detail": "median 13.39 ms, max 13.55 ms (48 inferences)",
+      "value": 13.391
+    }
+  ],
+  "firmware": "1.1.0",
+  "ble_name": "FormCoach-8428",
+  "imu_address": "0x69",
+  "flash_bytes": 643792,
+  "arena_bytes": 6196,
+  "n_samples": 1287,
+  "duration_s": 25.72,
+  "kit": "K1",
+  "port": "/dev/ttyACM0",
+  "when": "2026-10-08T17:02:51",
+  "passed": false
+}
