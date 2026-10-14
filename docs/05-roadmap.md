@@ -7,7 +7,7 @@ Working weeks run late September → early December 2026. Course deliverable due
 | Deliverable | Due (fill in) | Produced from |
 |---|---|---|
 | Pitch Presentation | done (late Sep) | `docs/pitch/` (slides + PDF, archived) |
-| Written Report Outline | ____ | `reports/` baseline tables + `docs/report/outline.md` |
+| Written Report Outline | 2026-10-28 (Canvas PDF, group leader submits) | `reports/` baseline tables + `docs/report/outline.md` |
 | First Draft | ____ | `docs/report/draft.md` + regenerated `reports/` |
 | Final Presentation Slides | ____ | `docs/slides/` |
 | Final Written Report | ____ | `docs/report/final.md` (+ export to .docx/.pdf) |
@@ -23,7 +23,7 @@ Working weeks run late September → early December 2026. Course deliverable due
 - [x] Pose extraction, angle module, rep segmentation, replay demo (Checkpoint 3)
 - [x] Parts ordered and received (2026-09-27) · [ ] case v1 modeled and test-printed (Robert)
 - [x] PlatformIO project compiles in CI (no hardware needed)
-- [ ] `docs/report/outline.md` drafted from the profile + baseline reports → **Written Report Outline**
+- [x] `docs/report/outline.md` drafted from the profile + baseline reports (2026-10-14; team fills `[TODO]`s, export to PDF) → **Written Report Outline**
 
 ### Phase 2 — Build, firmware, gate on device, rules v1 (Oct 7 – Oct 27)
 
