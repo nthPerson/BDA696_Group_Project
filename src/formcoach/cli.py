@@ -598,6 +598,41 @@ def _open_source(source: Source, port: str | None, duration: float):
     raise ValueError("record needs --source serial|ble|fake")
 
 
+@app.command("viewer")
+def viewer(
+    port: Annotated[int, typer.Option(help="Local port to serve on.")] = 8000,
+    open_browser: Annotated[
+        bool, typer.Option("--open/--no-open", help="Open the page in the default browser.")
+    ] = True,
+) -> None:
+    """Serve the browser BLE live viewer on http://localhost (Chrome or Edge).
+
+    Web Bluetooth needs https or localhost; the hosted copy is on GitHub Pages. See
+    docs/howto/ble-viewer.md.
+    """
+    import webbrowser
+
+    from formcoach.app.viewer import make_server, viewer_url
+
+    try:
+        server = make_server(port)
+    except OSError as err:
+        console.print(f"[red]Cannot listen on port {port}: {err}[/] (try --port {port + 1})")
+        raise typer.Exit(1) from err
+    url = viewer_url(server)
+    console.print(f"BLE viewer: [cyan]{url}[/]  (Chrome or Edge; Ctrl+C to stop)")
+    console.print("  WSL: open that URL in Chrome/Edge on Windows (WSL2 forwards localhost).")
+    console.print("  Hosted copy: https://nthperson.github.io/BDA696_Group_Project/ble-viewer/")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("viewer stopped")
+    finally:
+        server.server_close()
+
+
 @app.command("record")
 def record(
     source: Annotated[Source, typer.Option(help="serial | ble | fake")] = Source.serial,
