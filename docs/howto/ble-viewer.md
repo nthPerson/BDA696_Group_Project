@@ -1,6 +1,6 @@
 # How to: watch a kit's live IMU stream in the browser (BLE viewer)
 
-**Owner:** Bryce Hall (app, demo) · **Built by:** Claude Code with Robert on 2026-10-15 · **PR:** see `docs/STATUS.md` 2026-10-15
+**Owner:** Bryce Hall (app, demo) · **Built by:** Claude Code with Robert on 2026-10-15 · **PR:** #12
 **Checkpoint:** 4 (`docs/00-START-HERE.md`) · **State:** works with the simulator and a scripted fake Bluetooth device; first real-kit check (K1) pending
 
 A web page that connects to a FormCoach wearable over Bluetooth and shows live accel/gyro
