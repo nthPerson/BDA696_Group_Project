@@ -29,8 +29,10 @@ BLE viewer: http://localhost:8000/ble-viewer/  (Chrome or Edge; Ctrl+C to stop)
 ```
 
 (`--port 8001` or `make ble-viewer VIEWER_PORT=8001` if 8000 is taken; `--no-open` skips the browser.)
-Then **Simulate** (no hardware), or **Connect** and pick `FormCoach-XXXX` in the chooser. Only kits
+Then **Simulate** (no hardware), or **Connect…** and pick `FormCoach-XXXX` in the chooser. Only kits
 advertising the FormCoach service are listed; power the kit on with the antenna clipped on.
+**Connect…** always opens the chooser, so you can move on to the next kit. **Reconnect** returns to the last kit
+without it. Switching kits (or to Simulate) saves an open recording under the old kit's name and resets the counters.
 
 | Browser | Works? |
 |---|---|
@@ -63,7 +65,7 @@ MANIFEST), and **a recording of a teammate is never committed**.
 | Kit not in the chooser | another app holds it (one client at a time: close `ble-check.py`, `formcoach demo/record`, other tabs); antenna; LED not blinking = not advertising |
 | `|a|` ≈ 4 g at rest, gyro flat at 0 | firmware from before ADR-0025 (BMI160 range bug): reflash from `main` once `fw/imu-bringup` is merged |
 | "Bad packet … MTU" message | the link negotiated a small MTU; a batch needs ≥ 102 bytes. Disconnect and reconnect |
-| Disconnected | press **Reconnect** (no chooser); an unfinished recording is kept, press Stop to save it |
+| Disconnected | press **Reconnect** (no chooser); an unfinished recording is kept, press Stop to save it. A kit that rebooted meanwhile starts a fresh plot |
 | Red banner "no Web Bluetooth" | wrong browser (table above), or the page is not on https/localhost |
 | Blank page from `make ble-viewer` | hard refresh (Ctrl+Shift+R); check the browser console |
 
@@ -94,8 +96,8 @@ redraws, so BLE never waits on rendering. The wire format is `docs/02-system-des
   batch/status hex, against `src/formcoach/io/protocol.py`. Change `protocol.h`, `protocol.py` and
   `protocol.js` together; regenerate the golden hex with `protocol.pack_batch(7, samples).hex()`.
 - `uv run pytest tests/test_viewer_server.py` (CI) checks the server, the MIME types and the CLI.
-- `node --test web/ble-viewer/test/*.test.mjs` (local only; `make test` runs it when Node is installed,
-  18 tests) covers the decoder, the seq wrap, reconnect and reboot handling, the CSV and the simulator.
+- `node --test web/ble-viewer/test/*.test.mjs` (local only; `make test` runs it when Node ≥ 18 is installed,
+  21 tests) covers the decoder, the seq wrap, reconnect and reboot handling, the CSV and the simulator.
 
 ## 5. Could not verify / open questions
 

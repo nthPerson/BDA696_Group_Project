@@ -68,3 +68,31 @@ test("RateMeter reports events per second over its window", () => {
   assert.equal(m.rate(2900), 10);
   assert.equal(m.rate(10000), 0); // stale events age out
 });
+
+test("a reboot during a disconnect is still detected on the first sample after Reconnect", () => {
+  const r = new SampleRing(500);
+  for (let i = 0; i < 100; i++) r.push(mk(i, 300000 + 20 * i)); // uptime ~300 s
+  r.resetLink(); // Reconnect after the kit rebooted
+  r.push(mk(0, 800));
+  assert.equal(r.resets, 1);
+  assert.equal(r.length, 1); // the old clock is gone, so x stays ascending
+  assert.equal(r.drops, 0);
+});
+
+test("clear() starts a new clock: a new source may start at any t_ms", () => {
+  const r = new SampleRing(10);
+  r.push(mk(5, 90000));
+  r.clear();
+  r.push(mk(0, 0));
+  assert.equal(r.resets, 0);
+  assert.equal(r.length, 1);
+});
+
+test("resetStats() zeroes the counters for a new source", () => {
+  const r = new SampleRing(10);
+  r.push(mk(0, 0));
+  r.push(mk(5, 20));
+  r.badPackets = 2;
+  r.resetStats();
+  assert.deepEqual([r.received, r.drops, r.badPackets, r.resets], [0, 0, 0, 0]);
+});

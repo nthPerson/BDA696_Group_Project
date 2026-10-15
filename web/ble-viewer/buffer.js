@@ -19,17 +19,28 @@ export class SampleRing {
     this._lastT = null;
   }
 
-  /** Forget the seq/t baseline (call before every (re)connect) but keep the plot. */
+  /** Forget the seq baseline (call before every reconnect) but keep the plot. The time baseline
+   * is kept on purpose: a kit that rebooted while disconnected comes back with a smaller t_ms,
+   * and push() must still see that to drop the old clock. */
   resetLink() {
     this._lastSeq = null;
-    this._lastT = null;
   }
 
+  /** Empty the plot for a new source (a new clock). The counters are kept; see resetStats(). */
   clear() {
     this._start = 0;
     this.length = 0;
-    this.resetLink();
+    this._lastSeq = null;
+    this._lastT = null;
     this.version++;
+  }
+
+  /** Zero received/drops/badPackets/resets, for a newly chosen kit or the simulator. */
+  resetStats() {
+    this.received = 0;
+    this.drops = 0;
+    this.badPackets = 0;
+    this.resets = 0;
   }
 
   push(s) {

@@ -3,8 +3,10 @@
 import threading
 from urllib.request import urlopen
 
+import pytest
 from typer.testing import CliRunner
 
+from formcoach.app import viewer
 from formcoach.app.viewer import WEB_ROOT, make_server, viewer_url
 from formcoach.cli import app
 
@@ -37,3 +39,23 @@ def test_viewer_command_is_registered():
     result = CliRunner().invoke(app, ["viewer", "--help"])
     assert result.exit_code == 0
     assert "--port" in result.output
+
+
+def test_a_busy_port_is_an_error_not_a_silent_second_server():
+    first = make_server(port=0)
+    try:
+        with pytest.raises(OSError):
+            make_server(port=first.server_address[1]).server_close()
+    finally:
+        first.server_close()
+
+
+def test_windows_does_not_set_so_reuseaddr(monkeypatch):
+    # On Windows SO_REUSEADDR lets a second process bind a port that is already in use, so a
+    # busy port would never raise and requests could go to the other program.
+    monkeypatch.setattr(viewer, "_on_windows", lambda: True)
+    server = make_server(port=0)
+    try:
+        assert not server.allow_reuse_address
+    finally:
+        server.server_close()

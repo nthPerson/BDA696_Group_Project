@@ -7,6 +7,7 @@ server). Standard library only, so it works from a plain ``make setup`` install.
 from __future__ import annotations
 
 import functools
+import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -34,10 +35,24 @@ class _Handler(SimpleHTTPRequestHandler):
         pass  # one line per request would bury the URL the user needs
 
 
+class _ExclusiveServer(ThreadingHTTPServer):
+    # On Windows SO_REUSEADDR lets a second socket bind a port another program already holds,
+    # so a busy port would not raise. Elsewhere it only allows a quick restart (TIME_WAIT).
+    allow_reuse_address = False
+
+
+def _on_windows() -> bool:
+    return os.name == "nt"
+
+
 def make_server(port: int = 8000, root: Path = WEB_ROOT) -> ThreadingHTTPServer:
-    """Serve ``root`` on 127.0.0.1:``port`` (0 picks a free port). Call ``serve_forever()``."""
+    """Serve ``root`` on 127.0.0.1:``port`` (0 picks a free port). Call ``serve_forever()``.
+
+    Raises ``OSError`` if the port is already in use.
+    """
     handler = functools.partial(_Handler, directory=str(root))
-    return ThreadingHTTPServer(("127.0.0.1", port), handler)
+    server_cls = _ExclusiveServer if _on_windows() else ThreadingHTTPServer
+    return server_cls(("127.0.0.1", port), handler)
 
 
 def viewer_url(server: ThreadingHTTPServer) -> str:

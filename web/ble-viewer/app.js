@@ -23,32 +23,60 @@ const charts = new Charts($("chart-accel"), $("chart-gyro"));
 
 let link = null; // the active source: BleLink or Simulator
 let status = null; // last decoded FcStatus
+let busy = false; // a chooser/connect is in progress: source buttons are locked
+let recordingFrom = null; // name of the source the open recording belongs to
 let drawnVersion = -1;
 
-const callbacks = {
-  onPacket(view) {
-    const now = performance.now();
-    packetRate.mark(now);
-    const { samples, error } = decodeBatch(view);
-    if (error) {
-      ring.badPackets++;
-      showMessage(`Bad packet: ${error} (${MTU_HINT}).`, "warn");
-      return;
-    }
-    for (const s of samples) ring.push(s);
-    sampleRate.mark(now, samples.length);
-    recorder.add(samples);
-  },
-  onStatus(view) {
-    const st = decodeStatus(view);
-    if (!st.error) status = st;
-  },
-  onDisconnect() {
-    const kept = recorder.active ? " The recording is kept: press Stop to download it." : "";
-    showMessage(`Disconnected at ${new Date().toLocaleTimeString()}.${kept}`, "warn");
-    updateButtons();
-  },
-};
+function handlePacket(view) {
+  const now = performance.now();
+  packetRate.mark(now);
+  const { samples, error } = decodeBatch(view);
+  if (error) {
+    ring.badPackets++;
+    showMessage(`Bad packet: ${error} (${MTU_HINT}).`, "warn");
+    return;
+  }
+  for (const s of samples) ring.push(s);
+  sampleRate.mark(now, samples.length);
+  recorder.add(samples);
+}
+
+/** Callbacks for one source. Events from any source other than the active one are ignored,
+ * so a link that is still finishing its connect after the user moved on cannot mix in. */
+function newSource(Kind) {
+  const cb = {
+    onPacket: (view) => cb.owner === link && handlePacket(view),
+    onStatus: (view) => {
+      if (cb.owner !== link) return;
+      const st = decodeStatus(view);
+      if (!st.error) status = st;
+    },
+    onDisconnect: () => {
+      if (cb.owner !== link) return;
+      const kept = recorder.active ? " The recording is kept: press Stop to download it." : "";
+      showMessage(`Disconnected at ${new Date().toLocaleTimeString()}.${kept}`, "warn");
+      updateButtons();
+    },
+  };
+  cb.owner = new Kind(cb);
+  return cb.owner;
+}
+
+/** Make `next` the active source: save an open recording under the old source's name, start
+ * a fresh plot and fresh counters, and release the old source. */
+async function switchSource(next) {
+  const prev = link;
+  if (recorder.active) {
+    const name = recordingFrom;
+    download(recorder.stop(), csvFilename(name));
+    showMessage(`Saved the recording from ${name} before switching.`, "info");
+  }
+  link = next;
+  status = null;
+  ring.clear();
+  ring.resetStats();
+  if (prev?.connected) await prev.disconnect();
+}
 
 function showMessage(text, kind = "info") {
   const el = $("message");
@@ -65,51 +93,83 @@ function updateButtons() {
   const connected = !!link && link.connected;
   const ble = link instanceof BleLink;
   const sim = link instanceof Simulator;
-  $("connect").textContent = ble && link.device && !connected ? "Reconnect" : "Connect";
-  $("connect").disabled = !bluetoothAvailable() || !window.isSecureContext || (ble && connected);
+  $("connect").disabled = busy || !bluetoothAvailable() || !window.isSecureContext || (ble && connected);
+  $("reconnect").hidden = !(ble && link.device && !connected);
+  $("reconnect").disabled = busy;
   $("simulate").textContent = sim && connected ? "Stop simulation" : "Simulate";
-  $("simulate").disabled = ble && connected;
-  $("disconnect").disabled = !(ble && connected);
+  $("simulate").disabled = busy || (ble && connected);
+  $("disconnect").disabled = busy || !(ble && connected);
   for (const b of document.querySelectorAll("[data-needs-control]")) {
-    b.disabled = !(connected && link.hasControl);
+    b.disabled = busy || !(connected && link.hasControl);
     b.title = connected && !link.hasControl ? "This firmware has no control characteristic" : "";
   }
   $("record").disabled = !connected && !recorder.active;
   $("record").textContent = recorder.active ? "■ Stop & download CSV" : "● Record";
-  $("device").textContent = link ? `${link.name}${connected ? "" : " (disconnected)"}` : "not connected";
+  const named = sim || (ble && link.device);
+  $("device").textContent = named ? `${link.name}${connected ? "" : " (disconnected)"}` : "not connected";
 }
 
-async function connectBle() {
-  clearMessage();
-  if (link instanceof Simulator) await link.disconnect();
-  if (!(link instanceof BleLink)) {
-    link = new BleLink(callbacks);
-    status = null;
-    ring.clear();
-  }
-  ring.resetLink();
+function connectError(err) {
+  const cancelled = err.name === "NotFoundError" && /cancel/i.test(err.message);
+  if (!cancelled) showMessage(`Could not connect: ${err.message}. ${CONNECT_HINT}`, "error");
+}
+
+/** Lock the source buttons while `fn` runs (chooser + GATT connect take seconds). */
+async function whileBusy(fn) {
+  busy = true;
+  updateButtons();
   try {
-    await (link.device ? link.reconnect() : link.connect());
-    clearMessage();
-  } catch (err) {
-    const cancelled = err.name === "NotFoundError" && /cancel/i.test(err.message);
-    if (!cancelled) showMessage(`Could not connect: ${err.message}. ${CONNECT_HINT}`, "error");
+    await fn();
+  } finally {
+    busy = false;
+    updateButtons();
   }
-  updateButtons();
 }
 
-async function toggleSimulation() {
-  clearMessage();
-  if (link instanceof Simulator && link.connected) {
-    await link.disconnect();
-  } else {
-    link = new Simulator(callbacks);
-    status = null;
-    ring.clear();
-    await link.connect();
-  }
-  updateButtons();
-}
+/** Connect…: always opens the chooser, so any kit can be picked. Cancelling keeps the old source. */
+const connectBle = () =>
+  whileBusy(async () => {
+    clearMessage();
+    const fresh = newSource(BleLink);
+    try {
+      await fresh.choose();
+    } catch (err) {
+      connectError(err);
+      return;
+    }
+    await switchSource(fresh);
+    try {
+      await fresh.reconnect();
+      clearMessage();
+    } catch (err) {
+      connectError(err);
+    }
+  });
+
+/** Reconnect: the kit picked last, without the chooser; the plot and counters are kept. */
+const reconnectBle = () =>
+  whileBusy(async () => {
+    clearMessage();
+    ring.resetLink();
+    try {
+      await link.reconnect();
+      clearMessage();
+    } catch (err) {
+      connectError(err);
+    }
+  });
+
+const toggleSimulation = () =>
+  whileBusy(async () => {
+    clearMessage();
+    if (link instanceof Simulator && link.connected) {
+      await link.disconnect();
+      return;
+    }
+    const sim = newSource(Simulator);
+    await switchSource(sim);
+    await sim.connect();
+  });
 
 async function send(cmd, label) {
   try {
@@ -133,6 +193,7 @@ function download(text, filename) {
 const latestFlags = () => ring.latest?.flags ?? 0;
 
 $("connect").addEventListener("click", connectBle);
+$("reconnect").addEventListener("click", reconnectBle);
 $("simulate").addEventListener("click", toggleSimulation);
 $("disconnect").addEventListener("click", () => link?.disconnect());
 $("ping").addEventListener("click", () => send(Command.PING, "PING (the serial monitor prints '# pong')"));
@@ -149,8 +210,12 @@ $("calibrate").addEventListener("click", () => {
   }
 });
 $("record").addEventListener("click", () => {
-  if (recorder.active) download(recorder.stop(), csvFilename(link?.name));
-  else recorder.start();
+  if (recorder.active) {
+    download(recorder.stop(), csvFilename(recordingFrom));
+  } else {
+    recordingFrom = link?.name;
+    recorder.start();
+  }
   updateButtons();
 });
 

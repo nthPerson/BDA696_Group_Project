@@ -33,13 +33,19 @@ export class BleLink {
     return !!this.device?.gatt?.connected;
   }
 
-  /** Open the browser's device chooser (must run inside a click handler), then connect. */
-  async connect() {
+  /** Open the browser's device chooser (must run inside a click handler). Throws NotFoundError
+   * if the user cancels, leaving this link untouched. */
+  async choose() {
     const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }] });
     if (this.device !== device) {
       device.addEventListener("gattserverdisconnected", this._onGone);
       this.device = device;
     }
+  }
+
+  /** choose(), then connect. */
+  async connect() {
+    await this.choose();
     await this._open();
   }
 

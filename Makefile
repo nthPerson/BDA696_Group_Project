@@ -38,8 +38,9 @@ format: ## auto-format and auto-fix lint
 
 test: ## run the pytest suite (+ the web viewer's JS tests when node is installed)
 	$(RUN) pytest
-	@if command -v node >/dev/null 2>&1; then node --test web/ble-viewer/test/*.test.mjs; \
-	else echo "node not found: skipped the optional web/ble-viewer JS tests"; fi
+	@if command -v node >/dev/null 2>&1 && node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 18 ? 1 : 0)'; \
+	then node --test web/ble-viewer/test/*.test.mjs; \
+	else echo "node >= 18 not found: skipped the optional web/ble-viewer JS tests"; fi
 
 data: ## fetch a public dataset into data/external/ (DATASET=mmfit|recofit|recgym)
 	$(RUN) formcoach data fetch --dataset $(DATASET)

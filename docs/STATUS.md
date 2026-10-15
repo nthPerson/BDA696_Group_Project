@@ -22,8 +22,8 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
   `.github/workflows/pages.yml` publishes it to
   https://nthperson.github.io/BDA696_Group_Project/ble-viewer/ on merge to main.
 - `tests/test_web_protocol.py` pins `protocol.js` against `protocol.py` (constants plus golden
-  packets). `tests/test_viewer_server.py` covers the server and its MIME types. 18 Node tests run
-  locally via `make test` when Node is installed (not in CI). ADR-0026. Spec and plan are in
+  packets). `tests/test_viewer_server.py` covers the server, its MIME types and busy-port handling. 21 Node tests run
+  locally via `make test` when Node ≥ 18 is installed (not in CI). ADR-0026. Spec and plan are in
   `docs/superpowers/`.
 - Verified: simulator and a scripted fake Bluetooth device in headless Chromium (10.0 pkt/s,
   50.0 Hz, 0 drops; reconnect without duplicate streams; queued writes; the recording survives a
