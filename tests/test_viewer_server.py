@@ -38,7 +38,8 @@ def test_web_root_is_the_repo_web_dir():
 def test_viewer_command_is_registered():
     result = CliRunner().invoke(app, ["viewer", "--help"])
     assert result.exit_code == 0
-    assert "--port" in result.output
+    # plain words only: CI forces colour, and the ANSI codes split option names like "--port"
+    assert "BLE live viewer" in result.output and "port" in result.output
 
 
 def test_a_busy_port_is_an_error_not_a_silent_second_server():
