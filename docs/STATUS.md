@@ -9,6 +9,44 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-10-15 — Browser BLE live viewer (Claude Code with Robert)
+
+### What changed
+- `web/ble-viewer/`: a static Web Bluetooth page. **Connect** to a kit (Chrome/Edge on Windows,
+  macOS, Android) for live accel (g, with |a|) and gyro (dps) charts over the last 10 s, the
+  status row (fw, uptime, calibrated, session), GATE/BUTTON/SESSION pills, packet rate, sample
+  rate and drops. Buttons send PING, LED good/fault, start/stop session and calibrate. **Record**
+  downloads a serial-format CSV. **Simulate** streams synthetic curls through the same decoder
+  for anyone without a kit or with Safari/Firefox.
+- `formcoach viewer` / `make ble-viewer` serves it on http://localhost:8000/ble-viewer/.
+  `.github/workflows/pages.yml` publishes it to
+  https://nthperson.github.io/BDA696_Group_Project/ble-viewer/ on merge to main.
+- `tests/test_web_protocol.py` pins `protocol.js` against `protocol.py` (constants plus golden
+  packets). `tests/test_viewer_server.py` covers the server and its MIME types. 18 Node tests run
+  locally via `make test` when Node is installed (not in CI). ADR-0026. Spec and plan are in
+  `docs/superpowers/`.
+- Verified: simulator and a scripted fake Bluetooth device in headless Chromium (10.0 pkt/s,
+  50.0 Hz, 0 drops; reconnect without duplicate streams; queued writes; the recording survives a
+  disconnect); Windows `curl.exe` reaches the WSL server on localhost.
+
+### Next
+1. Robert: Settings → Pages → Source: **GitHub Actions** (one time), then re-run the Pages
+   workflow after merge.
+2. Robert: connect to K1 from Windows Chrome. Check |a| ≈ 1.00 g flat, gyro, GATE on shake,
+   Ping → `# pong`, LEDs, CSV. Note the result in `docs/howto/ble-viewer.md` §5.
+3. Finish `fw/imu-bringup` (ADR-0025 BMI160 fix). Until it merges, a kit flashed from main reads
+   about 4 g at rest in the viewer.
+4. **Bryce: read `docs/howto/ble-viewer.md` first, then `web/ble-viewer/app.js`.** The demo
+   script is its "What a healthy kit looks like" paragraph.
+
+### Open questions
+- Linux Chrome may need the experimental-web-platform flag (verify).
+
+### Blockers
+- None.
+
+---
+
 ## 2026-10-08 — First board: firmware v1.1 verified on a bare XIAO, BLE end-to-end, self-test tooling (Claude Code with Robert)
 
 ### What changed

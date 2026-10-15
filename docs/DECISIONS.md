@@ -295,3 +295,19 @@ scan response; `bleak` on Windows then sees both, and connects with MTU 185 as d
 `usbipd bind` covers both. Still open until an IMU is wired: BMI160 register sequence, I2C
 address, 50 Hz notify rate and serial+BLE drops, on-device inference time per window.
 
+## ADR-0026 · Browser BLE viewer: Web Bluetooth + vendored uPlot, no build step, GitHub Pages · 2026-10-15 · accepted
+Context: the team needs to see a kit's live IMU stream for the prototype demo and for per-kit
+bring-up, on macOS and Windows laptops (WSL2 has no Bluetooth), without installing anything.
+Options: (a) a Python GUI on bleak + matplotlib/Streamlit, which needs `--extra device`, runs on
+the Windows side for WSL users, and is slow at 50 Hz × 7 traces; (b) a web page with Chart.js
+or Plotly from a CDN, which stutters with streaming traces and needs internet at the demo; (c)
+plain ES modules + Web Bluetooth + uPlot vendored in the repo. Decision: (c), under
+`web/ble-viewer/`, with no npm build. It is served by `formcoach viewer` on localhost (Web
+Bluetooth needs a secure context; the server sets explicit JS MIME types because Windows can map
+`.js` to text/plain) and deployed to GitHub Pages by `.github/workflows/pages.yml`.
+`protocol.js` is a third mirror of the protocol, pinned against `protocol.py` by
+`tests/test_web_protocol.py` (constants and golden packets). The Node unit tests run locally
+via `make test` and are not in CI (Robert, 2026-10-15). Consequences: Chrome/Edge only (no Safari,
+Firefox or iOS), and the page has a simulator for everyone else. uPlot is bumped by hand
+(`web/ble-viewer/vendor/README.md`). ADR-0025 is on the unmerged `fw/imu-bringup` branch,
+hence the number gap on main.
