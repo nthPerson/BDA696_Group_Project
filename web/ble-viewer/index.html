@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FormCoach Live IMU</title>
+<link rel="stylesheet" href="vendor/uPlot.min.css">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f7; --panel: #ffffff; --fg: #1b1b1f; --muted: #6a6a74; --border: #dcdce1;
+    --grid: #ececf0; --accent: #2457d6; --ok: #15803d; --warn: #a16207; --err: #c62828;
+    --c-x: #d6336c; --c-y: #2b8a3e; --c-z: #1c64d1; --c-mag: #1b1b1f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111114; --panel: #1a1a1f; --fg: #ececf1; --muted: #9b9ba8; --border: #30303a;
+      --grid: #27272e; --accent: #7aa7ff; --ok: #4ade80; --warn: #facc15; --err: #f87171;
+      --c-x: #f783ac; --c-y: #69db7c; --c-z: #74c0fc; --c-mag: #ececf1;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header, main, footer { max-width: 1100px; margin: 0 auto; padding: 12px 16px; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .status { margin-top: 8px; color: var(--muted); }
+  .status b, .stat b { color: var(--fg); font-variant-numeric: tabular-nums; }
+  .stat { color: var(--muted); }
+  .device { font-weight: 600; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--panel); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .pill { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border);
+          font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+  .pill.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .banner, .message { margin-top: 8px; padding: 8px 12px; border-radius: 6px; border: 1px solid; }
+  .banner, .message.error { border-color: var(--err); color: var(--err); }
+  .message.warn { border-color: var(--warn); color: var(--warn); }
+  .message.info { border-color: var(--border); color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+           padding: 8px; margin-bottom: 12px; }
+  .spacer { flex: 1; }
+  .uplot, .u-title, .u-legend { color: var(--fg); font-family: inherit; }
+  .u-title { font-size: 14px; font-weight: 600; }
+  footer { color: var(--muted); font-size: 12px; }
+  footer a { color: var(--accent); }
+</style>
+<script src="vendor/uPlot.iife.min.js"></script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header>
+  <h1>FormCoach live IMU</h1>
+  <div class="row">
+    <button id="connect" class="primary">Connect…</button>
+    <button id="reconnect" hidden>Reconnect</button>
+    <button id="simulate">Simulate</button>
+    <button id="disconnect" disabled>Disconnect</button>
+    <span id="device" class="device">not connected</span>
+    <span class="stat"><b id="pkt-rate">0.0</b> pkt/s</span>
+    <span class="stat"><b id="hz">0.0</b> Hz</span>
+    <span class="stat" title="Magnitude of the newest accel sample; about 1.00 g when the kit is still">|a| <b id="amag">–</b> g</span>
+    <span class="stat">drops <b id="drops">0</b></span>
+    <span class="stat">bad packets <b id="bad">0</b></span>
+  </div>
+  <div id="unsupported" class="banner" hidden></div>
+  <div id="message" class="message" hidden></div>
+  <div class="row status">
+    <span>fw <b id="fw">–</b></span>
+    <span>up <b id="uptime">–</b></span>
+    <span>calibrated <b id="calibrated">–</b></span>
+    <span>session <b id="session">–</b></span>
+    <span id="pill-gate" class="pill" title="Gate open: the wearable thinks an exercise is in progress">GATE</span>
+    <span id="pill-button" class="pill" title="Button held">BUTTON</span>
+    <span id="pill-session" class="pill" title="Session active">SESSION</span>
+  </div>
+</header>
+<main>
+  <section class="panel"><div id="chart-accel"></div></section>
+  <section class="panel"><div id="chart-gyro"></div></section>
+  <section class="panel row">
+    <button id="ping" data-needs-control disabled>Ping</button>
+    <button id="led-good" data-needs-control disabled>LED: good rep</button>
+    <button id="led-fault" data-needs-control disabled>LED: fault</button>
+    <button id="session-toggle" data-needs-control disabled>Start session</button>
+    <button id="calibrate" data-needs-control disabled>Calibrate…</button>
+    <span class="spacer"></span>
+    <span id="rec-count" class="stat"></span>
+    <button id="record" disabled>● Record</button>
+  </section>
+</main>
+<footer>
+  Chrome or Edge on Windows, macOS or Android. Only one app can be connected to a kit at a time.
+  Help: <a href="https://github.com/nthPerson/BDA696_Group_Project/blob/main/docs/howto/ble-viewer.md">docs/howto/ble-viewer.md</a>
+</footer>
+</body>
+</html>

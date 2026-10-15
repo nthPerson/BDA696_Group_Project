@@ -1,4 +1,5 @@
 # Installed by `make setup` (pre-commit install). Runs on every commit; CI runs the same tools.
+exclude: ^web/ble-viewer/vendor/  # vendored minified files stay byte-identical to upstream
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.9
