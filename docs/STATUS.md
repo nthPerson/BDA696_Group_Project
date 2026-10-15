@@ -47,6 +47,36 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-10-14 — Final Project Paper Outline drafted (Claude Code with Robert)
+
+### What changed
+- `docs/report/outline.md`: full draft of the **Written Report Outline** (due **Wed 2026-10-28,
+  11:59 pm PT**, one PDF on Canvas, submitted by Robert as group leader). Built from the Canvas
+  assignment text and the 2026-10-14 lecture (Plaud recording). Where they differ the lecture wins:
+  technical/professional style, one bullet per member for contributions, APA or MLA, public GitHub
+  link in the appendix, section structure is ours. Ends with a requirement → section map.
+- The abstract is written in the future tense and reports no results. §8 has one clearly labelled
+  "progress to date" box quoting `reports/` numbers. Re-check those numbers on submission day.
+- 11 APA references; every DOI/page range checked against Crossref, arXiv or UCI.
+- `docs/04-datasets.md` §5: the "220+ subjects" scale line was wrong (RecoFit releases 94, not
+  200+); now ≈ 29 M IMU samples from 114 subjects, with the per-dataset split and window counts.
+- `docs/05-roadmap.md` §1: outline due date filled in.
+
+### Next
+1. Team fills the `[TODO]`s: SDSU emails, group name as registered on Canvas, course title,
+   instructor name. Each member checks their §11 bullet and the sections they will draft.
+2. Read the pitch feedback (released Sat 2026-10-17) and fold any scope notes into §1 and §9.
+3. Export to PDF (`pandoc docs/report/outline.md -o outline.pdf`, or print GitHub's rendered
+   view) and submit by 2026-10-28.
+
+### Open questions
+- `reports/device.md` (cited in §8) lives on the unmerged `fw/imu-bringup` branch.
+
+### Blockers
+- None.
+
+---
+
 ## 2026-10-08 — First board: firmware v1.1 verified on a bare XIAO, BLE end-to-end, self-test tooling (Claude Code with Robert)
 
 ### What changed
