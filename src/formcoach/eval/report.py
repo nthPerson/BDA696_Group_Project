@@ -73,6 +73,15 @@ def md_table(df: pd.DataFrame, floatfmt: str = ".3f", index: bool = False) -> st
     return "\n".join(lines)
 
 
+def repo_relative(path: Path) -> str:
+    """``path`` relative to the repo root in POSIX form (as given when it is outside the repo),
+    so a provenance line in a committed report runs from any clone on any OS."""
+    try:
+        return Path(path).resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return Path(path).as_posix()
+
+
 def relative_figure(path: Path, report_path: Path) -> str:
     """Markdown image link from ``report_path``'s directory to ``path``."""
     try:

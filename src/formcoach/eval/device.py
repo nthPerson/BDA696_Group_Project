@@ -81,7 +81,11 @@ def evaluate(log: Path, out: Path = DEFAULT_OUT) -> Path:
             }
         )
     parts = [
-        report.header("On-device gate metrics", f"formcoach eval device --log {log}", seed=None),
+        report.header(
+            "On-device gate metrics",
+            f"formcoach eval device --log {report.repo_relative(log)}",
+            seed=None,
+        ),
         report.md_table(pd.DataFrame(rows)),
         "",
     ]
