@@ -1,8 +1,8 @@
 # Assembly day: build, flash and test the five FormCoach wearables
 
 One page for the build session. Print it or keep it open on one laptop per station. Firmware
-v1.1.0 (`firmware/`) is compiled in CI but **has never run on a board**; step 3 is where the
-**(verify)** items in `docs/DECISIONS.md` (ADR-0020) get settled, so keep a notes file open.
+v1.1.1 (`firmware/`) is verified end to end on K1 (ADR-0024, ADR-0025); kits flashed with 1.1.0
+read about 4 g at rest and must be re-flashed. Keep a notes file open for anything that differs.
 Wiring: `docs/03-hardware.md` §2 (this page repeats it). Bring-up details and the WSL2 USB
 path: `.claude/skills/firmware-bringup/SKILL.md`.
 
@@ -94,7 +94,7 @@ make fw-monitor PORT=COM5                         # 115200 baud; press RESET aft
 ```
 Expected (bare board):
 ```
-# FormCoach fw 1.1.0  chip=ESP32-S3 rev=0
+# FormCoach fw 1.1.1  chip=ESP32-S3 rev=0
 # sample=19 B batch=99 B status=12 B rate=50 Hz
 # flash app=643168
 # bmi160 NOT FOUND at 0x00
@@ -122,7 +122,7 @@ the banner and 8 s of samples, and prints PASS/FAIL per check; `uv sync --extra 
 make device-check PORT=COM5 KIT=K1                 # = uv run formcoach device check --port COM5 --kit K1
 ```
 ```
-  [PASS] banner       firmware 1.1.0
+  [PASS] banner       firmware 1.1.1
   [PASS] imu          bmi160 ok at 0x69
   [PASS] gate         tflm arena=… B
   [PASS] ble          FormCoach-XXXX
@@ -136,6 +136,7 @@ log: reports/logs/K1_<timestamp>.log
 ```
 Then, if you want to see the raw stream, open the monitor and press RESET:
 ```
+# bmi160 regs err=0x00 pmu=0x14 acc_conf=0x28 acc_range=0x08 gyr_conf=0x28 gyr_range=0x01 ok
 # bmi160 ok at 0x69
 …
 12345,-120,35,4090,3,-2,1,0,0        <- one CSV line every 20 ms; flat on the desk: one accel axis ≈ ±4096, gyro within ±50
@@ -146,10 +147,12 @@ Then, if you want to see the raw stream, open the monitor and press RESET:
   [ ] gyro near zero when still · [ ] `# infer us=` value (write it down: this is the on-device
   inference time) · [ ] no `# gate: AllocateTensors failed` message
 - `NOT FOUND` → swap SDA/SCL first (most common), then meter 3.3 V at the module, then try
-  another module. Values frozen or all zero → cold joint on SDA/SCL.
+  another module. Values frozen or all zero → cold joint on SDA/SCL. `MISCONFIGURED` on the
+  `# bmi160 regs` line, or `gravity` ≈ 4 g → the kit runs firmware older than 1.1.1; re-flash.
 
 **Step 4 — solder and test the button (A then B)**: `make device-check PORT=COM5 KIT=K1
-INTERACTIVE=1` adds the button and shake phases (`[PASS] button`, `session`, `gate_flag`).
+INTERACTIVE=1` walks through a short press (session toggle), a 3 s hold (calibration, keep the
+board flat) and a shake (gate opens): `[PASS] button`, `session`, `calibration`, `gate_flag`.
 By hand on the monitor: short press →
 `# session start id=1`, LED solid; second short press → `# session stop id=1`. Hold 2 s →
 `# calibration: keep the device flat and still for 3 s` then `# calibrated g=(…) bias=(…)`;
@@ -179,7 +182,7 @@ uv run formcoach record --source ble --subject S1 --exercise curl --duration 30
 - Serial drops with BLE connected → note it (serial + BLE at 50 Hz is an open question).
 
 **Step 7 — register and archive (C)**: row in `docs/devices.md` (kit, owner, MAC from nRF
-Connect, BLE name, IMU addr, `1.1.0`, calibration date, issues); save the boot log as
+Connect, BLE name, IMU addr, `1.1.1`, calibration date, issues); save the boot log as
 `reports/logs/<kit>_boot.log` (copy the monitor output) — `formcoach eval device --log` turns
 it into `reports/device.md`; take photos of the wiring for `docs/wiring-guide.md`.
 

@@ -4,8 +4,39 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 1 (Sep 23 – Oct 6) · **Current checkpoint:** 1–3 + software of 4–6 merged → assembly day next
-**Hardware:** K1 bare board verified 2026-10-08 (firmware + BLE); IMU wiring next; see `docs/assembly-day.md` · **Go/no-go on vision path:** ~Nov 3
+**Current phase:** Phase 3 (Oct 28 – Nov 17) · **Current checkpoint:** 1–3 + software of 4–6 merged → flash and test the assembled kits
+**Hardware:** K1 fully verified 2026-10-08 (IMU, BLE, gate); more kits assembled, flashing next with fw 1.1.1; see `docs/assembly-day.md` · **Go/no-go on vision path:** ~Nov 3
+
+---
+
+## 2026-10-28 — BMI160 fix merged, firmware 1.1.1 (Claude Code with Robert)
+
+### What changed
+- `fw/imu-bringup` (written 2026-10-08, never pushed) is now on main. `Bmi160::begin()` powers
+  the sensors up before writing CONF/RANGE and reads the registers back (ADR-0025): firmware
+  from older main read about 4 g at rest because the ±8 g range write was dropped. The boot log
+  now has a `# bmi160 regs … ok` line (`MISCONFIGURED` if the read-back differs).
+- Firmware version **1.1.1**, so a fixed kit is distinguishable from a 1.1.0 kit in the
+  banner, `device check`, the BLE viewer and `docs/devices.md`.
+- `formcoach device check --interactive` walks through short press (session), 3 s hold
+  (calibration) and shake (gate); gravity and gyro bias come from the still window before the
+  first phase only. New test in `tests/test_selftest.py`.
+- `reports/device.md` names its log repo-relative (`report.repo_relative`), and the raw
+  device logs under `reports/logs/*.log` are committed so the report regenerates from a clone.
+- `docs/assembly-day.md`: 1.1.1 banner and the `# bmi160 regs` line; ≈ 4 g → re-flash.
+
+### Next
+1. Robert: flash the newly assembled kits (and re-flash K1, which runs the fix under the old 1.1.0 label):
+   `make attach-xiao`, `make fw-upload PORT=/dev/ttyACM0`, `make device-check
+   PORT=/dev/ttyACM0 KIT=K2 INTERACTIVE=1`; one row per kit in `docs/devices.md`.
+2. Each kit in the BLE viewer from Windows Chrome: |a| ≈ 1.00 g flat, 50 Hz, 0 drops, GATE on
+   shake (`docs/howto/ble-viewer.md` §5).
+
+### Open questions
+- None new.
+
+### Blockers
+- None.
 
 ---
 

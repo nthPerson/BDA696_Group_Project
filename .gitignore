@@ -41,6 +41,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+!reports/logs/*.log
 .env
 
 # ---- Claude Code: personal overrides stay local; .claude/settings.json, hooks/, skills/, agents/ are shared ----
