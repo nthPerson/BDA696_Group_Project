@@ -44,7 +44,7 @@ without it. Switching kits (or to Simulate) saves an open recording under the ol
 
 **What a healthy kit looks like:** flat and still gives `|a|` ≈ 1.00 g with az ≈ ±1 g; rotating it moves the
 gyro traces; shaking it lights **GATE**; about **10.0 pkt/s** and **50.0 Hz** with **drops 0**; the status row
-shows `fw 1.1.0` and `calibrated yes` after a calibration.
+shows `fw 1.1.1` and `calibrated yes` after a calibration.
 
 | Button | Sends (control char.) | What you should see |
 |---|---|---|
