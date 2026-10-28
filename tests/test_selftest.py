@@ -89,6 +89,36 @@ def test_interactive_phases_detect_button_session_and_gate():
     assert checks["button"].ok and checks["session"].ok and checks["gate_flag"].ok
 
 
+def test_hold_phase_checks_calibration_and_gravity_ignores_the_shake():
+    def flags(i):  # 0-2 s still, 2-3 s button, 3-6 s hold, 6-8 s gate open
+        if 100 <= i < 150:
+            return int(protocol.Flag.SESSION_ACTIVE | protocol.Flag.BUTTON_PRESSED)
+        if i >= 300:
+            return int(protocol.Flag.GATE_STATE | protocol.Flag.SESSION_ACTIVE)
+        return 0
+
+    # a hard shake (3 g on z) during the last 2 s must not leak into the at-rest gravity estimate
+    shaken = []
+    for ln in _lines(8.0, flags_seq=flags):
+        s = protocol.parse_serial_line(ln)
+        if s is not None and s.t_ms >= 6000:
+            p = ln.split(",")
+            p[3] = str(3 * 4096)
+            ln = ",".join(p)
+        shaken.append(ln)
+    phases = {"button": (2.0, 3.0), "hold": (3.0, 6.0), "shake": (6.0, 8.0)}
+
+    rep = selftest.analyze(shaken, phases=phases)
+    checks = {c.name: c for c in rep.checks}
+    assert not checks["calibration"].ok and "3 s hold" in checks["calibration"].detail
+    assert checks["gravity"].ok and abs(checks["gravity"].value - 1.0) < 0.05
+
+    with_cal = [*shaken, "# calibrated g=(0.00,0.00,1.00) bias=(0.1,0.1,0.1)"]
+    rep2 = selftest.analyze(with_cal, phases=phases)
+    calib = [c for c in rep2.checks if c.name == "calibration"]
+    assert len(calib) == 1 and calib[0].ok  # one check, not a duplicate "calibration stored"
+
+
 def test_report_text_and_json(tmp_path):
     rep = selftest.analyze(_lines())
     text = selftest.format_report(rep)
