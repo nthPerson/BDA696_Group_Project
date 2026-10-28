@@ -31,7 +31,7 @@ GRAVITY_TOL_G = 0.1
 GYRO_BIAS_MAX_LSB = 150  # ≈ 4.6 dps
 INFER_MAX_MS = 20.0  # docs/02 §6.3 target
 RE_FW = re.compile(r"#\s*FormCoach fw\s+(\S+)")
-RE_IMU = re.compile(r"#\s*bmi160\s+(ok|NOT FOUND)\s+at\s+(0x[0-9A-Fa-f]{2})")
+RE_IMU = re.compile(r"#\s*bmi160\s+(ok|NOT FOUND|MISCONFIGURED)\s+at\s+(0x[0-9A-Fa-f]{2})")
 RE_GATE_TFLM = re.compile(r"#\s*gate:\s*tflm ok arena=(\d+)")
 RE_GATE_MODE = re.compile(r"#\s*gate:\s*(int8 CNN \(TFLite Micro\)|motion-energy rule)")
 RE_BLE = re.compile(r"#\s*ble advertising as\s+(FormCoach-[0-9A-Fa-f]{4})")

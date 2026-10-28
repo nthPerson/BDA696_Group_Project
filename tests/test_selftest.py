@@ -63,6 +63,12 @@ def test_missing_imu_and_drops_are_reported():
     assert not {c.name: c for c in rep2.checks}["drops"].ok
 
 
+def test_misconfigured_imu_fails_with_its_address():
+    lines = [ln.replace("# bmi160 ok at 0x69", "# bmi160 MISCONFIGURED at 0x69") for ln in _lines()]
+    imu = {c.name: c for c in selftest.analyze(lines).checks}["imu"]
+    assert not imu.ok and imu.detail == "bmi160 MISCONFIGURED at 0x69"
+
+
 def test_wrong_gravity_and_energy_fallback_flagged():
     lines = _lines(az_g=0.5)
     lines = [

@@ -205,7 +205,8 @@ void setup() {
   Wire.setClock(400000);
   uint8_t addr = Bmi160::scan(Wire);
   imu_ok = addr && imu.begin(Wire, addr);
-  Serial.printf("# bmi160 %s at 0x%02X\n", imu_ok ? "ok" : "NOT FOUND", addr);
+  // a chip that answers but fails the register read-back is MISCONFIGURED, not missing
+  Serial.printf("# bmi160 %s at 0x%02X\n", imu_ok ? "ok" : addr ? "MISCONFIGURED" : "NOT FOUND", addr);
   loadCalibration();
   Serial.printf("# calibration %s\n", calibrated ? "loaded from NVS" : "none (long-press to calibrate)");
 

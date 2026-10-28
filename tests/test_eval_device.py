@@ -11,18 +11,18 @@ LOG = """# FormCoach fw 1.1.1  chip=ESP32-S3 rev=0
 """
 
 
-def test_parse_and_report_use_a_repo_relative_log_path(tmp_path):
+def test_parse_and_report_use_a_repo_relative_log_path(tmp_path, monkeypatch):
     d = device.parse(LOG)
     assert d["n"] == 2 and d["firmware"] == "1.1.1" and d["flash"] == 643792
 
-    log = report.REPO_ROOT / "reports" / "logs" / "_pytest_eval_device.log"
+    root = tmp_path.resolve()  # a stand-in repo, so the test never writes into the real one
+    monkeypatch.setattr(report, "REPO_ROOT", root)
+    log = root / "reports" / "logs" / "K9_test.log"
+    log.parent.mkdir(parents=True)
     log.write_text(LOG, encoding="utf-8")
-    try:
-        text = device.evaluate(log, out=tmp_path / "device.md").read_text(encoding="utf-8")
-    finally:
-        log.unlink()
-    assert "--log reports/logs/_pytest_eval_device.log`" in text
-    assert str(report.REPO_ROOT) not in text
+    text = device.evaluate(log, out=root / "device.md").read_text(encoding="utf-8")
+    assert "--log reports/logs/K9_test.log`" in text
+    assert str(root) not in text
     assert "13.43 / 13.45 / 13.45" in text
 
 
