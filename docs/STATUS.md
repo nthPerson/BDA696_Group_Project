@@ -9,6 +9,74 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-10-15 — Browser BLE live viewer (Claude Code with Robert)
+
+### What changed
+- `web/ble-viewer/`: a static Web Bluetooth page. **Connect** to a kit (Chrome/Edge on Windows,
+  macOS, Android) for live accel (g, with |a|) and gyro (dps) charts over the last 10 s, the
+  status row (fw, uptime, calibrated, session), GATE/BUTTON/SESSION pills, packet rate, sample
+  rate and drops. Buttons send PING, LED good/fault, start/stop session and calibrate. **Record**
+  downloads a serial-format CSV. **Simulate** streams synthetic curls through the same decoder
+  for anyone without a kit or with Safari/Firefox.
+- `formcoach viewer` / `make ble-viewer` serves it on http://localhost:8000/ble-viewer/.
+  `.github/workflows/pages.yml` publishes it to
+  https://nthperson.github.io/BDA696_Group_Project/ble-viewer/ on merge to main.
+- `tests/test_web_protocol.py` pins `protocol.js` against `protocol.py` (constants plus golden
+  packets). `tests/test_viewer_server.py` covers the server, its MIME types and busy-port handling. 21 Node tests run
+  locally via `make test` when Node ≥ 18 is installed (not in CI). ADR-0026. Spec and plan are in
+  `docs/superpowers/`.
+- Verified: simulator and a scripted fake Bluetooth device in headless Chromium (10.0 pkt/s,
+  50.0 Hz, 0 drops; reconnect without duplicate streams; queued writes; the recording survives a
+  disconnect); Windows `curl.exe` reaches the WSL server on localhost.
+
+### Next
+1. Robert: Settings → Pages → Source: **GitHub Actions** (one time), then re-run the Pages
+   workflow after merge.
+2. Robert: connect to K1 from Windows Chrome. Check |a| ≈ 1.00 g flat, gyro, GATE on shake,
+   Ping → `# pong`, LEDs, CSV. Note the result in `docs/howto/ble-viewer.md` §5.
+3. Finish `fw/imu-bringup` (ADR-0025 BMI160 fix). Until it merges, a kit flashed from main reads
+   about 4 g at rest in the viewer.
+4. **Bryce: read `docs/howto/ble-viewer.md` first, then `web/ble-viewer/app.js`.** The demo
+   script is its "What a healthy kit looks like" paragraph.
+
+### Open questions
+- Linux Chrome may need the experimental-web-platform flag (verify).
+
+### Blockers
+- None.
+
+---
+
+## 2026-10-14 — Final Project Paper Outline drafted (Claude Code with Robert)
+
+### What changed
+- `docs/report/outline.md`: full draft of the **Written Report Outline** (due **Wed 2026-10-28,
+  11:59 pm PT**, one PDF on Canvas, submitted by Robert as group leader). Built from the Canvas
+  assignment text and the 2026-10-14 lecture (Plaud recording). Where they differ the lecture wins:
+  technical/professional style, one bullet per member for contributions, APA or MLA, public GitHub
+  link in the appendix, section structure is ours. Ends with a requirement → section map.
+- The abstract is written in the future tense and reports no results. §8 has one clearly labelled
+  "progress to date" box quoting `reports/` numbers. Re-check those numbers on submission day.
+- 11 APA references; every DOI/page range checked against Crossref, arXiv or UCI.
+- `docs/04-datasets.md` §5: the "220+ subjects" scale line was wrong (RecoFit releases 94, not
+  200+); now ≈ 29 M IMU samples from 114 subjects, with the per-dataset split and window counts.
+- `docs/05-roadmap.md` §1: outline due date filled in.
+
+### Next
+1. Team fills the `[TODO]`s: SDSU emails, group name as registered on Canvas, course title,
+   instructor name. Each member checks their §11 bullet and the sections they will draft.
+2. Read the pitch feedback (released Sat 2026-10-17) and fold any scope notes into §1 and §9.
+3. Export to PDF (`pandoc docs/report/outline.md -o outline.pdf`, or print GitHub's rendered
+   view) and submit by 2026-10-28.
+
+### Open questions
+- `reports/device.md` (cited in §8) lives on the unmerged `fw/imu-bringup` branch.
+
+### Blockers
+- None.
+
+---
+
 ## 2026-10-08 — First board: firmware v1.1 verified on a bare XIAO, BLE end-to-end, self-test tooling (Claude Code with Robert)
 
 ### What changed
@@ -44,6 +112,32 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 - None.
 
 ---
+
+## 2026-09-30 — Understand-Anything knowledge graph added (Claude Code with Christian)
+
+### What changed
+- `.ua/` now holds an Understand-Anything knowledge graph of the repo at commit `5214d94`:
+  505 nodes / 993 edges, 10 architectural layers, a 15-step guided tour, 63 test→source
+  `tested_by` links. Validation: 0 issues. Nothing in `src/`, `firmware/` or `tests/` changed.
+- `.ua/.understandignore` excludes tool state (`.serena/`, `.claude/autoharness/`, `.ua/`) and
+  binary data (`*.npy`, `*.mat`, `*.parquet`, `*.tflite`). `.gitignore` keeps `.ua/tmp/` and
+  `.ua/.trash-*/` local.
+
+### How to use it (teammates)
+- Install the `understand-anything` Claude Code plugin, then run `/understand-dashboard` for the
+  interactive graph and tour, or `/understand-chat <question>` to query it. `/understand-onboard`
+  writes an onboarding guide.
+- After merging code changes, run `/understand` — it updates incrementally from
+  `.ua/fingerprints.json`. The graph is a snapshot; re-run it before relying on it.
+
+### Next
+- Unchanged from the 2026-09-27 entry (assembly day first).
+
+### Open questions
+- Whether to commit `.ua/` long term or regenerate locally (graph diffs are noisy JSON).
+
+### Blockers
+- None.
 
 ## 2026-09-27 — PRs #3–#8 merged; hardware received; assembly-day guide (Claude Code with Robert)
 

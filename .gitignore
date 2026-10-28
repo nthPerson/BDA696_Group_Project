@@ -45,3 +45,8 @@ Thumbs.db
 
 # ---- Claude Code: personal overrides stay local; .claude/settings.json, hooks/, skills/, agents/ are shared ----
 .claude/settings.local.json
+
+# ---- Understand-Anything: commit .ua/knowledge-graph.json, meta.json, fingerprints.json, config.json,
+# ---- .understandignore and intermediate/scan-result.json; keep plugin scratch local ----
+.ua/tmp/
+.ua/.trash-*/

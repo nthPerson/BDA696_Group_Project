@@ -1,0 +1,86 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions — uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+
+# --- From .gitignore (uncomment to exclude) ---
+
+# *.py[cod]
+# *.egg-info/
+# .pytest_cache/
+# .ruff_cache/
+# .mypy_cache/
+# .coverage
+# htmlcov/
+# .ipynb_checkpoints/
+# data/external/*
+# !data/external/.gitkeep
+# data/processed/*
+# !data/processed/.gitkeep
+# data/team/*
+# !data/team/.gitkeep
+# *.npy
+# *.mat
+# *.parquet
+# !data/fixtures/**
+# /models/
+# firmware/model/*.keras
+# firmware/.pio/
+# firmware/.vscode/
+# .DS_Store
+# Thumbs.db
+# .env
+# .claude/settings.local.json
+
+# --- Detected directories (uncomment to exclude) ---
+
+# docs/
+# tests/
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# JS / TS
+# *.test.*
+# *.spec.*
+# *.snap
+# C# / .NET
+# **/*Tests.cs
+# **/*Test.cs
+# **/*Fixture.cs
+# **/*.Tests.csproj
+# Java / Kotlin
+# **/src/test/**
+# **/*Test.java
+# **/*IT.java
+# **/*Spec.kt
+# Go
+# **/*_test.go
+# C++
+# **/*_test.cc
+# **/*_test.cpp
+# **/*_test.cxx
+# **/*Test.cc
+# **/*Test.cpp
+# **/*_unittest.cc
+# **/*_unittest.cpp
+# **/*_browsertest.cc
+# **/*_benchmark.cc
+# **/*Benchmark.cpp
+# Python
+# **/test_*.py
+# **/*_test.py
+# **/tests.py
+# **/conftest.py
+
+# --- Added: tool/agent state and binary artifacts (not useful for understanding) ---
+.ua/
+.serena/
+.claude/autoharness/
+*.npy
+*.mat
+*.parquet
+*.tflite

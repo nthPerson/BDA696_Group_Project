@@ -1,0 +1,1356 @@
+{
+  "name": "formcoach",
+  "description": "Sensor-gated webcam form coaching: a wrist wearable (Seeed XIAO ESP32-S3 + BMI160) runs a tiny int8 neural network that detects exercise reps and gates a laptop pipeline using MediaPipe pose estimation and biomechanical rules to give per-rep form feedback on four dumbbell exercises. Note: this project has over 100 source files; consider scoping analysis to a subdirectory for faster results.",
+  "languages": [
+    "c",
+    "cpp",
+    "json",
+    "makefile",
+    "markdown",
+    "python",
+    "toml",
+    "yaml"
+  ],
+  "frameworks": [
+    "GitHub Actions",
+    "pytest"
+  ],
+  "files": [
+    {
+      "path": ".claude/agents/formcoach-reviewer.md",
+      "language": "markdown",
+      "sizeLines": 67,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/agents/verify-claim.md",
+      "language": "markdown",
+      "sizeLines": 54,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/hooks/data_guard.py",
+      "language": "python",
+      "sizeLines": 121,
+      "fileCategory": "code"
+    },
+    {
+      "path": ".claude/hooks/session_start.py",
+      "language": "python",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": ".claude/settings.json",
+      "language": "json",
+      "sizeLines": 30,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".claude/skills/firmware-bringup/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 76,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".claude/skills/howto-doc/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 70,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "language": "yaml",
+      "sizeLines": 59,
+      "fileCategory": "infra"
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "language": "yaml",
+      "sizeLines": 20,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".python-version",
+      "language": "unknown",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "case/README.md",
+      "language": "markdown",
+      "sizeLines": 11,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "CLAUDE.md",
+      "language": "markdown",
+      "sizeLines": 146,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "data/external/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "data/fixtures/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "data/fixtures/mmfit/mm-fit/w00/w00_labels.csv",
+      "language": "csv",
+      "sizeLines": 2,
+      "fileCategory": "data"
+    },
+    {
+      "path": "data/fixtures/recgym/RecGym.csv",
+      "language": "csv",
+      "sizeLines": 3201,
+      "fileCategory": "data"
+    },
+    {
+      "path": "data/fixtures/replay/mmfit_w00_curls/meta.json",
+      "language": "json",
+      "sizeLines": 25,
+      "fileCategory": "config"
+    },
+    {
+      "path": "data/MANIFEST.md",
+      "language": "markdown",
+      "sizeLines": 44,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "data/processed/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "data/team/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/00-START-HERE.md",
+      "language": "markdown",
+      "sizeLines": 58,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/01-project-brief.md",
+      "language": "markdown",
+      "sizeLines": 48,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/02-system-design.md",
+      "language": "markdown",
+      "sizeLines": 222,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/03-hardware.md",
+      "language": "markdown",
+      "sizeLines": 78,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/04-datasets.md",
+      "language": "markdown",
+      "sizeLines": 57,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/05-roadmap.md",
+      "language": "markdown",
+      "sizeLines": 82,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/assembly-day.md",
+      "language": "markdown",
+      "sizeLines": 177,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/DECISIONS.md",
+      "language": "markdown",
+      "sizeLines": 280,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/devices.md",
+      "language": "markdown",
+      "sizeLines": 13,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/howto/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/howto/claude-code-config.md",
+      "language": "markdown",
+      "sizeLines": 88,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/howto/cnn-gate.md",
+      "language": "markdown",
+      "sizeLines": 106,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/howto/datasets.md",
+      "language": "markdown",
+      "sizeLines": 101,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/howto/flashing-firmware.md",
+      "language": "markdown",
+      "sizeLines": 100,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/howto/replay-demo.md",
+      "language": "markdown",
+      "sizeLines": 104,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/howto/rules.md",
+      "language": "markdown",
+      "sizeLines": 90,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/howto/signal-baselines.md",
+      "language": "markdown",
+      "sizeLines": 103,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/STATUS.md",
+      "language": "markdown",
+      "sizeLines": 393,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-24-pre-hardware-build.md",
+      "language": "markdown",
+      "sizeLines": 182,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-24-pre-hardware-build-design.md",
+      "language": "markdown",
+      "sizeLines": 89,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "firmware/include/protocol.h",
+      "language": "c",
+      "sizeLines": 98,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/model/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/model/gate_model_data.cc",
+      "language": "cpp",
+      "sizeLines": 1406,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/model/preprocess.h",
+      "language": "c",
+      "sizeLines": 19,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/model/preprocess.json",
+      "language": "json",
+      "sizeLines": 29,
+      "fileCategory": "config"
+    },
+    {
+      "path": "firmware/platformio.ini",
+      "language": "config",
+      "sizeLines": 65,
+      "fileCategory": "config"
+    },
+    {
+      "path": "firmware/README.md",
+      "language": "markdown",
+      "sizeLines": 16,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "firmware/src/app/ble.cpp",
+      "language": "cpp",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/ble.h",
+      "language": "c",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/bmi160.cpp",
+      "language": "cpp",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/bmi160.h",
+      "language": "c",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/gate.cpp",
+      "language": "cpp",
+      "sizeLines": 134,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/gate.h",
+      "language": "c",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/main.cpp",
+      "language": "cpp",
+      "sizeLines": 249,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/model_data.cpp",
+      "language": "cpp",
+      "sizeLines": 5,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/ui.cpp",
+      "language": "cpp",
+      "sizeLines": 66,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/app/ui.h",
+      "language": "c",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/libtest/bmi160_dfrobot.cpp",
+      "language": "cpp",
+      "sizeLines": 14,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/libtest/bmi160_hanyazou.cpp",
+      "language": "cpp",
+      "sizeLines": 14,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/libtest/tflm_arduino.cpp",
+      "language": "cpp",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/libtest/tflm_chirale.cpp",
+      "language": "cpp",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "firmware/src/libtest/tflm_tanaka.cpp",
+      "language": "cpp",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Makefile",
+      "language": "makefile",
+      "sizeLines": 82,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "notebooks/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "pyproject.toml",
+      "language": "toml",
+      "sizeLines": 88,
+      "fileCategory": "config"
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "sizeLines": 122,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "reports/baseline_repcount.csv",
+      "language": "csv",
+      "sizeLines": 1233,
+      "fileCategory": "data"
+    },
+    {
+      "path": "reports/baseline_repcount.md",
+      "language": "markdown",
+      "sizeLines": 46,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/data_profile.md",
+      "language": "markdown",
+      "sizeLines": 91,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/gate_cnn_export.md",
+      "language": "markdown",
+      "sizeLines": 27,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/gating.md",
+      "language": "markdown",
+      "sizeLines": 15,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_cnn_active_recofit.md",
+      "language": "markdown",
+      "sizeLines": 37,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_cnn-int8_active_recofit.md",
+      "language": "markdown",
+      "sizeLines": 37,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_energy_active_mmfit.md",
+      "language": "markdown",
+      "sizeLines": 42,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_energy_active_recofit_5fold.md",
+      "language": "markdown",
+      "sizeLines": 37,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_energy_active_recofit.md",
+      "language": "markdown",
+      "sizeLines": 126,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_rf_active_mmfit.md",
+      "language": "markdown",
+      "sizeLines": 42,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_rf_active_recgym.md",
+      "language": "markdown",
+      "sizeLines": 42,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_rf_active_recofit_5fold.md",
+      "language": "markdown",
+      "sizeLines": 37,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_rf_active_recofit.md",
+      "language": "markdown",
+      "sizeLines": 126,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_rf_exercise_mmfit.md",
+      "language": "markdown",
+      "sizeLines": 45,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_rf_exercise_recgym.md",
+      "language": "markdown",
+      "sizeLines": 43,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/loso_rf_exercise_recofit.md",
+      "language": "markdown",
+      "sizeLines": 129,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/rules_validation.md",
+      "language": "markdown",
+      "sizeLines": 119,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/transfer_rf_active_recofit-to-mmfit.md",
+      "language": "markdown",
+      "sizeLines": 43,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "reports/transfer_rf_exercise_recofit-to-mmfit.md",
+      "language": "markdown",
+      "sizeLines": 46,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "src/formcoach/__init__.py",
+      "language": "python",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/app/__init__.py",
+      "language": "python",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/app/events.py",
+      "language": "python",
+      "sizeLines": 70,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/app/gate.py",
+      "language": "python",
+      "sizeLines": 150,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/app/overlay.py",
+      "language": "python",
+      "sizeLines": 102,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/app/pipeline.py",
+      "language": "python",
+      "sizeLines": 394,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/cli.py",
+      "language": "python",
+      "sizeLines": 679,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/__init__.py",
+      "language": "python",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/convert.py",
+      "language": "python",
+      "sizeLines": 101,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/fetch.py",
+      "language": "python",
+      "sizeLines": 405,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/fixtures.py",
+      "language": "python",
+      "sizeLines": 254,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/labels.py",
+      "language": "python",
+      "sizeLines": 188,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/manifest.py",
+      "language": "python",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/mmfit.py",
+      "language": "python",
+      "sizeLines": 268,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/profile.py",
+      "language": "python",
+      "sizeLines": 222,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/recgym.py",
+      "language": "python",
+      "sizeLines": 108,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/recofit.py",
+      "language": "python",
+      "sizeLines": 218,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/data/schema.py",
+      "language": "python",
+      "sizeLines": 211,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/__init__.py",
+      "language": "python",
+      "sizeLines": 5,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/device.py",
+      "language": "python",
+      "sizeLines": 90,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/gating.py",
+      "language": "python",
+      "sizeLines": 104,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/loso_cli.py",
+      "language": "python",
+      "sizeLines": 177,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/loso.py",
+      "language": "python",
+      "sizeLines": 229,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/repcount.py",
+      "language": "python",
+      "sizeLines": 151,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/report.py",
+      "language": "python",
+      "sizeLines": 82,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/eval/rules_eval.py",
+      "language": "python",
+      "sizeLines": 355,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/__init__.py",
+      "language": "python",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/ble.py",
+      "language": "python",
+      "sizeLines": 146,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/fake.py",
+      "language": "python",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/protocol.py",
+      "language": "python",
+      "sizeLines": 185,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/recorder.py",
+      "language": "python",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/replay.py",
+      "language": "python",
+      "sizeLines": 104,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/serial_source.py",
+      "language": "python",
+      "sizeLines": 110,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/session_check.py",
+      "language": "python",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/io/source.py",
+      "language": "python",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/models/__init__.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/models/cnn.py",
+      "language": "python",
+      "sizeLines": 261,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/models/energy.py",
+      "language": "python",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/models/export.py",
+      "language": "python",
+      "sizeLines": 144,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/models/rf.py",
+      "language": "python",
+      "sizeLines": 16,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/models/train.py",
+      "language": "python",
+      "sizeLines": 153,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/pose/__init__.py",
+      "language": "python",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/pose/angles.py",
+      "language": "python",
+      "sizeLines": 90,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/pose/landmarker.py",
+      "language": "python",
+      "sizeLines": 151,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/pose/normalize.py",
+      "language": "python",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/pose/reps.py",
+      "language": "python",
+      "sizeLines": 152,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/pose/skeletons.py",
+      "language": "python",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/pose/store.py",
+      "language": "python",
+      "sizeLines": 91,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/rules/__init__.py",
+      "language": "python",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/rules/engine.py",
+      "language": "python",
+      "sizeLines": 140,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/rules/rules.mmfit-pose3d.yaml",
+      "language": "yaml",
+      "sizeLines": 172,
+      "fileCategory": "config"
+    },
+    {
+      "path": "src/formcoach/rules/rules.yaml",
+      "language": "yaml",
+      "sizeLines": 120,
+      "fileCategory": "config"
+    },
+    {
+      "path": "src/formcoach/signal/__init__.py",
+      "language": "python",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/signal/build.py",
+      "language": "python",
+      "sizeLines": 90,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/signal/features.py",
+      "language": "python",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/signal/filters.py",
+      "language": "python",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/signal/gravity.py",
+      "language": "python",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/signal/reps.py",
+      "language": "python",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/signal/resample.py",
+      "language": "python",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/formcoach/signal/windows.py",
+      "language": "python",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_claude_hooks.py",
+      "language": "python",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_cli.py",
+      "language": "python",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_cnn.py",
+      "language": "python",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_convert_profile.py",
+      "language": "python",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_eval_rules_gating.py",
+      "language": "python",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_features_build.py",
+      "language": "python",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_fetch.py",
+      "language": "python",
+      "sizeLines": 186,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_io_sources.py",
+      "language": "python",
+      "sizeLines": 150,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_landmarker.py",
+      "language": "python",
+      "sizeLines": 53,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_loaders.py",
+      "language": "python",
+      "sizeLines": 170,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_loso.py",
+      "language": "python",
+      "sizeLines": 99,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_manifest.py",
+      "language": "python",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_pose_math.py",
+      "language": "python",
+      "sizeLines": 186,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_protocol.py",
+      "language": "python",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_replay_pipeline.py",
+      "language": "python",
+      "sizeLines": 193,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_repo_contract.py",
+      "language": "python",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_reps.py",
+      "language": "python",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_rules.py",
+      "language": "python",
+      "sizeLines": 190,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_schema.py",
+      "language": "python",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/test_signal.py",
+      "language": "python",
+      "sizeLines": 169,
+      "fileCategory": "code"
+    }
+  ],
+  "totalFiles": 168,
+  "filteredByIgnore": 19,
+  "estimatedComplexity": "large",
+  "importMap": {
+    ".claude/agents/formcoach-reviewer.md": [],
+    ".claude/agents/verify-claim.md": [],
+    ".claude/hooks/data_guard.py": [],
+    ".claude/hooks/session_start.py": [],
+    ".claude/settings.json": [],
+    ".claude/skills/firmware-bringup/SKILL.md": [],
+    ".claude/skills/howto-doc/SKILL.md": [],
+    ".github/workflows/ci.yml": [],
+    ".pre-commit-config.yaml": [],
+    ".python-version": [],
+    "case/README.md": [],
+    "CLAUDE.md": [],
+    "data/external/.gitkeep": [],
+    "data/fixtures/.gitkeep": [],
+    "data/fixtures/mmfit/mm-fit/w00/w00_labels.csv": [],
+    "data/fixtures/recgym/RecGym.csv": [],
+    "data/fixtures/replay/mmfit_w00_curls/meta.json": [],
+    "data/MANIFEST.md": [],
+    "data/processed/.gitkeep": [],
+    "data/team/.gitkeep": [],
+    "docs/00-START-HERE.md": [],
+    "docs/01-project-brief.md": [],
+    "docs/02-system-design.md": [],
+    "docs/03-hardware.md": [],
+    "docs/04-datasets.md": [],
+    "docs/05-roadmap.md": [],
+    "docs/assembly-day.md": [],
+    "docs/DECISIONS.md": [],
+    "docs/devices.md": [],
+    "docs/howto/.gitkeep": [],
+    "docs/howto/claude-code-config.md": [],
+    "docs/howto/cnn-gate.md": [],
+    "docs/howto/datasets.md": [],
+    "docs/howto/flashing-firmware.md": [],
+    "docs/howto/replay-demo.md": [],
+    "docs/howto/rules.md": [],
+    "docs/howto/signal-baselines.md": [],
+    "docs/STATUS.md": [],
+    "docs/superpowers/plans/2026-09-24-pre-hardware-build.md": [],
+    "docs/superpowers/specs/2026-09-24-pre-hardware-build-design.md": [],
+    "firmware/include/protocol.h": [],
+    "firmware/model/.gitkeep": [],
+    "firmware/model/gate_model_data.cc": [],
+    "firmware/model/preprocess.h": [],
+    "firmware/model/preprocess.json": [],
+    "firmware/platformio.ini": [],
+    "firmware/README.md": [],
+    "firmware/src/app/ble.cpp": [
+      "firmware/src/app/ble.h"
+    ],
+    "firmware/src/app/ble.h": [],
+    "firmware/src/app/bmi160.cpp": [
+      "firmware/src/app/bmi160.h"
+    ],
+    "firmware/src/app/bmi160.h": [],
+    "firmware/src/app/gate.cpp": [
+      "firmware/src/app/gate.h"
+    ],
+    "firmware/src/app/gate.h": [],
+    "firmware/src/app/main.cpp": [
+      "firmware/src/app/ble.h",
+      "firmware/src/app/bmi160.h",
+      "firmware/src/app/gate.h",
+      "firmware/src/app/ui.h"
+    ],
+    "firmware/src/app/model_data.cpp": [],
+    "firmware/src/app/ui.cpp": [
+      "firmware/src/app/ui.h"
+    ],
+    "firmware/src/app/ui.h": [],
+    "firmware/src/libtest/bmi160_dfrobot.cpp": [],
+    "firmware/src/libtest/bmi160_hanyazou.cpp": [],
+    "firmware/src/libtest/tflm_arduino.cpp": [],
+    "firmware/src/libtest/tflm_chirale.cpp": [],
+    "firmware/src/libtest/tflm_tanaka.cpp": [],
+    "Makefile": [],
+    "notebooks/.gitkeep": [],
+    "pyproject.toml": [],
+    "README.md": [],
+    "reports/.gitkeep": [],
+    "reports/baseline_repcount.csv": [],
+    "reports/baseline_repcount.md": [],
+    "reports/data_profile.md": [],
+    "reports/gate_cnn_export.md": [],
+    "reports/gating.md": [],
+    "reports/loso_cnn_active_recofit.md": [],
+    "reports/loso_cnn-int8_active_recofit.md": [],
+    "reports/loso_energy_active_mmfit.md": [],
+    "reports/loso_energy_active_recofit_5fold.md": [],
+    "reports/loso_energy_active_recofit.md": [],
+    "reports/loso_rf_active_mmfit.md": [],
+    "reports/loso_rf_active_recgym.md": [],
+    "reports/loso_rf_active_recofit_5fold.md": [],
+    "reports/loso_rf_active_recofit.md": [],
+    "reports/loso_rf_exercise_mmfit.md": [],
+    "reports/loso_rf_exercise_recgym.md": [],
+    "reports/loso_rf_exercise_recofit.md": [],
+    "reports/rules_validation.md": [],
+    "reports/transfer_rf_active_recofit-to-mmfit.md": [],
+    "reports/transfer_rf_exercise_recofit-to-mmfit.md": [],
+    "src/formcoach/__init__.py": [],
+    "src/formcoach/app/__init__.py": [],
+    "src/formcoach/app/events.py": [],
+    "src/formcoach/app/gate.py": [
+      "src/formcoach/io/protocol.py",
+      "src/formcoach/io/source.py"
+    ],
+    "src/formcoach/app/overlay.py": [
+      "src/formcoach/app/events.py",
+      "src/formcoach/io/replay.py"
+    ],
+    "src/formcoach/app/pipeline.py": [
+      "src/formcoach/app/__init__.py",
+      "src/formcoach/app/events.py",
+      "src/formcoach/io/replay.py",
+      "src/formcoach/io/source.py",
+      "src/formcoach/pose/__init__.py",
+      "src/formcoach/pose/reps.py",
+      "src/formcoach/pose/skeletons.py"
+    ],
+    "src/formcoach/cli.py": [
+      "src/formcoach/__init__.py"
+    ],
+    "src/formcoach/data/__init__.py": [],
+    "src/formcoach/data/convert.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/schema.py"
+    ],
+    "src/formcoach/data/fetch.py": [],
+    "src/formcoach/data/fixtures.py": [],
+    "src/formcoach/data/labels.py": [],
+    "src/formcoach/data/manifest.py": [],
+    "src/formcoach/data/mmfit.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/labels.py",
+      "src/formcoach/data/schema.py"
+    ],
+    "src/formcoach/data/profile.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/schema.py",
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/report.py"
+    ],
+    "src/formcoach/data/recgym.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/labels.py",
+      "src/formcoach/data/schema.py"
+    ],
+    "src/formcoach/data/recofit.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/labels.py",
+      "src/formcoach/data/schema.py"
+    ],
+    "src/formcoach/data/schema.py": [],
+    "src/formcoach/eval/__init__.py": [],
+    "src/formcoach/eval/device.py": [
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/report.py"
+    ],
+    "src/formcoach/eval/gating.py": [
+      "src/formcoach/app/__init__.py",
+      "src/formcoach/app/pipeline.py",
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/report.py",
+      "src/formcoach/rules/engine.py"
+    ],
+    "src/formcoach/eval/loso_cli.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/convert.py",
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/loso.py",
+      "src/formcoach/eval/report.py",
+      "src/formcoach/signal/__init__.py",
+      "src/formcoach/signal/build.py"
+    ],
+    "src/formcoach/eval/loso.py": [
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/report.py",
+      "src/formcoach/signal/features.py",
+      "src/formcoach/signal/windows.py"
+    ],
+    "src/formcoach/eval/repcount.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/mmfit.py",
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/report.py",
+      "src/formcoach/signal/__init__.py",
+      "src/formcoach/signal/reps.py",
+      "src/formcoach/signal/resample.py"
+    ],
+    "src/formcoach/eval/report.py": [
+      "src/formcoach/__init__.py"
+    ],
+    "src/formcoach/eval/rules_eval.py": [
+      "src/formcoach/app/pipeline.py",
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/mmfit.py",
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/report.py",
+      "src/formcoach/pose/__init__.py",
+      "src/formcoach/pose/normalize.py",
+      "src/formcoach/pose/reps.py",
+      "src/formcoach/rules/engine.py"
+    ],
+    "src/formcoach/io/__init__.py": [],
+    "src/formcoach/io/ble.py": [
+      "src/formcoach/io/__init__.py",
+      "src/formcoach/io/protocol.py",
+      "src/formcoach/io/serial_source.py",
+      "src/formcoach/io/source.py"
+    ],
+    "src/formcoach/io/fake.py": [
+      "src/formcoach/io/__init__.py",
+      "src/formcoach/io/ble.py",
+      "src/formcoach/io/protocol.py",
+      "src/formcoach/io/source.py"
+    ],
+    "src/formcoach/io/protocol.py": [],
+    "src/formcoach/io/recorder.py": [
+      "src/formcoach/__init__.py",
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/schema.py",
+      "src/formcoach/io/source.py"
+    ],
+    "src/formcoach/io/replay.py": [
+      "src/formcoach/io/source.py",
+      "src/formcoach/pose/skeletons.py",
+      "src/formcoach/pose/store.py"
+    ],
+    "src/formcoach/io/serial_source.py": [
+      "src/formcoach/io/__init__.py",
+      "src/formcoach/io/protocol.py",
+      "src/formcoach/io/source.py"
+    ],
+    "src/formcoach/io/session_check.py": [],
+    "src/formcoach/io/source.py": [
+      "src/formcoach/io/__init__.py",
+      "src/formcoach/io/protocol.py"
+    ],
+    "src/formcoach/models/__init__.py": [],
+    "src/formcoach/models/cnn.py": [],
+    "src/formcoach/models/energy.py": [],
+    "src/formcoach/models/export.py": [
+      "src/formcoach/models/cnn.py"
+    ],
+    "src/formcoach/models/rf.py": [],
+    "src/formcoach/models/train.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/convert.py",
+      "src/formcoach/eval/__init__.py",
+      "src/formcoach/eval/loso.py",
+      "src/formcoach/eval/report.py",
+      "src/formcoach/models/rf.py",
+      "src/formcoach/signal/__init__.py",
+      "src/formcoach/signal/build.py"
+    ],
+    "src/formcoach/pose/__init__.py": [],
+    "src/formcoach/pose/angles.py": [
+      "src/formcoach/pose/skeletons.py"
+    ],
+    "src/formcoach/pose/landmarker.py": [
+      "src/formcoach/pose/store.py"
+    ],
+    "src/formcoach/pose/normalize.py": [
+      "src/formcoach/pose/angles.py",
+      "src/formcoach/pose/skeletons.py"
+    ],
+    "src/formcoach/pose/reps.py": [],
+    "src/formcoach/pose/skeletons.py": [],
+    "src/formcoach/pose/store.py": [
+      "src/formcoach/pose/skeletons.py"
+    ],
+    "src/formcoach/rules/__init__.py": [],
+    "src/formcoach/rules/engine.py": [],
+    "src/formcoach/rules/rules.mmfit-pose3d.yaml": [],
+    "src/formcoach/rules/rules.yaml": [],
+    "src/formcoach/signal/__init__.py": [],
+    "src/formcoach/signal/build.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/convert.py",
+      "src/formcoach/signal/__init__.py",
+      "src/formcoach/signal/features.py",
+      "src/formcoach/signal/windows.py"
+    ],
+    "src/formcoach/signal/features.py": [],
+    "src/formcoach/signal/filters.py": [],
+    "src/formcoach/signal/gravity.py": [
+      "src/formcoach/signal/filters.py"
+    ],
+    "src/formcoach/signal/reps.py": [
+      "src/formcoach/signal/filters.py"
+    ],
+    "src/formcoach/signal/resample.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/schema.py"
+    ],
+    "src/formcoach/signal/windows.py": [
+      "src/formcoach/data/__init__.py",
+      "src/formcoach/data/labels.py",
+      "src/formcoach/data/schema.py",
+      "src/formcoach/signal/resample.py"
+    ],
+    "tests/__init__.py": [],
+    "tests/test_claude_hooks.py": [],
+    "tests/test_cli.py": [],
+    "tests/test_cnn.py": [],
+    "tests/test_convert_profile.py": [],
+    "tests/test_eval_rules_gating.py": [],
+    "tests/test_features_build.py": [],
+    "tests/test_fetch.py": [],
+    "tests/test_io_sources.py": [],
+    "tests/test_landmarker.py": [],
+    "tests/test_loaders.py": [],
+    "tests/test_loso.py": [],
+    "tests/test_manifest.py": [],
+    "tests/test_pose_math.py": [],
+    "tests/test_protocol.py": [],
+    "tests/test_replay_pipeline.py": [],
+    "tests/test_repo_contract.py": [],
+    "tests/test_reps.py": [],
+    "tests/test_rules.py": [],
+    "tests/test_schema.py": [],
+    "tests/test_signal.py": []
+  }
+}

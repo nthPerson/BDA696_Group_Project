@@ -63,6 +63,7 @@ Serial ports on Windows are `COM3`, `COM5`, ... (Device Manager → Ports). On L
 | `make train-gate MODEL=rf\|cnn` | `uv run formcoach train gate --model cnn` | RF laptop gate, or the CNN + int8 export into `firmware/model/` (needs `--extra train`) |
 | `make eval` | `uv run formcoach eval all` | regenerate every table/figure in `reports/` (`--quick` for 10-fold RecoFit) |
 | `make demo` | `uv run formcoach demo --source replay --headless` | the demo of record on the 30 s MM-Fit fixture (`--gate energy`, `--rules <yaml>`) |
+| `make ble-viewer` | `uv run formcoach viewer` | live view of a kit over Bluetooth in Chrome/Edge (`--port`, `--no-open`); hosted at https://nthperson.github.io/BDA696_Group_Project/ble-viewer/ (`docs/howto/ble-viewer.md`) |
 | `make record PORT=COM5` | `uv run formcoach record --source serial --port COM5` | record a team session (`--source fake` for a dry run without a board) |
 | `make session-check DIR=…` | `uv run formcoach session check <dir>` | drops, gate timeline, reps vs expected |
 | `make fw-build` | `uvx platformio run -d firmware` | compile the wearable firmware (`fw-upload PORT=COM5`, `fw-monitor PORT=COM5`, `fw-libtest`) |

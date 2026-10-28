@@ -44,7 +44,7 @@ Public datasets are the primary training and evaluation data. Team recordings ar
 
 ## 5. Why the data satisfy the course's scale guideline
 
-> 10 M labeled IMU samples from 220+ subjects across three cohorts (tabular guideline: 25 k × 15), synchronized with 40.8 GB of RGB-D video (gridded guideline: 5 GB) and ≈ 1.4 M frames with 3-D pose. The modeling difficulty is cross-subject and cross-device generalization, which is why LOSO and cross-dataset tests are the headline evaluations.
+> ≈ 29 M time-stamped six-axis IMU samples from 114 subjects across three cohorts (RecoFit ≈ 14.3 M, MM-Fit smartwatches ≈ 10.2 M, RecGym 4.7 M rows; 276,080 RecoFit + 95,849 MM-Fit labelled windows × 63 features; tabular guideline: 25 k × 15), synchronized with 40.8 GB of RGB-D video (gridded guideline: 5 GB) and ≈ 1.4 M frames with 3-D pose. The modeling difficulty is cross-subject and cross-device generalization, which is why LOSO and cross-dataset tests are the headline evaluations.
 
 ## 6. Team validation recordings (secondary; ≈ 1 hour total; Phase 3)
 

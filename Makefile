@@ -11,8 +11,9 @@ DATASET ?= mmfit
 SOURCE  ?= replay
 PORT    ?=
 MODEL   ?= cnn
+VIEWER_PORT ?= 8000
 
-.PHONY: help setup setup-all lint format test data convert profile features session-check device-check attach-xiao train-gate eval demo record \
+.PHONY: help setup setup-all lint format test data convert profile features session-check device-check attach-xiao train-gate eval demo record ble-viewer \
 	    fw-build fw-upload fw-monitor clean
 
 help: ## list targets
@@ -35,8 +36,11 @@ format: ## auto-format and auto-fix lint
 	$(RUN) ruff format .
 	$(RUN) ruff check --fix .
 
-test: ## run the pytest suite
+test: ## run the pytest suite (+ the web viewer's JS tests when node is installed)
 	$(RUN) pytest
+	@if command -v node >/dev/null 2>&1 && node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 18 ? 1 : 0)'; \
+	then node --test web/ble-viewer/test/*.test.mjs; \
+	else echo "node >= 18 not found: skipped the optional web/ble-viewer JS tests"; fi
 
 data: ## fetch a public dataset into data/external/ (DATASET=mmfit|recofit|recgym)
 	$(RUN) formcoach data fetch --dataset $(DATASET)
@@ -58,6 +62,9 @@ eval: ## regenerate every table and figure under reports/
 
 demo: ## run the full pipeline (SOURCE=replay|serial|ble; replay needs no hardware)
 	$(RUN) formcoach demo --source $(SOURCE) $(if $(PORT),--port $(PORT),)
+
+ble-viewer: ## serve the browser BLE live viewer on http://localhost:8000/ble-viewer/ (VIEWER_PORT=8000)
+	$(RUN) formcoach viewer --port $(VIEWER_PORT)
 
 record: ## record a team session (SOURCE=serial|ble PORT=/dev/ttyACM0|COM5)
 	$(RUN) formcoach record --source $(SOURCE) $(if $(PORT),--port $(PORT),)
