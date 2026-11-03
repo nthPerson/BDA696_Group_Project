@@ -30,7 +30,8 @@ dependencies = [
 
 [project.optional-dependencies]
 # Live webcam + pose estimation (Checkpoint 3 onwards)
-vision = ["mediapipe>=0.10.14", "opencv-python>=4.10"]
+# mediapipe 1.0.x aborts at graph start on Apple Silicon (ADR-0027)
+vision = ["mediapipe>=0.10.14,!=1.0.*", "opencv-python>=4.10"]
 # Talking to the wearable (Checkpoint 4 onwards)
 device = ["bleak>=0.22", "pyserial>=3.5"]
 # Training the gate model and experiments (Checkpoint 2/5 onwards)

@@ -323,3 +323,22 @@ Bluetooth needs a secure context; the server sets explicit JS MIME types because
 via `make test` and are not in CI (Robert, 2026-10-15). Consequences: Chrome/Edge only (no Safari,
 Firefox or iOS), and the page has a simulator for everyone else. uPlot is bumped by hand
 (`web/ble-viewer/vendor/README.md`).
+
+## ADR-0027 · mediapipe 1.1.1, excluding 1.0.x (Apple Silicon abort) · 2026-10-21 · accepted
+Context: the first real MediaPipe run (Christian's M-series Mac, Python 3.11) aborted the process
+when `PoseLandmarker` started: `graph_service.h:139 Check failed: service_ Service is
+unavailable` in `DrishtiMetalHelper` under `TensorsToDetectionsCalculator::Open`. The lockfile
+had resolved `mediapipe>=0.10.14` to 1.0.1, and the vision path had never run anywhere.
+`BaseOptions(delegate=CPU)` does not help: the delegate only places inference, and the Mac build
+of the detection post-processing opens a Metal helper regardless. Evidence: the same probe aborts
+on 1.0.1 in a clean venv and in the repo venv, and runs on 0.10.21 (142 fps), 0.10.35 (178 fps)
+and 1.1.1 (221 fps), Lite model, 960×640 still image. A third-party report shows the same abort
+with HandLandmarker on 1.0.1 (gladsjr/super-ta#411). Options: (a) pin 0.10.21, the last release
+with Intel-Mac (x86_64/universal2) wheels; (b) pin 0.10.35; (c) take 1.1.1 and exclude 1.0.x.
+Decision: (c), `mediapipe>=0.10.14,!=1.0.*` in the `vision` extra, locked at 1.1.1 (only mediapipe
+changed in `uv.lock`). `tests/test_landmarker.py::test_real_landmarker_starts_on_this_machine`
+starts the real graph in a subprocess and fails on 1.0.1; it skips without the extra or
+`models/pose_landmarker_lite.task`, so CI does not exercise it. Consequences: mediapipe ≥ 0.10.30
+ships macOS wheels for arm64 only, so an Intel Mac cannot install the `vision` extra (true of the
+previous lock too); if a teammate has one, revisit (a). Linux x86_64/aarch64 and Windows
+amd64/arm64 have 1.1.1 wheels (verify on Robert's WSL2 and a Windows laptop).

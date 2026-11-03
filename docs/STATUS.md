@@ -40,6 +40,38 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-10-21 — First real MediaPipe run; mediapipe 1.1.1 (Claude Code with Christian)
+
+### What changed
+- Branch `feat/vision-first-run`. The team connected a wired board (chips, no case) to the GitHub
+  Pages BLE viewer; the traces follow motion. Bench checks (|a| ≈ 1 g, GATE on curls) in progress.
+- MediaPipe ran for the first time, on Christian's Mac: `uv sync --extra vision --extra device`,
+  `models/pose_landmarker_lite.task` downloaded. The locked mediapipe 1.0.1 aborted at graph start
+  on Apple Silicon; 1.1.1 runs (221 fps Lite on a still). `pyproject.toml` excludes 1.0.x;
+  `uv.lock` → 1.1.1 (ADR-0027).
+- `tests/test_landmarker.py::test_real_landmarker_starts_on_this_machine` starts the real graph in
+  a subprocess (skips without the extra or the model, so not in CI).
+- Verified on a sample photo: `formcoach pose extract` wrote 60/60 valid `mediapipe33` frames and
+  `joint_angles` gave plausible degrees (seated, arms straight: elbows 143–150°).
+
+### Next
+1. Christian: film ~10 clean curls, ~10 sloppy curls, ~10 squats (front view, whole body) on the
+   Mac; keep the video under `data/team/` (never pushed). Then `pose extract` → replay through the
+   pipeline: reps vs truth, which rules fire clean vs sloppy.
+2. With the board strapped on and powered from USB: `formcoach record --source ble` alongside the
+   video (first hardware run of that command), then the paired replay.
+3. Design doc for the live path (`demo --source webcam|ble`, `Pipeline.on_imu/on_frame`).
+4. Rochelle: read ADR-0027 and `src/formcoach/pose/landmarker.py`; the vision path is now runnable.
+
+### Open questions
+- Does anyone on the team have an Intel Mac? mediapipe ≥ 0.10.30 has no x86_64 macOS wheel.
+- 1.1.1 on WSL2/Linux and Windows not yet installed (verify).
+
+### Blockers
+- None.
+
+---
+
 ## 2026-10-15 — Browser BLE live viewer (Claude Code with Robert)
 
 ### What changed

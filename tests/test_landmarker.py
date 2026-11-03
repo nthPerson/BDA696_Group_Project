@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 
@@ -36,6 +40,25 @@ def test_missing_model_file_gives_download_hint(tmp_path, monkeypatch):
     monkeypatch.setattr(landmarker, "MODELS_DIR", tmp_path)
     with pytest.raises(FileNotFoundError, match="curl -L -o"):
         landmarker.model_path("lite")
+
+
+def test_real_landmarker_starts_on_this_machine():
+    """The real MediaPipe graph starts and runs one frame. mediapipe 1.0.1 aborted here on Apple
+    Silicon (ADR-0027); the abort is a C++ crash, not an exception, hence the subprocess.
+    Skipped without the ``vision`` extra or the Lite model (CI has neither)."""
+    if importlib.util.find_spec("mediapipe") is None:
+        pytest.skip("needs `uv sync --extra vision`")
+    if not (landmarker.MODELS_DIR / "pose_landmarker_lite.task").exists():
+        pytest.skip("needs models/pose_landmarker_lite.task")
+    code = (
+        "import numpy as np\n"
+        "from formcoach.pose.landmarker import make_landmarker\n"
+        "img, world = make_landmarker('lite')(np.zeros((480, 640, 3), np.uint8), 0)\n"
+        "assert img is None and world is None\n"
+        "print('ok')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and "ok" in r.stdout, r.stderr[-2000:]
 
 
 def test_extract_video_missing_video_or_extra(tmp_path):
