@@ -1,0 +1,320 @@
+# REFERENCE ONLY, NOT PRODUCT CODE. Kept as a plain-text attachment to 2026-11-02-live-demo-design.md.
+# Reconstructed on 2026-11-02 from the 2026-10-21 Claude Code session transcript (594611ba-...jsonl) after
+# the original in /private/tmp was wiped. 9 of 24 recorded edits did not re-apply; duplicate blocks left by
+# that were removed by hand. Compiles; NOT re-run against a camera or board. It is a .txt so ruff ignores it.
+
+"""THROWAWAY SPIKE: live webcam + MediaPipe pose, switched on and off by the board's gate flag.
+
+Not part of the repo. Run from the repo root so `formcoach` and models/ resolve:
+
+    uv run --extra vision --extra device python <this file> --gate ble     # board triggers
+    uv run --extra vision --extra device python <this file> --gate always  # no board
+    uv run --extra vision --extra device python <this file> --gate key     # SPACE toggles
+
+Keys in the window: q / Esc quit, SPACE toggles the gate in --gate key mode.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import math
+import sys
+import threading
+import time
+from pathlib import Path
+
+import numpy as np
+
+from formcoach.app.overlay import EDGES
+from formcoach.io import protocol
+from formcoach.pose.angles import angle_deg
+from formcoach.pose.landmarker import make_landmarker
+from formcoach.pose.skeletons import MEDIAPIPE33
+
+SWING_DEG = 35.0  # elbow must close, then reopen, by this much to count a rep
+MIN_VIS = 0.5
+BOARD_SILENT_S = 2.0
+
+
+def fast_ble_source():
+    """BLESource that connects as soon as the board shows up. The repo version scans the full
+    10 s every time and backs off 1, 2, 4 ... 30 s between failed scans (up to ~40 s late)."""
+    from formcoach.io.ble import BLESource
+
+    class FastBLESource(BLESource):
+        async def _find(self):
+            def match(dev, _adv):
+                return bool(dev.name and dev.name.startswith(self.name_prefix))
+
+            while not self._stop.is_set():  # 2 s rounds; never raises, so no backoff
+                d = await self.bleak.BleakScanner.find_device_by_filter(match, timeout=2.0)
+                if d is not None:
+                    self.device_name = d.name
+                    print(f"{time.strftime('%H:%M:%S')}  found {d.name}, connecting")
+                    return d  # a BLEDevice: BleakClient skips its own re-scan
+            raise RuntimeError("stopped")
+
+    return FastBLESource()
+
+
+class BoardGate:
+    """Drains BLESource in a thread; keeps the latest gate flag and |a|.
+    Logs every sample (device clock, seq, flags, board uptime) to ``log_path``."""
+
+    def __init__(self, t0: float, log_path: Path):
+        self.t0 = t0
+        self.log = open(log_path, "w", newline="")  # noqa: SIM115
+        self.w = csv.writer(self.log)
+        self.w.writerow(["t", "t_dev", "seq", "flags", "gate", "a_g", "gyro_dps", "uptime_s"])
+        self.src = fast_ble_source()
+        self.gate = False
+        self.a_g = float("nan")
+        self.n = 0
+        self.last_rx = 0.0
+        threading.Thread(target=self._drain, daemon=True).start()
+
+    def _drain(self):
+        for s in self.src.iter_samples():
+            self.gate = s.gate_state
+            self.a_g = s.a / protocol.G_TO_MS2
+            self.n += 1
+            self.last_rx = time.monotonic()
+            st = self.src.status
+            gyro = math.degrees(math.sqrt(s.gx * s.gx + s.gy * s.gy + s.gz * s.gz))
+            self.w.writerow([
+                f"{s.t_arrival - self.t0:.3f}", f"{s.t:.3f}", s.seq, s.flags, int(s.gate_state),
+                f"{self.a_g:.3f}", f"{gyro:.1f}", st.uptime_s if st else "",
+            ])
+            if self.n % 50 == 0:
+                self.log.flush()
+
+    @property
+    def connected(self) -> bool:
+        return self.n > 0 and time.monotonic() - self.last_rx < BOARD_SILENT_S
+
+    def label(self) -> str:
+        if self.n == 0:
+            return "board: scanning / connecting..."
+        if not self.connected:
+            return "board: silent (reconnecting?)"
+        return f"board: {self.src.device_name or 'connected'}  |a| {self.a_g:.2f} g"
+
+    def led_good_rep(self):
+        self.src.send(protocol.Command.LED_GOOD_REP)
+
+    def close(self):
+        self.src.close()
+        st = self.src.stats
+        print(f"board link: {self.n} samples, dropped {st.dropped}, bad packets {st.bad_packets}")
+        self.log.close()
+
+
+class RepCounter:
+    """Curl reps from one elbow angle, scale-free: the elbow closes by >= SWING_DEG from its
+    running max, then opens by >= SWING_DEG from its running min = 1 rep. (Fixed 80/140 lines
+    missed most reps: front-camera MediaPipe curls measured ~70-90 deg top, 120-155 bottom.)"""
+
+    def __init__(self):
+        self.reps = 0
+        self.flexed = False
+        self.smooth: float | None = None
+        self.hi = self.lo = 0.0
+
+    def update(self, deg: float | None) -> bool:
+        if deg is None or not math.isfinite(deg):
+            return False
+        self.smooth = deg if self.smooth is None else 0.5 * self.smooth + 0.5 * deg
+        if not self.flexed:
+            self.hi = max(self.hi, self.smooth)
+            if self.smooth < self.hi - SWING_DEG:
+                self.flexed, self.lo = True, self.smooth
+        else:
+            self.lo = min(self.lo, self.smooth)
+            if self.smooth > self.lo + SWING_DEG:
+                self.flexed, self.hi = False, self.smooth
+                self.reps += 1
+                return True
+        return False
+
+
+def elbow(world, img, side: str) -> float | None:
+    idx = [MEDIAPIPE33.index(f"{j}_{side}") for j in ("shoulder", "elbow", "wrist")]
+    if min(img[i, 3] for i in idx) < MIN_VIS:
+        return None
+    return angle_deg(*(world[i] for i in idx))
+
+
+def draw_skeleton(cv2, frame, img):
+    h, w = frame.shape[:2]
+    for a, b in EDGES:
+        ia, ib = MEDIAPIPE33.index(a), MEDIAPIPE33.index(b)
+        if img[ia, 3] < MIN_VIS or img[ib, 3] < MIN_VIS:
+            continue
+        pa = (int(img[ia, 0] * w), int(img[ia, 1] * h))
+        pb = (int(img[ib, 0] * w), int(img[ib, 1] * h))
+        cv2.line(frame, pa, pb, (0, 200, 255), 3)
+    for i in range(11, 29):
+        if img[i, 3] >= MIN_VIS:
+            cv2.circle(frame, (int(img[i, 0] * w), int(img[i, 1] * h)), 4, (255, 255, 255), -1)
+
+
+def text(cv2, frame, s, y, color=(255, 255, 255), scale=0.7):
+    cv2.putText(frame, s, (12, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4)
+    cv2.putText(frame, s, (12, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2)
+
+
+def open_capture(cv2, args):
+    if args.video:
+        return cv2.VideoCapture(str(args.video))
+    api = cv2.CAP_AVFOUNDATION if sys.platform == "darwin" else cv2.CAP_ANY
+    cap = cv2.VideoCapture(args.camera, api)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    return cap
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--gate", choices=["ble", "always", "key"], default="ble")
+    ap.add_argument("--camera", type=int, default=0)
+    ap.add_argument("--video", type=Path, help="read a file instead of the webcam")
+    ap.add_argument("--model", default="lite", choices=["lite", "full", "heavy"])
+    ap.add_argument("--no-led", action="store_true", help="don't flash the board LED on reps")
+    ap.add_argument("--headless", action="store_true", help="no window (for testing)")
+    ap.add_argument("--snapshot", type=Path, help="save the last drawn frame as an image")
+    args = ap.parse_args()
+
+    import cv2
+
+    detect = make_landmarker(args.model)
+    cap = open_capture(cv2, args)
+    if not cap.isOpened():
+        print(
+            "Could not open the camera. On macOS: System Settings > Privacy & Security > Camera,"
+            " allow your terminal app, then run again. Other camera? try --camera 1"
+        )
+        return 1
+
+    t0 = time.monotonic()
+    log_dir = Path(__file__).resolve().parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    board = BoardGate(t0, log_dir / f"{stamp}_imu.csv") if args.gate == "ble" else None
+    flog = open(log_dir / f"{stamp}_frames.csv", "w", newline="")  # noqa: SIM115
+    fw = csv.writer(flog)
+    fw.writerow([
+        "t", "gate", "connected", "sample_age_s", "person", "elbow_l", "elbow_r",
+        "vis_l", "vis_r", "smooth_l", "smooth_r", "flexed_l", "flexed_r", "reps_l", "reps_r",
+    ])
+    print(f"logging to {log_dir}/{stamp}_*.csv")
+    key_gate = False
+    counters = {"l": RepCounter(), "r": RepCounter()}
+    n_frames = n_pose = n_person = 0
+    last_ms = -1
+    fps, t_prev = 0.0, t0
+    gate_was = False
+    last_drawn = None
+    title = "FormCoach live spike (q to quit)"
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                if args.video:
+                    break
+                print("camera returned no frame (permission prompt pending?)")
+                time.sleep(0.2)
+                continue
+            n_frames += 1
+            now = time.monotonic()
+            fps = 0.9 * fps + 0.1 / max(now - t_prev, 1e-6)
+            t_prev = now
+
+            if args.gate == "ble":
+                gate = board.connected and board.gate
+            elif args.gate == "key":
+                gate = key_gate
+            else:
+                gate = True
+            if gate != gate_was:
+                print(f"{now - t0:7.2f} s  gate {'ON  -> pose running' if gate else 'OFF -> pose paused'}")
+                gate_was = gate
+
+            angles = {"l": None, "r": None}
+            vis = {"l": "", "r": ""}
+            img = None
+            if gate:
+                t_ms = max(int((now - t0) * 1000), last_ms + 1)  # VIDEO mode needs increasing ms
+                last_ms = t_ms
+                img, world = detect(frame, t_ms)
+                n_pose += 1
+                if img is not None:
+                    for side in ("l", "r"):
+                        vis[side] = f"{min(img[MEDIAPIPE33.index(f'{j}_{side}'), 3] for j in ('shoulder', 'elbow', 'wrist')):.2f}"
+                    n_person += 1
+                    draw_skeleton(cv2, frame, img)
+                    for side in ("l", "r"):
+                        angles[side] = elbow(world, img, side)
+                        if counters[side].update(angles[side]):
+                            print(f"{now - t0:7.2f} s  rep {counters[side].reps} ({side} arm)")
+                            if board and not args.no_led:
+                                board.led_good_rep()
+            else:
+                frame = (frame * 0.35).astype(np.uint8)  # dim = camera on, pose paused
+
+            def num(x):
+                return "" if x is None else f"{x:.1f}"
+
+            fw.writerow([
+                f"{now - t0:.3f}", int(gate), int(board.connected) if board else "",
+                f"{now - board.last_rx:.2f}" if board and board.n else "", int(img is not None),
+                num(angles["l"]), num(angles["r"]), vis["l"], vis["r"],
+                num(counters["l"].smooth), num(counters["r"].smooth),
+                int(counters["l"].flexed), int(counters["r"].flexed),
+                counters["l"].reps, counters["r"].reps,
+            ])
+
+            frame = cv2.flip(frame, 1)  # mirror view; labels below use the person's own L/R
+            badge = "GATE ON - pose running" if gate else "GATE OFF - pose paused"
+            text(cv2, frame, badge, 34, (0, 255, 0) if gate else (0, 0, 255), 0.9)
+            if board:
+                text(cv2, frame, board.label(), 66)
+            elif args.gate == "key":
+                text(cv2, frame, "SPACE toggles the gate", 66)
+
+            for y, side in ((100, "l"), (130, "r")):
+                a = angles[side]
+                shown = f"{a:5.0f} deg" if a is not None else "   --   "
+                text(cv2, frame, f"{side.upper()} elbow {shown}  reps {counters[side].reps}", y)
+            text(cv2, frame, f"{fps:4.1f} fps   pose on {n_pose}/{n_frames} frames", frame.shape[0] - 16, scale=0.6)
+            last_drawn = frame
+
+            if not args.headless:
+                cv2.imshow(title, frame)
+                k = cv2.waitKey(1) & 0xFF
+                if k in (ord("q"), 27):
+                    break
+                if k == ord(" ") and args.gate == "key":
+                    key_gate = not key_gate
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cap.release()
+        if not args.headless:
+            cv2.destroyAllWindows()
+        if board:
+            board.close()
+    if args.snapshot and last_drawn is not None:
+        cv2.imwrite(str(args.snapshot), last_drawn)
+    skipped = n_frames - n_pose
+    print(
+        f"\n{n_frames} frames in {time.monotonic() - t0:.1f} s: pose ran on {n_pose}"
+        f" (person found in {n_person}), skipped {skipped}"
+        f" ({100 * skipped / max(n_frames, 1):.0f}% of frames saved by the gate)."
+        f"  Reps: L {counters['l'].reps}, R {counters['r'].reps}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
