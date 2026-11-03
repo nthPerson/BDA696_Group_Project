@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import requests
 
 from formcoach.pose.store import write_pose
 
@@ -44,10 +45,63 @@ def model_path(variant: str = "lite") -> Path:
     p = MODELS_DIR / f"pose_landmarker_{variant}.task"
     if not p.exists():
         raise FileNotFoundError(
-            f"{p} not found. Download it:\n  curl -L -o {p} {MODEL_URLS[variant]}\n"
+            f"{p} not found. Download it:\n"
+            f"  uv run formcoach pose fetch-model --model {variant}\n"
+            f"  (or) curl -L -o {p} {MODEL_URLS[variant]}\n"
             "(then re-run; the file is gitignored)"
         )
     return p
+
+
+def fetch_model(
+    variant: str = "lite",
+    *,
+    dest_dir: Path | None = None,
+    get: Callable[..., object] | None = None,
+) -> Path:
+    """Download the MediaPipe PoseLandmarker ``variant`` model into ``dest_dir`` (default
+    :data:`MODELS_DIR`), in Python with ``requests`` (a core dependency, not the ``vision``
+    extra), so it works the same on Windows, macOS and Linux without ``curl``.
+
+    Returns the existing path immediately, without downloading, if the model file is already
+    there. Streams the response to a ``<file>.partial`` file next to the destination and renames
+    it into place only once the download finishes, so an interrupted or failed download never
+    leaves a corrupt model file behind (the ``.partial`` is removed and the error re-raised).
+
+    Args:
+        variant: one of :data:`MODEL_URLS` (``"lite"``, ``"full"``, ``"heavy"``).
+        dest_dir: directory to download into; defaults to :data:`MODELS_DIR`.
+        get: injected in place of ``requests.get`` for tests, so no network call happens; must
+            accept ``(url, stream=True)`` and return an object with ``raise_for_status()`` and
+            ``iter_content(chunk_size=...)``, like a ``requests.Response``.
+
+    Raises:
+        ValueError: ``variant`` is not a known model name.
+    """
+    if variant not in MODEL_URLS:
+        raise ValueError(
+            f"unknown pose model variant {variant!r}; choose from {sorted(MODEL_URLS)}"
+        )
+    dest_dir = Path(dest_dir) if dest_dir is not None else MODELS_DIR
+    dest = dest_dir / f"pose_landmarker_{variant}.task"
+    if dest.exists():
+        return dest
+
+    get = get or requests.get
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    partial = dest.with_suffix(dest.suffix + ".partial")
+    try:
+        response = get(MODEL_URLS[variant], stream=True)
+        response.raise_for_status()
+        with open(partial, "wb") as f:
+            for chunk in response.iter_content(chunk_size=1 << 20):
+                if chunk:
+                    f.write(chunk)
+        partial.rename(dest)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
+    return dest
 
 
 def make_landmarker(variant: str = "lite", path: Path | None = None):
