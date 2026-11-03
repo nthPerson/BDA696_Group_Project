@@ -17,6 +17,8 @@ from formcoach.app.events import _json_default
 from formcoach.data.fixtures import FIXTURE_ROOT
 from formcoach.rules.engine import RuleEngine
 
+from .synthetic_pose import curl_deg, pose_frame
+
 SESSION = FIXTURE_ROOT / "replay" / "mmfit_w00_curls"
 GOLDEN = json.loads(
     (Path(__file__).parent / "golden" / "replay_mmfit_w00_curls.json").read_text(encoding="utf-8")
@@ -57,3 +59,48 @@ def test_golden_covers_gate_events_and_the_imu_cross_check():
     summary = GOLDEN["energy"]["summary"]
     assert summary["reps_imu"] > 0 and summary["frames_processed"] < summary["frames_total"]
     assert "arm" not in GOLDEN["always_on"]["events"][0]["payload"]
+
+
+# ---- Pipeline: live-driven (no IMU), same angles -> reps -> rules code (plan Task 3) --------
+
+
+def test_pipeline_streams_frames_with_no_imu():
+    pipe = pipeline.Pipeline(exercise="curl", rules=RuleEngine.from_yaml())
+    pipe.set_gate(True, 0.0)
+    fps = 30.0
+    n = int(25.0 * fps)
+    for i in range(n):
+        t = i / fps
+        d = curl_deg(t)
+        pipe.on_frame(pose_frame(i, t, d, d))
+    result = pipe.finish(compute_imu=False)
+    reps = [e for e in result.events if e.kind == "rep"]
+    assert 8 <= len(reps) <= 10
+    assert "reps_imu" not in result.summary
+    assert "reps_fused" not in result.summary
+    assert "imu_seconds" not in result.summary
+    assert result.summary["frames_total"] == 750
+
+
+def test_closed_gate_skips_pose_but_logs_frames():
+    pipe = pipeline.Pipeline(exercise="curl", rules=RuleEngine.from_yaml())
+    fps = 30.0
+    for i in range(int(5.0 * fps)):
+        t = i / fps
+        assert pipe.on_frame(pose_frame(i, t, curl_deg(t), curl_deg(t))) == []
+    result = pipe.finish(compute_imu=False)
+    assert result.summary["frames_processed"] == 0
+
+
+def test_gate_close_resets_the_segmenter():
+    pipe = pipeline.Pipeline(exercise="curl", rules=RuleEngine.from_yaml())
+    fps = 30.0
+    pipe.set_gate(True, 0.0)
+    for i in range(int(5.0 * fps)):
+        t = i / fps
+        pipe.on_frame(pose_frame(i, t, curl_deg(t), curl_deg(t)))
+    pipe.set_gate(False, 5.0)
+    pipe.set_gate(True, 6.0)
+    result = pipe.finish(compute_imu=False)
+    kinds = [e.kind for e in result.events if e.kind in ("gate_open", "gate_close")]
+    assert kinds == ["gate_open", "gate_close", "gate_open"]

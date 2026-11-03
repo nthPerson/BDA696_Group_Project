@@ -77,6 +77,11 @@ class RepSegmenter:
         self._ext_v = np.inf
         self._ext_t = 0.0
 
+    @property
+    def rep_start_t(self) -> float | None:
+        """Start time (s) of the rep currently in progress, or ``None`` while at rest."""
+        return self._last_rest_t if self.active else None
+
     def _adapt(self, t: float, v: float) -> bool:
         """Update thresholds from the recent window; False while the range is too small."""
         self._hist_t.append(t)
