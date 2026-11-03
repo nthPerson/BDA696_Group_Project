@@ -1,0 +1,1954 @@
+{
+ "always_on": {
+  "events": [
+   {
+    "kind": "gate_open",
+    "payload": {},
+    "t": 1697.6977868652343
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.801975538068973,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 95.30817140035934
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.801975538068973
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 87.18076736593292
+      }
+     ],
+     "metrics": {
+      "abd_peak": 43.546020065710245,
+      "duration_s": 0.801975538068973,
+      "elbow_asymmetry": 87.18076736593292,
+      "elbow_at_abd_peak": 96.9651644064104,
+      "elbow_drift_max": 0.041277694802105414,
+      "elbow_max": 134.19886688333597,
+      "elbow_max_l": 125.05558688526214,
+      "elbow_max_r": 143.34214688140978,
+      "elbow_min": 95.30817140035934,
+      "elbow_min_l": 51.64076194013929,
+      "elbow_min_r": 138.82152930607222,
+      "elbow_top_asymmetry": 18.28655999614763,
+      "hip_knee_height_at_bottom": 0.9697028863620336,
+      "knee_min": 166.60645834567237,
+      "knee_track_at_bottom": -8.9802719150762e-05,
+      "trunk_incl_at_bottom": 8.47313143843753,
+      "trunk_incl_max": 10.599917985949782,
+      "upper_arm_trunk_drift": 3.0550987698571213,
+      "upper_arm_trunk_range": 4.572964516515473
+     },
+     "rep_id": 0,
+     "source": "pose",
+     "t_end": 1703.797030627955,
+     "t_start": 1702.9950550898861
+    },
+    "t": 1703.797030627955
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 0,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 95.30817140035934
+    },
+    "t": 1703.797030627955
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 0,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.801975538068973
+    },
+    "t": 1703.797030627955
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 0,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 87.18076736593292
+    },
+    "t": 1703.797030627955
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.0358850700063158,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 95.51597200733723
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 76.57943807884331
+      }
+     ],
+     "metrics": {
+      "abd_peak": 49.98287886793902,
+      "duration_s": 1.0358850700063158,
+      "elbow_asymmetry": 76.57943807884331,
+      "elbow_at_abd_peak": 95.72275141886378,
+      "elbow_drift_max": 0.031247707539053482,
+      "elbow_max": 133.98406289359372,
+      "elbow_max_l": 140.6607806228861,
+      "elbow_max_r": 132.6318134765259,
+      "elbow_min": 95.51597200733723,
+      "elbow_min_l": 129.17767746611634,
+      "elbow_min_r": 52.59823938727303,
+      "elbow_top_asymmetry": 8.028967146360202,
+      "hip_knee_height_at_bottom": 1.0423687839880502,
+      "knee_min": 168.6364951163566,
+      "knee_track_at_bottom": -0.012840468846861961,
+      "trunk_incl_at_bottom": 4.83879172121281,
+      "trunk_incl_max": 13.123957835432762,
+      "upper_arm_trunk_drift": 2.561122995694266,
+      "upper_arm_trunk_range": 4.712771784510359
+     },
+     "rep_id": 1,
+     "source": "pose",
+     "t_end": 1705.5012286463523,
+     "t_start": 1704.465343576346
+    },
+    "t": 1705.5012286463523
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 1,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 95.51597200733723
+    },
+    "t": 1705.5012286463523
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 1,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 76.57943807884331
+    },
+    "t": 1705.5012286463523
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.8688068329081489,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 92.37850781418535
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.8688068329081489
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 95.33648092770376
+      }
+     ],
+     "metrics": {
+      "abd_peak": 45.962293181070095,
+      "duration_s": 0.8688068329081489,
+      "elbow_asymmetry": 95.33648092770376,
+      "elbow_at_abd_peak": 92.9758905402343,
+      "elbow_drift_max": 0.027535060745444484,
+      "elbow_max": 134.04069932713531,
+      "elbow_max_l": 123.90613596734202,
+      "elbow_max_r": 144.17526268692862,
+      "elbow_min": 92.37850781418535,
+      "elbow_min_l": 43.21604732654181,
+      "elbow_min_r": 138.55252825424557,
+      "elbow_top_asymmetry": 20.269126719586595,
+      "hip_knee_height_at_bottom": 1.029593553563855,
+      "knee_min": 165.58550200927746,
+      "knee_track_at_bottom": -0.058169716104548075,
+      "trunk_incl_at_bottom": 0.8725042356121533,
+      "trunk_incl_max": 2.992160590715577,
+      "upper_arm_trunk_drift": 3.6458073515292924,
+      "upper_arm_trunk_range": 5.074291059338659
+     },
+     "rep_id": 2,
+     "source": "pose",
+     "t_end": 1707.0717640750709,
+     "t_start": 1706.2029572421627
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 2,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 92.37850781418535
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 2,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.8688068329081489
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 2,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 95.33648092770376
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.0024694225865005,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 94.66025199721155
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 79.346577450865
+      }
+     ],
+     "metrics": {
+      "abd_peak": 53.308442357289394,
+      "duration_s": 1.0024694225865005,
+      "elbow_asymmetry": 79.346577450865,
+      "elbow_at_abd_peak": 95.49143766993686,
+      "elbow_drift_max": 0.041042318385020315,
+      "elbow_max": 137.00460410767698,
+      "elbow_max_l": 138.43583868144003,
+      "elbow_max_r": 135.5733695339139,
+      "elbow_min": 94.66025199721155,
+      "elbow_min_l": 131.19009602120383,
+      "elbow_min_r": 51.84351857033884,
+      "elbow_top_asymmetry": 2.8624691475261272,
+      "hip_knee_height_at_bottom": 1.084516860330508,
+      "knee_min": 169.58916738293584,
+      "knee_track_at_bottom": -0.02381171763109753,
+      "trunk_incl_at_bottom": 0.2729439554639326,
+      "trunk_incl_max": 10.036211032988179,
+      "upper_arm_trunk_drift": 3.6914736001652457,
+      "upper_arm_trunk_range": 4.795138816069166
+     },
+     "rep_id": 3,
+     "source": "pose",
+     "t_end": 1708.8427933883072,
+     "t_start": 1707.8403239657207
+    },
+    "t": 1708.8427933883072
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 3,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 94.66025199721155
+    },
+    "t": 1708.8427933883072
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 3,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 79.346577450865
+    },
+    "t": 1708.8427933883072
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.7685598906496125,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 93.05779083229494
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.7685598906496125
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 89.95974369725482
+      }
+     ],
+     "metrics": {
+      "abd_peak": 48.01216604300137,
+      "duration_s": 0.7685598906496125,
+      "elbow_asymmetry": 89.95974369725482,
+      "elbow_at_abd_peak": 93.32658302859593,
+      "elbow_drift_max": 0.015868855962341055,
+      "elbow_max": 132.66552563619865,
+      "elbow_max_l": 121.61854860736905,
+      "elbow_max_r": 143.71250266502824,
+      "elbow_min": 93.05779083229494,
+      "elbow_min_l": 46.99340336653123,
+      "elbow_min_r": 136.95314706378605,
+      "elbow_top_asymmetry": 22.09395405765919,
+      "hip_knee_height_at_bottom": 1.0716610518625582,
+      "knee_min": 166.8076618238843,
+      "knee_track_at_bottom": -0.056278592181512176,
+      "trunk_incl_at_bottom": 0.858836280904403,
+      "trunk_incl_max": 4.4777213926879265,
+      "upper_arm_trunk_drift": 3.467286830557647,
+      "upper_arm_trunk_range": 5.641638640137991
+     },
+     "rep_id": 4,
+     "source": "pose",
+     "t_end": 1710.4133288170258,
+     "t_start": 1709.6447689263762
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 4,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 93.05779083229494
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 4,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.7685598906496125
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 4,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 89.95974369725482
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.1361320122646248,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 96.37113782672938
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 78.34957370363334
+      }
+     ],
+     "metrics": {
+      "abd_peak": 52.18418764159762,
+      "duration_s": 1.1361320122646248,
+      "elbow_asymmetry": 78.34957370363334,
+      "elbow_at_abd_peak": 97.37309976113961,
+      "elbow_drift_max": 0.028576834479538293,
+      "elbow_max": 137.68397122890522,
+      "elbow_max_l": 140.46783655590832,
+      "elbow_max_r": 137.4057760618865,
+      "elbow_min": 96.37113782672938,
+      "elbow_min_l": 131.51645499464988,
+      "elbow_min_r": 53.16688129101654,
+      "elbow_top_asymmetry": 3.0620604940218072,
+      "hip_knee_height_at_bottom": 1.080449763095982,
+      "knee_min": 169.81051483106666,
+      "knee_track_at_bottom": -0.02045081256055153,
+      "trunk_incl_at_bottom": 2.1300138459599176,
+      "trunk_incl_max": 10.705393208544018,
+      "upper_arm_trunk_drift": 2.6570290918049864,
+      "upper_arm_trunk_range": 4.946179887197946
+     },
+     "rep_id": 5,
+     "source": "pose",
+     "t_end": 1712.3514363673596,
+     "t_start": 1711.215304355095
+    },
+    "t": 1712.3514363673596
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 5,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 96.37113782672938
+    },
+    "t": 1712.3514363673596
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 5,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 78.34957370363334
+    },
+    "t": 1712.3514363673596
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.9022224803277368,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 92.47792660559489
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.9022224803277368
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 94.89780214724607
+      }
+     ],
+     "metrics": {
+      "abd_peak": 45.11598457110563,
+      "duration_s": 0.9022224803277368,
+      "elbow_asymmetry": 94.89780214724607,
+      "elbow_at_abd_peak": 93.34363264117106,
+      "elbow_drift_max": 0.011836303692840389,
+      "elbow_max": 133.27651389336222,
+      "elbow_max_l": 122.66375780672774,
+      "elbow_max_r": 143.88926997999673,
+      "elbow_min": 92.47792660559489,
+      "elbow_min_l": 43.44163213082252,
+      "elbow_min_r": 138.33943427806858,
+      "elbow_top_asymmetry": 21.22551217326898,
+      "hip_knee_height_at_bottom": 1.0536525248879658,
+      "knee_min": 165.41437402277535,
+      "knee_track_at_bottom": -0.0763016787030027,
+      "trunk_incl_at_bottom": 2.032045640004315,
+      "trunk_incl_max": 3.3875506640402846,
+      "upper_arm_trunk_drift": 2.4645053449335492,
+      "upper_arm_trunk_range": 4.164105515335354
+     },
+     "rep_id": 6,
+     "source": "pose",
+     "t_end": 1714.022218738337,
+     "t_start": 1713.1199962580092
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 6,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 92.47792660559489
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 6,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.9022224803277368
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 6,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 94.89780214724607
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.1361320122648522,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 96.70338195853006
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 77.30221505935025
+      }
+     ],
+     "metrics": {
+      "abd_peak": 53.43501211028796,
+      "duration_s": 1.1361320122648522,
+      "elbow_asymmetry": 77.30221505935025,
+      "elbow_at_abd_peak": 97.75760499731176,
+      "elbow_drift_max": 0.02753619033550858,
+      "elbow_max": 139.73223464864807,
+      "elbow_max_l": 140.46085713208555,
+      "elbow_max_r": 139.0036121652106,
+      "elbow_min": 96.70338195853006,
+      "elbow_min_l": 131.85896319458664,
+      "elbow_min_r": 54.55674813523639,
+      "elbow_top_asymmetry": 1.4572449668749528,
+      "hip_knee_height_at_bottom": 1.0636053172894102,
+      "knee_min": 169.8603905263126,
+      "knee_track_at_bottom": -0.032655640706127746,
+      "trunk_incl_at_bottom": 6.837012324413172,
+      "trunk_incl_max": 8.353984284798637,
+      "upper_arm_trunk_drift": 3.3852045206026418,
+      "upper_arm_trunk_range": 4.963355373493936
+     },
+     "rep_id": 7,
+     "source": "pose",
+     "t_end": 1715.960326288671,
+     "t_start": 1714.8241942764062
+    },
+    "t": 1715.960326288671
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 7,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 96.70338195853006
+    },
+    "t": 1715.960326288671
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 7,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 77.30221505935025
+    },
+    "t": 1715.960326288671
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.8688068329081489,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 93.91268512726917
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.8688068329081489
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 91.07778902258033
+      }
+     ],
+     "metrics": {
+      "abd_peak": 48.382088323697054,
+      "duration_s": 0.8688068329081489,
+      "elbow_asymmetry": 91.07778902258033,
+      "elbow_at_abd_peak": 95.02921552423324,
+      "elbow_drift_max": 0.02049345887322679,
+      "elbow_max": 138.49936231109803,
+      "elbow_max_l": 131.08270643686484,
+      "elbow_max_r": 145.91601818533124,
+      "elbow_min": 93.91268512726917,
+      "elbow_min_l": 47.29761520742799,
+      "elbow_min_r": 138.37540423000831,
+      "elbow_top_asymmetry": 14.8333117484664,
+      "hip_knee_height_at_bottom": 1.0686773121707498,
+      "knee_min": 165.5899326815444,
+      "knee_track_at_bottom": -0.06082495370681631,
+      "trunk_incl_at_bottom": 1.9697729988393344,
+      "trunk_incl_max": 4.871699888024211,
+      "upper_arm_trunk_drift": 2.6010994015804343,
+      "upper_arm_trunk_range": 5.011165801052911
+     },
+     "rep_id": 8,
+     "source": "pose",
+     "t_end": 1717.6311086596484,
+     "t_start": 1716.7623018267402
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 8,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 93.91268512726917
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 8,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.8688068329081489
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 8,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 91.07778902258033
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.1027163648450369,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 96.8801965511808
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 79.19525923133602
+      }
+     ],
+     "metrics": {
+      "abd_peak": 52.17396037193181,
+      "duration_s": 1.1027163648450369,
+      "elbow_asymmetry": 79.19525923133602,
+      "elbow_at_abd_peak": 97.0106420103939,
+      "elbow_drift_max": 0.026658400193397214,
+      "elbow_max": 140.15132730467735,
+      "elbow_max_l": 140.80976057834775,
+      "elbow_max_r": 139.6145386978549,
+      "elbow_min": 96.8801965511808,
+      "elbow_min_l": 132.35230865217096,
+      "elbow_min_r": 53.157049420834944,
+      "elbow_top_asymmetry": 1.195221880492852,
+      "hip_knee_height_at_bottom": 1.0769149820074144,
+      "knee_min": 169.1431883625284,
+      "knee_track_at_bottom": -0.021418256880407625,
+      "trunk_incl_at_bottom": 3.2628541672529674,
+      "trunk_incl_max": 9.484995540355253,
+      "upper_arm_trunk_drift": 3.0762427367193865,
+      "upper_arm_trunk_range": 4.295811428216076
+     },
+     "rep_id": 9,
+     "source": "pose",
+     "t_end": 1719.502384915143,
+     "t_start": 1718.399668550298
+    },
+    "t": 1719.502384915143
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 9,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 96.8801965511808
+    },
+    "t": 1719.502384915143
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 9,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 79.19525923133602
+    },
+    "t": 1719.502384915143
+   }
+  ],
+  "summary": {
+   "exercise": "curl",
+   "faults": 25,
+   "frames_bridged": 0,
+   "frames_invalid": 0,
+   "frames_processed": 897,
+   "frames_processed_pct": 99.9,
+   "frames_total": 898,
+   "gate": "always_on",
+   "gated_seconds": 29.98,
+   "imu_seconds": 29.98,
+   "meta": {
+    "dataset": "mmfit",
+    "device": "sw_l",
+    "exercise": "curl",
+    "expected_reps": 10,
+    "license": "MIT (MM-Fit sensor/pose data; Str\u00f6mb\u00e4ck, Huang & Radu, IMWUT 2020)",
+    "placement": "wrist_l",
+    "pose_units": "mm, camera frame (MM-Fit pose_3d)",
+    "sets": [
+     {
+      "activity": "bicep_curls",
+      "exercise": "curl",
+      "reps": 10,
+      "t_end": 1719.869957036758,
+      "t_start": 1702.69431426311
+     }
+    ],
+    "skeleton": "h36m17",
+    "source": "https://mmfit.github.io/",
+    "subject": "P2",
+    "t_range": [
+     1697.69431426311,
+     1727.69431426311
+    ],
+    "workout": "w00"
+   },
+   "reps": 10,
+   "reps_fused": 10,
+   "reps_imu": 17,
+   "reps_pose": 10
+  }
+ },
+ "energy": {
+  "events": [
+   {
+    "kind": "gate_open",
+    "payload": {},
+    "t": 1702.8117868652344
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.6348973009714882,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 95.30818962596868
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.6348973009714882
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 87.23424337263518
+      }
+     ],
+     "metrics": {
+      "abd_peak": 43.643275703693824,
+      "duration_s": 0.6348973009714882,
+      "elbow_asymmetry": 87.23424337263518,
+      "elbow_at_abd_peak": 96.13204101857166,
+      "elbow_drift_max": 0.01187525771117659,
+      "elbow_max": 131.67117858106093,
+      "elbow_max_l": 120.75124620402079,
+      "elbow_max_r": 142.59111095810104,
+      "elbow_min": 95.30818962596868,
+      "elbow_min_l": 51.58731620630383,
+      "elbow_min_r": 138.821559578939,
+      "elbow_top_asymmetry": 21.839864754080253,
+      "hip_knee_height_at_bottom": 1.0309315568273436,
+      "knee_min": 166.56156064656588,
+      "knee_track_at_bottom": -0.08223255819409221,
+      "trunk_incl_at_bottom": 0.8129565563721023,
+      "trunk_incl_max": 4.278718354967822,
+      "upper_arm_trunk_drift": 3.333122641282152,
+      "upper_arm_trunk_range": 4.242145112550393
+     },
+     "rep_id": 0,
+     "source": "pose",
+     "t_end": 1703.7636149805355,
+     "t_start": 1703.128717679564
+    },
+    "t": 1703.7636149805355
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 0,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 95.30818962596868
+    },
+    "t": 1703.7636149805355
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 0,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.6348973009714882
+    },
+    "t": 1703.7636149805355
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 0,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 87.23424337263518
+    },
+    "t": 1703.7636149805355
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.0358850700063158,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 95.51597200733723
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 76.57943807884331
+      }
+     ],
+     "metrics": {
+      "abd_peak": 49.98287886793902,
+      "duration_s": 1.0358850700063158,
+      "elbow_asymmetry": 76.57943807884331,
+      "elbow_at_abd_peak": 95.72275141886378,
+      "elbow_drift_max": 0.03011983228079851,
+      "elbow_max": 133.98406289359372,
+      "elbow_max_l": 140.6607806228861,
+      "elbow_max_r": 132.6318134765259,
+      "elbow_min": 95.51597200733723,
+      "elbow_min_l": 129.17767746611634,
+      "elbow_min_r": 52.59823938727303,
+      "elbow_top_asymmetry": 8.028967146360202,
+      "hip_knee_height_at_bottom": 1.054597394988773,
+      "knee_min": 168.6364951163566,
+      "knee_track_at_bottom": -0.03403585964860524,
+      "trunk_incl_at_bottom": 3.9552733106628177,
+      "trunk_incl_max": 11.529451041259247,
+      "upper_arm_trunk_drift": 2.561122995694266,
+      "upper_arm_trunk_range": 4.712771784510359
+     },
+     "rep_id": 1,
+     "source": "pose",
+     "t_end": 1705.5012286463523,
+     "t_start": 1704.465343576346
+    },
+    "t": 1705.5012286463523
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 1,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 95.51597200733723
+    },
+    "t": 1705.5012286463523
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 1,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 76.57943807884331
+    },
+    "t": 1705.5012286463523
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.8688068329081489,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 92.37850781418535
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.8688068329081489
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 95.33648092770376
+      }
+     ],
+     "metrics": {
+      "abd_peak": 45.962293181070095,
+      "duration_s": 0.8688068329081489,
+      "elbow_asymmetry": 95.33648092770376,
+      "elbow_at_abd_peak": 92.9758905402343,
+      "elbow_drift_max": 0.025589443281850588,
+      "elbow_max": 134.04069932713531,
+      "elbow_max_l": 123.90613596734202,
+      "elbow_max_r": 144.17526268692862,
+      "elbow_min": 92.37850781418535,
+      "elbow_min_l": 43.21604732654181,
+      "elbow_min_r": 138.55252825424557,
+      "elbow_top_asymmetry": 20.269126719586595,
+      "hip_knee_height_at_bottom": 1.0353024144648408,
+      "knee_min": 165.58550200927746,
+      "knee_track_at_bottom": -0.06688615429171019,
+      "trunk_incl_at_bottom": 0.7389836009872598,
+      "trunk_incl_max": 2.9251334581519397,
+      "upper_arm_trunk_drift": 3.6458073515292924,
+      "upper_arm_trunk_range": 5.074291059338659
+     },
+     "rep_id": 2,
+     "source": "pose",
+     "t_end": 1707.0717640750709,
+     "t_start": 1706.2029572421627
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 2,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 92.37850781418535
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 2,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.8688068329081489
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 2,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 95.33648092770376
+    },
+    "t": 1707.0717640750709
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.0024694225865005,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 94.66025199721155
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 79.346577450865
+      }
+     ],
+     "metrics": {
+      "abd_peak": 53.308442357289394,
+      "duration_s": 1.0024694225865005,
+      "elbow_asymmetry": 79.346577450865,
+      "elbow_at_abd_peak": 95.49143766993686,
+      "elbow_drift_max": 0.040480826892994926,
+      "elbow_max": 137.00460410767698,
+      "elbow_max_l": 138.43583868144003,
+      "elbow_max_r": 135.5733695339139,
+      "elbow_min": 94.66025199721155,
+      "elbow_min_l": 131.19009602120383,
+      "elbow_min_r": 51.84351857033884,
+      "elbow_top_asymmetry": 2.8624691475261272,
+      "hip_knee_height_at_bottom": 1.085868714223634,
+      "knee_min": 169.58916738293584,
+      "knee_track_at_bottom": -0.02640448979793363,
+      "trunk_incl_at_bottom": 0.3928366294787032,
+      "trunk_incl_max": 9.797153387824945,
+      "upper_arm_trunk_drift": 3.6914736001652457,
+      "upper_arm_trunk_range": 4.795138816069166
+     },
+     "rep_id": 3,
+     "source": "pose",
+     "t_end": 1708.8427933883072,
+     "t_start": 1707.8403239657207
+    },
+    "t": 1708.8427933883072
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 3,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 94.66025199721155
+    },
+    "t": 1708.8427933883072
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 3,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 79.346577450865
+    },
+    "t": 1708.8427933883072
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.7685598906496125,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 93.05779083229494
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.7685598906496125
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 89.95974369725482
+      }
+     ],
+     "metrics": {
+      "abd_peak": 48.01216604300137,
+      "duration_s": 0.7685598906496125,
+      "elbow_asymmetry": 89.95974369725482,
+      "elbow_at_abd_peak": 93.32658302859593,
+      "elbow_drift_max": 0.01570895493835267,
+      "elbow_max": 132.66552563619865,
+      "elbow_max_l": 121.61854860736905,
+      "elbow_max_r": 143.71250266502824,
+      "elbow_min": 93.05779083229494,
+      "elbow_min_l": 46.99340336653123,
+      "elbow_min_r": 136.95314706378605,
+      "elbow_top_asymmetry": 22.09395405765919,
+      "hip_knee_height_at_bottom": 1.072314543408484,
+      "knee_min": 166.8076618238843,
+      "knee_track_at_bottom": -0.05751455187123355,
+      "trunk_incl_at_bottom": 0.750861990634603,
+      "trunk_incl_max": 4.553857230225784,
+      "upper_arm_trunk_drift": 3.467286830557647,
+      "upper_arm_trunk_range": 5.641638640137991
+     },
+     "rep_id": 4,
+     "source": "pose",
+     "t_end": 1710.4133288170258,
+     "t_start": 1709.6447689263762
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 4,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 93.05779083229494
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 4,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.7685598906496125
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 4,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 89.95974369725482
+    },
+    "t": 1710.4133288170258
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.1361320122646248,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 96.37113782672938
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 78.34957370363334
+      }
+     ],
+     "metrics": {
+      "abd_peak": 52.18418764159762,
+      "duration_s": 1.1361320122646248,
+      "elbow_asymmetry": 78.34957370363334,
+      "elbow_at_abd_peak": 97.37309976113961,
+      "elbow_drift_max": 0.02852610100026365,
+      "elbow_max": 137.68397122890522,
+      "elbow_max_l": 140.46783655590832,
+      "elbow_max_r": 137.4057760618865,
+      "elbow_min": 96.37113782672938,
+      "elbow_min_l": 131.51645499464988,
+      "elbow_min_r": 53.16688129101654,
+      "elbow_top_asymmetry": 3.0620604940218072,
+      "hip_knee_height_at_bottom": 1.080581662920344,
+      "knee_min": 169.81051483106666,
+      "knee_track_at_bottom": -0.02076503982344865,
+      "trunk_incl_at_bottom": 2.1029767577480594,
+      "trunk_incl_max": 10.673176698268689,
+      "upper_arm_trunk_drift": 2.6570290918049864,
+      "upper_arm_trunk_range": 4.946179887197946
+     },
+     "rep_id": 5,
+     "source": "pose",
+     "t_end": 1712.3514363673596,
+     "t_start": 1711.215304355095
+    },
+    "t": 1712.3514363673596
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 5,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 96.37113782672938
+    },
+    "t": 1712.3514363673596
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 5,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 78.34957370363334
+    },
+    "t": 1712.3514363673596
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.9022224803277368,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 92.47792660559489
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.9022224803277368
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 94.89780214724607
+      }
+     ],
+     "metrics": {
+      "abd_peak": 45.11598457110563,
+      "duration_s": 0.9022224803277368,
+      "elbow_asymmetry": 94.89780214724607,
+      "elbow_at_abd_peak": 93.34363264117106,
+      "elbow_drift_max": 0.011817870566062927,
+      "elbow_max": 133.27651389336222,
+      "elbow_max_l": 122.66375780672774,
+      "elbow_max_r": 143.88926997999673,
+      "elbow_min": 92.47792660559489,
+      "elbow_min_l": 43.44163213082252,
+      "elbow_min_r": 138.33943427806858,
+      "elbow_top_asymmetry": 21.22551217326898,
+      "hip_knee_height_at_bottom": 1.053726383440989,
+      "knee_min": 165.41437402277535,
+      "knee_track_at_bottom": -0.07642860477725523,
+      "trunk_incl_at_bottom": 2.045013055544089,
+      "trunk_incl_max": 3.395637364818953,
+      "upper_arm_trunk_drift": 2.4645053449335492,
+      "upper_arm_trunk_range": 4.164105515335354
+     },
+     "rep_id": 6,
+     "source": "pose",
+     "t_end": 1714.022218738337,
+     "t_start": 1713.1199962580092
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 6,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 92.47792660559489
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 6,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.9022224803277368
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 6,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 94.89780214724607
+    },
+    "t": 1714.022218738337
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.1361320122648522,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 96.70338195853006
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 77.30221505935025
+      }
+     ],
+     "metrics": {
+      "abd_peak": 53.43501211028796,
+      "duration_s": 1.1361320122648522,
+      "elbow_asymmetry": 77.30221505935025,
+      "elbow_at_abd_peak": 97.75760499731176,
+      "elbow_drift_max": 0.027529109886042402,
+      "elbow_max": 139.73223464864807,
+      "elbow_max_l": 140.46085713208555,
+      "elbow_max_r": 139.0036121652106,
+      "elbow_min": 96.70338195853006,
+      "elbow_min_l": 131.85896319458664,
+      "elbow_min_r": 54.55674813523639,
+      "elbow_top_asymmetry": 1.4572449668749528,
+      "hip_knee_height_at_bottom": 1.0636344452965711,
+      "knee_min": 169.8603905263126,
+      "knee_track_at_bottom": -0.03271778743855126,
+      "trunk_incl_at_bottom": 6.832233562477297,
+      "trunk_incl_max": 8.350460371911375,
+      "upper_arm_trunk_drift": 3.3852045206026418,
+      "upper_arm_trunk_range": 4.963355373493936
+     },
+     "rep_id": 7,
+     "source": "pose",
+     "t_end": 1715.960326288671,
+     "t_start": 1714.8241942764062
+    },
+    "t": 1715.960326288671
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 7,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 96.70338195853006
+    },
+    "t": 1715.960326288671
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 7,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 77.30221505935025
+    },
+    "t": 1715.960326288671
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 0.8688068329081489,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 93.91268512726917
+      },
+      {
+       "code": "CURL_TOO_FAST",
+       "message": "Slow down - control the weight on the way down.",
+       "metric": "duration_s",
+       "op": "lt",
+       "severity": "info",
+       "threshold": 1.0,
+       "value": 0.8688068329081489
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 91.07778902258033
+      }
+     ],
+     "metrics": {
+      "abd_peak": 48.382088323697054,
+      "duration_s": 0.8688068329081489,
+      "elbow_asymmetry": 91.07778902258033,
+      "elbow_at_abd_peak": 95.02921552423324,
+      "elbow_drift_max": 0.02049119303584368,
+      "elbow_max": 138.49936231109803,
+      "elbow_max_l": 131.08270643686484,
+      "elbow_max_r": 145.91601818533124,
+      "elbow_min": 93.91268512726917,
+      "elbow_min_l": 47.29761520742799,
+      "elbow_min_r": 138.37540423000831,
+      "elbow_top_asymmetry": 14.8333117484664,
+      "hip_knee_height_at_bottom": 1.068686487013611,
+      "knee_min": 165.5899326815444,
+      "knee_track_at_bottom": -0.06084170446311896,
+      "trunk_incl_at_bottom": 1.971233439579998,
+      "trunk_incl_max": 4.8727481112006,
+      "upper_arm_trunk_drift": 2.6010994015804343,
+      "upper_arm_trunk_range": 5.011165801052911
+     },
+     "rep_id": 8,
+     "source": "pose",
+     "t_end": 1717.6311086596484,
+     "t_start": 1716.7623018267402
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 8,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 93.91268512726917
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_TOO_FAST",
+     "message": "Slow down - control the weight on the way down.",
+     "metric": "duration_s",
+     "op": "lt",
+     "rep_id": 8,
+     "severity": "info",
+     "threshold": 1.0,
+     "value": 0.8688068329081489
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 8,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 91.07778902258033
+    },
+    "t": 1717.6311086596484
+   },
+   {
+    "kind": "rep",
+    "payload": {
+     "duration_s": 1.1027163648450369,
+     "exercise": "curl",
+     "faults": [
+      {
+       "code": "CURL_PARTIAL_ROM",
+       "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+       "metric": "elbow_min",
+       "op": "gt",
+       "severity": "warn",
+       "threshold": 75.0,
+       "value": 96.8801965511808
+      },
+      {
+       "code": "CURL_ASYMMETRY",
+       "message": "Both arms should curl the same distance.",
+       "metric": "elbow_asymmetry",
+       "op": "gt",
+       "severity": "info",
+       "threshold": 20.0,
+       "value": 79.19525923133602
+      }
+     ],
+     "metrics": {
+      "abd_peak": 52.17396037193181,
+      "duration_s": 1.1027163648450369,
+      "elbow_asymmetry": 79.19525923133602,
+      "elbow_at_abd_peak": 97.0106420103939,
+      "elbow_drift_max": 0.02665753888073752,
+      "elbow_max": 140.15132730467735,
+      "elbow_max_l": 140.80976057834775,
+      "elbow_max_r": 139.6145386978549,
+      "elbow_min": 96.8801965511808,
+      "elbow_min_l": 132.35230865217096,
+      "elbow_min_r": 53.157049420834944,
+      "elbow_top_asymmetry": 1.195221880492852,
+      "hip_knee_height_at_bottom": 1.076916921431566,
+      "knee_min": 169.1431883625284,
+      "knee_track_at_bottom": -0.021422455590732102,
+      "trunk_incl_at_bottom": 3.2625062338274944,
+      "trunk_incl_max": 9.484618805044862,
+      "upper_arm_trunk_drift": 3.0762427367193865,
+      "upper_arm_trunk_range": 4.295811428216076
+     },
+     "rep_id": 9,
+     "source": "pose",
+     "t_end": 1719.502384915143,
+     "t_start": 1718.399668550298
+    },
+    "t": 1719.502384915143
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_PARTIAL_ROM",
+     "message": "Curl through the full range: squeeze at the top and straighten at the bottom.",
+     "metric": "elbow_min",
+     "op": "gt",
+     "rep_id": 9,
+     "severity": "warn",
+     "threshold": 75.0,
+     "value": 96.8801965511808
+    },
+    "t": 1719.502384915143
+   },
+   {
+    "kind": "fault",
+    "payload": {
+     "code": "CURL_ASYMMETRY",
+     "message": "Both arms should curl the same distance.",
+     "metric": "elbow_asymmetry",
+     "op": "gt",
+     "rep_id": 9,
+     "severity": "info",
+     "threshold": 20.0,
+     "value": 79.19525923133602
+    },
+    "t": 1719.502384915143
+   }
+  ],
+  "summary": {
+   "exercise": "curl",
+   "faults": 25,
+   "frames_bridged": 0,
+   "frames_invalid": 0,
+   "frames_processed": 744,
+   "frames_processed_pct": 82.9,
+   "frames_total": 898,
+   "gate": "energy",
+   "gated_seconds": 24.87,
+   "imu_seconds": 29.98,
+   "meta": {
+    "dataset": "mmfit",
+    "device": "sw_l",
+    "exercise": "curl",
+    "expected_reps": 10,
+    "license": "MIT (MM-Fit sensor/pose data; Str\u00f6mb\u00e4ck, Huang & Radu, IMWUT 2020)",
+    "placement": "wrist_l",
+    "pose_units": "mm, camera frame (MM-Fit pose_3d)",
+    "sets": [
+     {
+      "activity": "bicep_curls",
+      "exercise": "curl",
+      "reps": 10,
+      "t_end": 1719.869957036758,
+      "t_start": 1702.69431426311
+     }
+    ],
+    "skeleton": "h36m17",
+    "source": "https://mmfit.github.io/",
+    "subject": "P2",
+    "t_range": [
+     1697.69431426311,
+     1727.69431426311
+    ],
+    "workout": "w00"
+   },
+   "reps": 10,
+   "reps_fused": 10,
+   "reps_imu": 15,
+   "reps_pose": 10
+  }
+ }
+}
