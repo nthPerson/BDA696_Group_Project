@@ -76,6 +76,7 @@ class PoseFrame:
     visibility: np.ndarray  # (J,)
     valid: bool
     skeleton: Skeleton
+    image: np.ndarray | None = None  # (J, 4) normalised x, y, z, visibility; None if unavailable
 
 
 class PoseReplay:
