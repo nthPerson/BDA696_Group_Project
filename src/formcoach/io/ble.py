@@ -100,6 +100,7 @@ class BLESource:
             return bool(device.name and device.name.startswith(self.name_prefix))
 
         print(f"# ble: scanning for {self.name_prefix}* ({self.scan_round_s:.0f} s rounds)...")
+        rounds = 0
         while not self._stop.is_set():
             device = await bleak.BleakScanner.find_device_by_filter(
                 _matches, timeout=self.scan_round_s
@@ -107,6 +108,12 @@ class BLESource:
             if device is not None:
                 self.device_name = device.name
                 return device
+            rounds += 1
+            if rounds % 5 == 0:  # every ~10 s with the default rounds; stay quiet in between
+                print(
+                    f"# ble: no {self.name_prefix}* device found yet "
+                    f"({rounds * self.scan_round_s:.0f} s); is the wearable switched on?"
+                )
         raise RuntimeError("stopped")
 
     async def _main(self) -> None:

@@ -78,3 +78,16 @@ def test_find_stops_when_asked():
     src._stop.set()
     with pytest.raises(RuntimeError):
         asyncio.run(src._find())
+
+
+def test_find_reminds_the_user_every_five_silent_rounds(capsys):
+    calls: list[float] = []
+
+    async def fake_find(match, timeout):
+        calls.append(timeout)
+        return None if len(calls) < 11 else _FakeDevice("FormCoach-8428")
+
+    asyncio.run(_source(fake_find)._find())
+    out = capsys.readouterr().out
+    assert out.count("is the wearable switched on?") == 2  # after rounds 5 and 10
+    assert "10 s" in out

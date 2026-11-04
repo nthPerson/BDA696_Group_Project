@@ -494,7 +494,9 @@ class Pipeline:
             if shorter > 0 and overlap >= TWO_ARM_OVERLAP * shorter:
                 return True
         start = other.seg.rep_start_t
-        if start is not None:
+        # a hidden arm leaves its segmenter stuck mid-rep (NaN angles are skipped, not ended), so
+        # only trust the in-progress rep while that arm is still being tracked or bridged
+        if start is not None and other.gap <= MAX_GAP_FRAMES:
             denom = min(rep.duration_s, rep.t_end - start)
             overlap = rep.t_end - max(rep.t_start, start)
             if denom > 0 and overlap >= 0.5 * denom:
@@ -566,30 +568,39 @@ class Pipeline:
             self.gated_segments.append((self.gated_seg_start, seg_end))
 
         all_reps = sorted((r for t in self.tracks for r in t.reps), key=lambda r: r.t_end)
-        bridged = sum(t.bridged for t in self.tracks)
-        invalid = sum(t.invalid for t in self.tracks)
-        summary = {
-            "exercise": self.exercise,
-            "gate": self.gate.name if self.gate is not None else self.gate_name,
-            "reps": len(all_reps),
-            "reps_pose": len(all_reps),
-            "faults": sum(len(r.faults) for r in all_reps),
-            "frames_total": self.log.frames_total,
-            "frames_processed": self.log.frames_processed,
-            "frames_processed_pct": round(
-                100.0 * self.log.frames_processed / max(self.log.frames_total, 1), 1
-            ),
-            "frames_bridged": bridged,
-            "frames_invalid": invalid,
-            "gated_seconds": round(sum(b - a for a, b in self.gated_segments), 2),
-        }
+        # per-arm mode has two tracks looking at the same frames: report the larger count so
+        # these never exceed frames_total (one track: identical to the sum)
+        bridged = max((t.bridged for t in self.tracks), default=0)
+        invalid = max((t.invalid for t in self.tracks), default=0)
+        imu_reps: list = []
         if compute_imu:
             imu_t = np.asarray(self.imu_t)
             imu_acc = np.asarray(self.imu_acc)
             imu_reps = _imu_reps(imu_t, imu_acc, self.gated_segments)
-            fused = _fuse(all_reps, imu_reps)
+        # key order is the original run_pipeline's (session.json is written in this order)
+        summary: dict = {
+            "exercise": self.exercise,
+            "gate": self.gate.name if self.gate is not None else self.gate_name,
+            "reps": len(all_reps),
+            "reps_pose": len(all_reps),
+        }
+        if compute_imu:
             summary["reps_imu"] = len(imu_reps)
-            summary["reps_fused"] = fused
+            summary["reps_fused"] = _fuse(all_reps, imu_reps)
+        summary.update(
+            {
+                "faults": sum(len(r.faults) for r in all_reps),
+                "frames_total": self.log.frames_total,
+                "frames_processed": self.log.frames_processed,
+                "frames_processed_pct": round(
+                    100.0 * self.log.frames_processed / max(self.log.frames_total, 1), 1
+                ),
+                "frames_bridged": bridged,
+                "frames_invalid": invalid,
+                "gated_seconds": round(sum(b - a for a, b in self.gated_segments), 2),
+            }
+        )
+        if compute_imu:
             summary["imu_seconds"] = round((imu_t[-1] - imu_t[0]) if len(imu_t) > 1 else 0.0, 2)
         if self.per_arm:
             summary["arms"] = self.arm_totals()

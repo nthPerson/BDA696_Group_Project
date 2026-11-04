@@ -157,3 +157,23 @@ def test_hidden_arm_gap_does_not_crash_and_counting_resumes():
         pipe.on_frame(pose_frame(i, t, curl_deg(t), curl_deg(t), vis_r=vis_r))
     totals = pipe.arm_totals()
     assert totals["r"]["reps"] >= 4
+
+
+def test_a_hidden_arm_stuck_mid_rep_does_not_pair_with_the_other_arm():
+    """The right arm drops out mid-rep (its segmenter stays 'active' on NaN frames); the left
+    arm's later reps must not be treated as two-arm reps, so CURL_ASYMMETRY never fires."""
+    from formcoach.rules.engine import RuleEngine
+
+    pipe = Pipeline(exercise="curl", per_arm=True, rules=RuleEngine.from_yaml())
+    pipe.set_gate(True, 0.0)
+    fps = 30.0
+    for i in range(int(30 * fps)):
+        t = i / fps
+        if t < 6.9:
+            pipe.on_frame(pose_frame(i, t, curl_deg(t), curl_deg(t)))
+        else:  # right arm hidden with a wild reading, left keeps curling
+            pipe.on_frame(pose_frame(i, t, curl_deg(t), 170.0, vis_r=0.2))
+    result = pipe.finish(compute_imu=False)
+    left = [r for r in result.reps if r.arm == "l" and r.t_end > 8.0]
+    assert len(left) >= 6
+    assert all("CURL_ASYMMETRY" not in {f["code"] for f in r.faults} for r in left)

@@ -382,7 +382,12 @@ class WindowShow:
     def __call__(self, frame_bgr: np.ndarray) -> bool:
         """Show one frame; ``False`` once the user presses ``q``/Esc or closes the window."""
         cv2 = self._cv2
-        cv2.imshow(self.title, frame_bgr)
+        try:
+            cv2.imshow(self.title, frame_bgr)
+        except cv2.error as exc:
+            raise RuntimeError(
+                f"cannot show the window ({exc}); no display? run with --headless"
+            ) from exc
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), 27):
             return False

@@ -168,3 +168,21 @@ def test_render_without_landmarks_or_angles_does_not_crash():
     assert out.shape == frame.shape
     assert out.dtype == np.uint8
     assert not math.isnan(float(out.mean()))
+
+
+def test_window_show_turns_a_display_error_into_a_friendly_runtime_error():
+    class _CvError(Exception):
+        pass
+
+    class _FakeCv2:
+        error = _CvError
+
+        @staticmethod
+        def imshow(_title, _frame):
+            raise _CvError("no display")
+
+    window = hud.WindowShow.__new__(hud.WindowShow)  # skip the real cv2 import
+    window._cv2 = _FakeCv2()
+    window.title = "FormCoach"
+    with pytest.raises(RuntimeError, match="--headless"):
+        window(np.zeros((4, 4, 3), np.uint8))

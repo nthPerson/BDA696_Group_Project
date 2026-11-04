@@ -208,3 +208,31 @@ def test_cli_end_to_end_on_a_video(tmp_path):
     assert result.exit_code == 0, result.output
     assert "all: 0 reps" in result.output and "wrote" in result.output
     assert json.loads((out / "session.json").read_text())["arms"]["all"]["reps"] == 0
+
+
+def test_a_bad_board_setting_never_opens_the_camera(monkeypatch):
+    """--board serial without --port fails before the camera is touched (an unstarted camera
+    generator cannot release its device, so the camera is opened last)."""
+    from formcoach.pose import camera as camera_mod
+
+    opened: list[int] = []
+    monkeypatch.setattr(camera_mod, "_open_real_capture", lambda i: opened.append(i))
+    with pytest.raises(FileNotFoundError, match="--port"):
+        live.run_live_demo(
+            camera=0, video=None, board="serial", port=None, exercise="curl", headless=True,
+            say=lambda _s: None, detect=lambda _f, _ms: (None, None),
+        )  # fmt: skip
+    assert opened == []
+
+
+def test_an_unknown_model_is_a_friendly_error_before_anything_opens():
+    result = runner.invoke(app, ["demo", "--camera", "0", "--model", "huge", "--no-log"])
+    assert result.exit_code == 2
+    assert "huge" in result.output and "Traceback" not in result.output
+
+
+def test_live_only_flags_without_camera_or_video_are_rejected():
+    for extra in (["--board", "ble"], ["--no-log"], ["--model", "full"]):
+        result = runner.invoke(app, ["demo", "--headless", *extra])
+        assert result.exit_code == 2, extra
+        assert "--camera" in result.output and "--video" in result.output

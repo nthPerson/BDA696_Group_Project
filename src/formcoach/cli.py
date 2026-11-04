@@ -588,6 +588,9 @@ def demo(
             model=model, rules=rules, headless=headless, out=out, no_log=no_log,
         )  # fmt: skip
         return
+    if board is not None or no_log or model != "lite":
+        console.print("[bold red]--board, --model and --no-log need --camera or --video[/]")
+        raise typer.Exit(2)
     if source is not Source.replay:
         stub(
             f"demo --source {source.value}",

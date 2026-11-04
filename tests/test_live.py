@@ -195,7 +195,7 @@ def test_run_live_survives_a_long_no_person_gap_and_resumes():
         frames(25), make_detect(missing=[(8.0, 16.0)]), exercise="curl",
         rules=RuleEngine.from_yaml(), say=lambda _s: None,
     )  # fmt: skip
-    assert res.summary["frames_invalid"] > 0
+    assert 0 < res.summary["frames_invalid"] <= res.summary["frames_total"]
     arms = res.summary["arms"]
     assert arms["l"]["reps"] >= 6 and arms["r"]["reps"] >= 6
     late = [e for e in res.events if e.kind == "rep" and e.t > 17.0]
@@ -420,3 +420,30 @@ def test_padding_the_metrics_window_changes_no_count_or_timing():
         assert b.metrics["elbow_max"] > a.metrics["elbow_max"] + 15
         # the same rep resampled to 30 steps over a longer window: the min moves a little
         assert b.metrics["elbow_min"] == pytest.approx(a.metrics["elbow_min"], abs=1.0)
+
+
+# ---- the cleanup path ------------------------------------------------------------------------
+
+
+def test_a_failing_log_write_does_not_mask_the_loops_own_error(tmp_path):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("a file where the log directory should go")
+
+    def dying():
+        yield from frames(2)
+        raise RuntimeError("camera 1 stopped sending frames")
+
+    said: list[str] = []
+    with pytest.raises(RuntimeError, match="stopped sending frames"):
+        live.run_live(dying(), make_detect(), exercise="curl", out_dir=blocker, say=said.append)
+    assert any(s.startswith("L: ") for s in said), "totals are still printed"
+    assert any("could not write the session log" in s for s in said)
+
+
+def test_a_failing_log_write_on_a_good_run_is_reported_after_the_totals(tmp_path):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x")
+    said: list[str] = []
+    with pytest.raises(OSError):
+        live.run_live(frames(2), make_detect(), exercise="curl", out_dir=blocker, say=said.append)
+    assert any(s.startswith("R: ") for s in said)

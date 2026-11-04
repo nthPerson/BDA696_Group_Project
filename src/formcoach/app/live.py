@@ -160,6 +160,7 @@ def run_live(
             with contextlib.suppress(Exception):
                 board.send(cmd)
 
+    failed = False
     try:
         for index, t, frame in frames:
             if t_first is None:
@@ -236,6 +237,9 @@ def run_live(
                 break
     except KeyboardInterrupt:
         pass
+    except BaseException:
+        failed = True
+        raise
     finally:
         duration = (t_last - t_first) if (t_first is not None and t_last is not None) else 0.0
         result = pipe.finish(compute_imu=False, end_t=t_last)
@@ -245,11 +249,17 @@ def run_live(
         result.summary["duration_s"] = round(duration, 2)
         if extra_summary:
             result.summary.update(extra_summary)
-        if out_dir is not None:
-            log.write(out_dir, result.summary)
-            result.out_dir = out_dir
         for line in totals_lines(exercise, result.summary["arms"]):
             say(line)
+        if out_dir is not None:
+            try:
+                log.write(out_dir, result.summary)
+                result.out_dir = out_dir
+            except OSError as exc:
+                if not failed:
+                    raise  # the run itself was fine; the caller must hear the log was lost
+                # the loop already failed: report the lost log but let that error propagate
+                say(f"could not write the session log to {out_dir}: {exc}")
     return result
 
 
@@ -329,6 +339,10 @@ def run_live_demo(
         raise ValueError(
             f"unknown exercise {exercise!r}; choose one of {', '.join(sorted(DEFAULT_REP_CONFIG))}"
         )
+    if model not in landmarker.MODEL_URLS:
+        raise ValueError(
+            f"unknown pose model {model!r}; choose from {sorted(landmarker.MODEL_URLS)}"
+        )
     if camera is None and video is None:
         raise ValueError("pass --camera N (a webcam) or --video PATH (a recording)")
     if board not in (None, "ble", "serial"):
@@ -343,6 +357,14 @@ def run_live_demo(
     link = None
     show = None
     try:
+        # the camera goes last: an unstarted camera generator cannot release its device when
+        # closed, so nothing that can fail (board, window) may run after it is opened
+        if board is not None:
+            from formcoach.app.board import BoardLink
+
+            link = BoardLink(_open_board(board, port))
+        if not headless:
+            show = hud.WindowShow()
         if video is not None:
             frames = landmarker.open_video(Path(video))
             if not headless:
@@ -357,12 +379,6 @@ def run_live_demo(
                 f"camera {camera} looks black (iPhone Continuity Camera?) - "
                 f"try --camera {camera + 1}"
             )
-        if board is not None:
-            from formcoach.app.board import BoardLink
-
-            link = BoardLink(_open_board(board, port))
-        if not headless:
-            show = hud.WindowShow()
         return run_live(
             frames,
             detector,

@@ -42,6 +42,10 @@ class FrameResult:
 
 
 def model_path(variant: str = "lite") -> Path:
+    if variant not in MODEL_URLS:
+        raise ValueError(
+            f"unknown pose model variant {variant!r}; choose from {sorted(MODEL_URLS)}"
+        )
     p = MODELS_DIR / f"pose_landmarker_{variant}.task"
     if not p.exists():
         raise FileNotFoundError(
@@ -72,8 +76,10 @@ def fetch_model(
         variant: one of :data:`MODEL_URLS` (``"lite"``, ``"full"``, ``"heavy"``).
         dest_dir: directory to download into; defaults to :data:`MODELS_DIR`.
         get: injected in place of ``requests.get`` for tests, so no network call happens; must
-            accept ``(url, stream=True)`` and return an object with ``raise_for_status()`` and
-            ``iter_content(chunk_size=...)``, like a ``requests.Response``.
+            accept ``(url, stream=True, timeout=...)`` and return an object with
+            ``raise_for_status()`` and ``iter_content(chunk_size=...)``, like a
+            ``requests.Response``. The real call times out after 10 s to connect or 60 s without
+            data, so a stalled connection fails instead of hanging ``make setup-live``.
 
     Raises:
         ValueError: ``variant`` is not a known model name.
@@ -91,7 +97,7 @@ def fetch_model(
     dest_dir.mkdir(parents=True, exist_ok=True)
     partial = dest.with_suffix(dest.suffix + ".partial")
     try:
-        response = get(MODEL_URLS[variant], stream=True)
+        response = get(MODEL_URLS[variant], stream=True, timeout=(10, 60))
         response.raise_for_status()
         with open(partial, "wb") as f:
             for chunk in response.iter_content(chunk_size=1 << 20):

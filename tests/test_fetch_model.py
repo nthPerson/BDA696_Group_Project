@@ -81,3 +81,19 @@ def test_fetch_model_defaults_to_models_dir(monkeypatch, tmp_path):
     out = landmarker.fetch_model("lite", get=fake_get)
     assert out == tmp_path / "pose_landmarker_lite.task"
     assert out.exists()
+
+
+def test_model_path_rejects_an_unknown_variant_with_a_value_error():
+    with pytest.raises(ValueError, match="huge"):
+        landmarker.model_path("huge")
+
+
+def test_download_has_a_timeout(tmp_path):
+    seen = {}
+
+    def fake_get(url, **kwargs):
+        seen.update(kwargs)
+        return _FakeResponse([b"x"])
+
+    landmarker.fetch_model("lite", dest_dir=tmp_path, get=fake_get)
+    assert seen.get("timeout"), "a stalled connection must not hang forever"

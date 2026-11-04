@@ -104,3 +104,13 @@ def test_gate_close_resets_the_segmenter():
     result = pipe.finish(compute_imu=False)
     kinds = [e.kind for e in result.events if e.kind in ("gate_open", "gate_close")]
     assert kinds == ["gate_open", "gate_close", "gate_open"]
+
+
+def test_replay_summary_keeps_the_original_key_order():
+    """session.json is written in summary order; the golden file is stored sorted, so pin it."""
+    res = pipeline.run_replay(SESSION, gate="energy", headless=True, rules=RuleEngine.from_yaml())
+    assert list(res.summary)[:14] == [
+        "exercise", "gate", "reps", "reps_pose", "reps_imu", "reps_fused", "faults",
+        "frames_total", "frames_processed", "frames_processed_pct", "frames_bridged",
+        "frames_invalid", "gated_seconds", "imu_seconds",
+    ]  # fmt: skip
