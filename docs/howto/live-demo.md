@@ -4,8 +4,9 @@
 with Christian on 2026-11-04 · **PR:** none yet — commits are local on `feat/vision-first-run`
 **Checkpoint:** 3/5 (`docs/00-START-HERE.md`) · **State:** partial — the full automated suite
 passes (301 passed, 1 skipped) and the loop runs end to end on synthetic frames and on a blank
-video with the real MediaPipe model; **no one has run it on a real webcam, a real person, or the
-real wearable yet** (see §5).
+video with the real MediaPipe model; Christian then ran `demo --camera 1` on a real webcam and
+reports it works, but **recorded no rep counts**, and **the wearable has never streamed real IMU
+samples into it** (see §5).
 
 ## 1. Run it (verified 2026-11-04 on macOS, Apple Silicon)
 
@@ -36,9 +37,12 @@ R: 0 reps (0 good, 0 flagged)
 wrote runs/smoke-test/events.parquet frames.parquet session.json
 ```
 
-**What nobody has run yet, including this session:** `make live CAMERA=1` (or `uv run formcoach
-demo --camera 1`) against a real camera and a real person, and `--board ble` against the real
-wearable. That is next for Christian/Bryce/Rochelle — see §12 and `docs/STATUS.md`.
+**Not covered by the blank-clip run above:** after it, Christian ran `uv run formcoach demo
+--camera 1` on a real webcam with a real person (macOS, 2026-11-04) and reported that it works;
+no counts or timings were written down, so treat "works" as a smoke test, not a measurement.
+`--board ble|serial` has **not** been run with real samples: the one board tried connected over
+BLE but its IMU was not detected (§5). Next for Christian/Bryce/Rochelle — see §12 and
+`docs/STATUS.md`.
 
 ## 2. Where things live
 
@@ -84,9 +88,15 @@ together; update `hud.py`'s pill/banner text and `tests/test_hud.py` together.
 
 ## 5. Could not verify / open questions
 
-- **Real camera, real wearable, real person: not run by anyone.** Every number above is either
-  from the automated suite or from this session's synthetic/blank-clip smoke test, never a
-  filmed curl.
+- **Real camera: run once, informally, no numbers.** Christian ran `demo --camera 1` with a real
+  person on 2026-11-04 and said it works; no rep counts, flagged reps or fps were recorded. Every
+  number in this doc is from the automated suite or the synthetic/blank-clip smoke test, never a
+  counted real session.
+- **Real wearable: never run with samples.** Christian's board (USB serial `28:84:85:B3:90:EC`,
+  fw 1.1.1) booted, advertised as `FormCoach-8428` and connected to the web BLE viewer, but its
+  boot banner said `bmi160 NOT FOUND` (no I2C reply at 0x68 or 0x69), so it sent no samples. The
+  cause (wiring, a joint, no 3V3 at the module, or a bad module) is not yet known. So the
+  `--board ble|serial` gate/LED path is covered only by unit tests with fakes.
 - **Rule thresholds on real webcam data: not validated.** The padded-window fix was only measured
   on synthetic curls (clean 50-150°/35-165°/slow 4 s/fast 1.6 s all come out "good"; 90-130° and
   40-100° are flagged `CURL_PARTIAL_ROM`, correctly). MediaPipe's real angle ranges on a webcam
@@ -108,7 +118,10 @@ together; update `hud.py`'s pill/banner text and `tests/test_hud.py` together.
   Privacy & Security > Camera, allow your terminal app, then run again.`
 - **Board never found / goes quiet** — the status pill (top-right of the window) says why:
   - no `--board`: `webcam only | gate always on`
-  - never heard from it: `looking for board... | pose paused` (video dimmed)
+  - never heard from it: `looking for board... | pose paused` (video dimmed). This also shows
+    when the board is on and connected but its IMU is not detected: the firmware sends samples
+    only after it finds the IMU. Check with `make fw-monitor` (or any serial monitor), reset the
+    board, and read the boot banner for `bmi160 NOT FOUND`. It prints once, at boot.
   - heard before, now quiet > 2 s: `board silent - reconnecting` (video dimmed)
   - alive, gate open: `<device name> | gate ON | pose running`
   - alive, gate closed: `gate OFF | pose paused` (video dimmed)
@@ -171,9 +184,9 @@ rep["arm"]  # "l"
 
 ## 12. Next steps
 
-1. Christian: run the manual checklist in the design spec §9 — `uv run formcoach demo --camera 1`
-   with both arms, alternating, and one arm; then `--board ble` — and record the numbers in
-   `docs/STATUS.md`.
+1. Christian: the webcam run has been done informally; repeat it with the design spec §9
+   checklist (both arms, alternating, one arm) and write the counts in `docs/STATUS.md`. Then
+   `--board ble`, once a board with a working IMU exists (his currently has none detected).
 2. A teammate on a fresh clone: `make setup-live` then `make live CAMERA=1`.
 3. Christian films a front-view curl clip (clean + sloppy, both/alternating/one-arm) under
    `data/team/` (never pushed) so Rochelle can ratify the webcam rule thresholds (§5).

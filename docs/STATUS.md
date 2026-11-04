@@ -53,13 +53,26 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 - Verified this session: `make lint test` green (301 passed, 1 skipped); `formcoach demo
   --source replay --headless` unchanged (`reps 10 (pose) / 17 (imu) / 10 (fused)`); the live loop
   runs end to end through the real MediaPipe model on a blank video (no person, 0 reps) and,
-  separately, on synthetic curl frames (8/8 good reps per arm, `arm` key present) — never on a
-  real camera, a real person, or the real wearable.
+  separately, on synthetic curl frames (8/8 good reps per arm, `arm` key present).
+- Manual test, later the same day (Christian, macOS, `uv run formcoach demo --camera 1`, no
+  `--board`): he ran it on a real webcam with a real person and reports it works. **No rep
+  counts, flagged reps or fps were recorded**, so this is a smoke test, not a measurement.
+- Wearable, same day (Christian's board, USB serial `28:84:85:B3:90:EC`): built and flashed fw
+  1.1.1 (`make fw-upload`); it advertises as `FormCoach-8428` and the web BLE viewer connects, but
+  the boot banner says `bmi160 NOT FOUND at 0x00` (no I2C reply at 0x68 or 0x69), so the firmware
+  sends no samples and the demo's pill says `looking for board...`. The cause is **not known**
+  (wiring, a solder joint, no 3V3 at the module, or a bad module); not metered, module not
+  swapped. The slide switch is not involved (the IMU is on the 3V3 pin). `--board ble|serial` has
+  therefore never run with real samples. No `docs/devices.md` row yet.
 
 ### Next
-1. Christian: run the manual test from the design spec §9 and record the numbers here:
-   `uv run formcoach demo --camera 1` with both arms together, alternating, and one arm; then
-   `--board ble`.
+1. Christian: repeat the webcam test with the design spec §9 checklist and record the numbers
+   here: `uv run formcoach demo --camera 1` with both arms together, alternating, and one arm.
+   Then `--board ble` once a board with a working IMU exists.
+1a. Whoever has the bench: find why Christian's board reports `bmi160 NOT FOUND` (swap SDA/SCL
+   first, then meter 3.3 V at the module, then try another module; `docs/assembly-day.md`).
+   After a fix, reset the board, read the boot banner, then `make device-check PORT=... KIT=...`
+   and add its `docs/devices.md` row.
 2. A teammate on a fresh clone: `make setup-live` then `make live CAMERA=1`.
 3. Christian films a front-view clip (about 10 clean and 10 sloppy curls; both arms, alternating,
    one arm; saved under `data/team/`, never pushed) so Rochelle can ratify the webcam thresholds.
@@ -70,9 +83,17 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 - Whether the padded metrics window should become the default for replay too (would change the
   goldens and ADR-0022's evidence) — not done.
 - Whether to push / open PRs — the mediapipe pin commit `c1a22c9` was meant to be its own PR.
+- **Robert:** the BLE name `FormCoach-XXXX` is built from `ESP.getEfuseMac() & 0xFFFF`, which is
+  the *first* two MAC bytes (`28:84` → `8428`). K1 (`28:84:85:B3:8F:05`) and Christian's board
+  (`28:84:85:B3:90:EC`) both advertise `FormCoach-8428`, so kits from one batch can't be told
+  apart in the BLE chooser. Not changed here; `firmware/src/app/main.cpp` `deviceName()` and the
+  docs that say "low 16 bits of the MAC" are yours to decide.
+- `BoardLink` swallows every exception in its reader thread, so a reader that has died shows the
+  same `looking for board...` as a board that isn't there. Not fixed.
 
 ### Blockers
-- None.
+- Christian's board has no IMU detected (above), so the wearable path can't be tested end to end
+  from his machine. The webcam-only demo is not blocked.
 
 ---
 
