@@ -92,7 +92,10 @@ class _UpEstimator:
 def primary_angle(exercise: str, a: dict[str, float], side: str = "both") -> float:
     key = DEFAULT_REP_CONFIG[exercise]["angle"]
     if side == "both":
-        return float(np.nanmean([a[f"{key}_l"], a[f"{key}_r"]]))
+        pair = [a[f"{key}_l"], a[f"{key}_r"]]
+        if np.isnan(pair).all():  # no person in frame: NaN without numpy's empty-mean warning
+            return float("nan")
+        return float(np.nanmean(pair))
     return float(a[f"{key}_{side}"])
 
 
