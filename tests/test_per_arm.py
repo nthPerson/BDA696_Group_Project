@@ -4,6 +4,10 @@ per-arm metrics, visibility floor, two-arm rule pairing, ``arm_totals()``, buffe
 
 from __future__ import annotations
 
+import pytest
+
+from formcoach.app import pipeline as pipeline_mod
+from formcoach.app.live import REP_PAD_S, pose_frame_from_detection
 from formcoach.app.pipeline import Pipeline
 from formcoach.rules.engine import RuleEngine
 
@@ -177,3 +181,172 @@ def test_a_hidden_arm_stuck_mid_rep_does_not_pair_with_the_other_arm():
     left = [r for r in result.reps if r.arm == "l" and r.t_end > 8.0]
     assert len(left) >= 6
     assert all("CURL_ASYMMETRY" not in {f["code"] for f in r.faults} for r in left)
+
+
+# --- review fixes: live-mode behaviour that the tests above did not reach ---------------------
+
+
+def _rest_curl(t: float, offset: float = 0.0, top: float = 50.0) -> float:
+    """A curl with a 1 s rest between 4 s reps (5 s cadence), starting ``offset`` s late. The rest
+    matters: with back-to-back reps the staggered arms look like one continuous overlap."""
+    if t < offset:
+        return 150.0
+    u = (t - offset) % 5.0
+    return curl_deg(u, period_s=4.0, top=top) if u < 4.0 else 150.0
+
+
+def _drive(
+    left_fn, right_fn, seconds, *, per_arm=True, gate_windows=(), vis_r_fn=None, lost_fn=None
+):
+    """Like ``_run`` but with the live metrics-window padding, optional gate-closed windows
+    ``[(t0, t1), ...]``, a right-arm visibility function and ``lost_fn(t)`` (no person found).
+    ``per_arm=False`` is the replay-style pipeline. Returns ``(pipe, events)``."""
+    events = []
+    pipe = Pipeline(
+        exercise="curl",
+        per_arm=per_arm,
+        rules=RuleEngine.from_yaml(),
+        on_event=events.append,
+        pad_rep_start_s=REP_PAD_S if per_arm else 0.0,
+    )
+    pipe.set_gate(True, 0.0)
+    state = True
+    for i in range(int(seconds * FPS)):
+        t = i / FPS
+        want = not any(a <= t < b for a, b in gate_windows)
+        if want != state:
+            pipe.set_gate(want, t)
+            state = want
+        if lost_fn is not None and lost_fn(t):
+            pipe.on_frame(pose_frame_from_detection(i, t, None, None))
+            continue
+        vis_r = vis_r_fn(t) if vis_r_fn else 1.0
+        pipe.on_frame(pose_frame(i, t, left_fn(t), right_fn(t), vis_r=vis_r))
+    return pipe, events
+
+
+def _reps(events, arm):
+    return [e.payload for e in events if e.kind == "rep" and e.payload.get("arm") == arm]
+
+
+def _asymmetry_by_arm(events):
+    return {
+        arm: sum(1 for e in _faults(events, "CURL_ASYMMETRY") if e.payload["arm"] == arm)
+        for arm in ("l", "r")
+    }
+
+
+@pytest.mark.parametrize("lag_s", [2.0, 3.0])
+def test_staggered_arms_with_the_same_range_never_flag_asymmetry(lag_s):
+    """Both arms curl the full range, one ``lag_s`` behind the other: the reps barely overlap
+    (they are not a two-arm set), so neither arm may be told to curl the same distance."""
+    pipe, events = _drive(_rest_curl, lambda t: _rest_curl(t, lag_s), 22.0)
+    assert min(pipe.arm_totals()[a]["reps"] for a in "lr") >= 3
+    assert _asymmetry_by_arm(events) == {"l": 0, "r": 0}
+
+
+def test_arms_half_a_second_apart_with_different_ranges_still_pair():
+    """The pairing must not become too strict: arms 0.5 s apart are one two-arm set, so a
+    shallow right curl is flagged on both arms (the leading arm completes while the other is
+    still mid-rep)."""
+    _pipe, events = _drive(_rest_curl, lambda t: _rest_curl(t, 0.5, top=90.0), 22.0)
+    by_arm = _asymmetry_by_arm(events)
+    assert by_arm["l"] >= 2
+    assert by_arm["r"] >= 2
+
+
+def test_rep_numbers_keep_counting_across_a_gate_close_and_reopen():
+    """Live (per-arm): the wearable's gate closes after a set and opens for the next one. The
+    rep numbers must carry on (the counter on screen does), with no duplicate (arm, rep_id)."""
+    pipe, events = _drive(
+        lambda t: curl_deg(t, period_s=3.0),
+        lambda t: curl_deg(t, period_s=3.0),
+        40.0,
+        gate_windows=[(12.0, 16.0)],
+    )
+    for arm in ("l", "r"):
+        ids = [p["rep_id"] for p in _reps(events, arm)]
+        assert len(ids) == pipe.arm_totals()[arm]["reps"] >= 8
+        assert ids == list(range(len(ids)))
+    keys = [(e.payload["arm"], e.payload["rep_id"]) for e in events if e.kind == "rep"]
+    assert len(keys) == len(set(keys))
+    fault_keys = [(e.payload["arm"], e.payload["rep_id"]) for e in _faults(events)]
+    rep_keys = set(keys)
+    assert all(k in rep_keys for k in fault_keys)
+
+
+def test_replay_style_rep_numbers_restart_after_a_gate_close():
+    """Replay (not per-arm) keeps its original numbering: every gate-open segment starts at 0.
+    The golden replay output pins this only for an always-open gate."""
+    _pipe, events = _drive(curl_deg, curl_deg, 40.0, per_arm=False, gate_windows=[(12.0, 16.0)])
+    closes = [e.t for e in events if e.kind == "gate_close"]
+    assert len(closes) == 1
+    before = [e.payload["rep_id"] for e in events if e.kind == "rep" and e.t < closes[0]]
+    after = [e.payload["rep_id"] for e in events if e.kind == "rep" and e.t > closes[0]]
+    assert before == list(range(len(before))) and len(before) >= 3
+    assert after == list(range(len(after))) and len(after) >= 3
+
+
+def test_a_long_tracking_gap_inside_a_rep_drops_that_rep():
+    """The right arm is hidden for 2.25 s in the middle of a rep (docs/02 4.3: gaps over 3
+    frames are invalid): that rep must not be counted or judged on interpolated angles, the
+    left arm is unaffected and the right arm counts again afterwards."""
+    hide = (6.25, 8.5)
+    base, base_events = _drive(_rest_curl, _rest_curl, 22.0)
+    pipe, events = _drive(
+        _rest_curl, _rest_curl, 22.0, vis_r_fn=lambda t: 0.0 if hide[0] <= t < hide[1] else 1.0
+    )
+
+    def touches_gap(p):
+        return p["t_end"] > hide[0] and p["t_start"] < hide[1]
+
+    assert any(touches_gap(p) for p in _reps(base_events, "r")), "probe must hit a rep"
+    assert not any(touches_gap(p) for p in _reps(events, "r"))
+    assert any(p["t_start"] > hide[1] for p in _reps(events, "r"))
+    assert pipe.arm_totals()["l"]["reps"] == base.arm_totals()["l"]["reps"]
+    assert pipe.arm_totals()["r"]["reps"] == base.arm_totals()["r"]["reps"] - 1
+    ids = [p["rep_id"] for p in _reps(events, "r")]
+    assert ids == list(range(len(ids)))  # a dropped rep does not leave a hole in the numbering
+
+
+def test_a_three_frame_tracking_gap_inside_a_rep_is_bridged_and_counted():
+    base, _ = _drive(_rest_curl, _rest_curl, 22.0)
+    pipe, _events = _drive(
+        _rest_curl,
+        _rest_curl,
+        22.0,
+        vis_r_fn=lambda t: 0.0 if 6.999 <= t < 7.099 else 1.0,  # exactly 3 frames
+    )
+    assert pipe.arm_totals()["r"]["reps"] == base.arm_totals()["r"]["reps"]
+
+
+def test_replay_style_pipeline_bridges_three_frames_and_invalidates_the_rest():
+    """Replay keeps docs/02 4.3 bookkeeping: of a 10-frame gap the first 3 frames reuse the
+    last good angles and the other 7 are invalid (NaN)."""
+    pipe, _events = _drive(
+        curl_deg, curl_deg, 20.0, per_arm=False, lost_fn=lambda t: 6.999 <= t < 7.332
+    )
+    summary = pipe.finish(compute_imu=False, end_t=20.0).summary
+    assert (summary["frames_bridged"], summary["frames_invalid"]) == (3, 7)
+
+
+def test_replay_style_pipeline_still_counts_a_rep_across_a_long_gap():
+    """The per-arm 'drop a rep with a long gap' rule is live-only: replay output must not
+    change, so a rep with a long gap inside is still counted there (interpolated, as on main)."""
+    hide = (6.25, 8.5)
+    base, _ = _drive(_rest_curl, _rest_curl, 22.0, per_arm=False)
+    pipe, _events = _drive(
+        _rest_curl, _rest_curl, 22.0, per_arm=False, lost_fn=lambda t: hide[0] <= t < hide[1]
+    )
+    assert pipe.arm_totals()["all"]["reps"] == base.arm_totals()["all"]["reps"]
+    assert pipeline_mod.MAX_GAP_FRAMES == 3
+
+
+def test_finish_can_be_called_twice_with_the_same_result():
+    """``finish`` is a snapshot: the open gate segment is closed in the result only, so a second
+    call does not count it twice."""
+    pipe, _events = _drive(curl_deg, curl_deg, 2.0)
+    first = pipe.finish(compute_imu=False, end_t=2.0)
+    second = pipe.finish(compute_imu=False, end_t=2.0)
+    assert first.summary["gated_seconds"] == second.summary["gated_seconds"] == 2.0
+    assert first.summary == second.summary

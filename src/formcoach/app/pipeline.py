@@ -447,6 +447,11 @@ class Pipeline:
         i_end = max(0, rep.i_end - track.offset)
         if i_start != rep.i_start or i_end != rep.i_end:
             rep = replace(rep, i_start=i_start, i_end=i_end)
+        if self.per_arm and self._has_tracking_gap(track, rep.i_start, rep.i_end):
+            # live only: a rep with a stretch of lost tracking inside would be judged on
+            # interpolated angles (docs/02 4.3: such a segment is invalid), so it is not counted
+            track.last_end_abs = end_abs
+            return None
         ts = np.asarray(track.buf_t)
         if self.pad_rep_start_s > 0:
             rep = replace(rep, i_start=self._padded_start(track, ts, rep.i_start))
@@ -454,12 +459,25 @@ class Pipeline:
         series = {k: np.asarray(v) for k, v in track.buf_a.items()}
         rm = compute_rep_metrics(self.exercise, rep, ts, series, side=track.side)
         rm.arm = track.arm
+        if self.per_arm:
+            # live numbering follows the counter on screen across gate close/reopen (replay keeps
+            # the segmenter's ids, which restart at 0 on every gate-open segment: golden output)
+            rm.rep_id = len(track.reps)
         if self.rules is not None:
             context = self._context(track, rm)
             rm.faults = [f.as_dict() for f in self.rules.evaluate(rm, context=context)]
         track.reps.append(rm)
         self._emit_rep(track, rm)
         return rm
+
+    def _has_tracking_gap(self, track: _Track, i_start: int, i_end: int) -> bool:
+        """Whether any frame in the buffer window ``[i_start, i_end]`` has no usable primary
+        angle. Frames inside a gap of up to ``MAX_GAP_FRAMES`` carry the bridged angles, so a
+        non-finite value here means the track lost the person for longer than that."""
+        key = DEFAULT_REP_CONFIG[self.exercise]["angle"]
+        sides = ("l", "r") if track.side == "both" else (track.side,)
+        cols = [np.asarray(track.buf_a[f"{key}_{s}"][i_start : i_end + 1]) for s in sides]
+        return bool(np.isnan(np.column_stack(cols)).all(axis=1).any())
 
     def _padded_start(self, track: _Track, ts: np.ndarray, i_start: int) -> int:
         """Buffer index to start a rep's metrics window at: ``i_start`` moved back by up to
@@ -497,9 +515,12 @@ class Pipeline:
         # a hidden arm leaves its segmenter stuck mid-rep (NaN angles are skipped, not ended), so
         # only trust the in-progress rep while that arm is still being tracked or bridged
         if start is not None and other.gap <= MAX_GAP_FRAMES:
-            denom = min(rep.duration_s, rep.t_end - start)
+            # The in-progress rep's final length is unknown, so measure the overlap against
+            # *this* rep's duration. (Using the elapsed part of the other rep would make a rep
+            # that has only just begun look like a full overlap and pair arms that are seconds
+            # apart.) The other arm judges the same pair, by the branch above, once it finishes.
             overlap = rep.t_end - max(rep.t_start, start)
-            if denom > 0 and overlap >= 0.5 * denom:
+            if rep.duration_s > 0 and overlap >= TWO_ARM_OVERLAP * rep.duration_s:
                 return True
         return False
 
@@ -558,6 +579,9 @@ class Pipeline:
         at the last IMU sample's time if there is one, else ``end_t``, else the segment start.
         ``compute_imu=False`` (live mode: one board on one wrist cannot validate both arms)
         omits ``reps_imu``/``reps_fused``/``imu_seconds`` from the summary."""
+        # the open segment is closed in this result only (a local copy), so finish() can be
+        # called again, or the run continued, without counting it twice
+        segments = list(self.gated_segments)
         if self.gate_state and self.gated_seg_start is not None:
             if self.imu_t:
                 seg_end = self.imu_t[-1]
@@ -565,7 +589,7 @@ class Pipeline:
                 seg_end = end_t
             else:
                 seg_end = self.gated_seg_start
-            self.gated_segments.append((self.gated_seg_start, seg_end))
+            segments.append((self.gated_seg_start, seg_end))
 
         all_reps = sorted((r for t in self.tracks for r in t.reps), key=lambda r: r.t_end)
         # per-arm mode has two tracks looking at the same frames: report the larger count so
@@ -576,7 +600,7 @@ class Pipeline:
         if compute_imu:
             imu_t = np.asarray(self.imu_t)
             imu_acc = np.asarray(self.imu_acc)
-            imu_reps = _imu_reps(imu_t, imu_acc, self.gated_segments)
+            imu_reps = _imu_reps(imu_t, imu_acc, segments)
         # key order is the original run_pipeline's (session.json is written in this order)
         summary: dict = {
             "exercise": self.exercise,
@@ -597,7 +621,7 @@ class Pipeline:
                 ),
                 "frames_bridged": bridged,
                 "frames_invalid": invalid,
-                "gated_seconds": round(sum(b - a for a, b in self.gated_segments), 2),
+                "gated_seconds": round(sum(b - a for a, b in segments), 2),
             }
         )
         if compute_imu:
