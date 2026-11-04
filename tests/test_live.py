@@ -369,3 +369,54 @@ def test_pipeline_latest_angles_and_thresholds():
     assert th["l"] == (60.0, 150.0) and th["r"] == (60.0, 150.0)
     pipe.set_gate(False, 1.0)  # a closed gate clears the buffers
     assert all(np.isnan(v) for v in pipe.latest_angles().values())
+
+
+# ---- the metrics window: clean curls must be able to be "good" -------------------------------
+
+
+def _curl(top, bottom, period=2.5):
+    return lambda t: curl_deg(t, top=top, bottom=bottom, period_s=period)
+
+
+@pytest.mark.parametrize("top,bottom,period", [(50, 150, 2.5), (35, 165, 2.5), (40, 160, 4.0)])
+def test_clean_curls_are_good_reps_not_partial_rom(top, bottom, period):
+    f = _curl(top, bottom, period)
+    res = live.run_live(
+        frames(25), make_detect(left=f, right=f), exercise="curl", rules=RuleEngine.from_yaml(),
+        say=lambda _s: None,
+    )  # fmt: skip
+    for arm in ("l", "r"):
+        a = res.summary["arms"][arm]
+        assert a["reps"] >= 5 and a["good"] == a["reps"], (arm, a)
+        assert a["faults_by_code"] == {}
+
+
+@pytest.mark.parametrize("top,bottom", [(90, 130), (40, 100)])
+def test_partial_curls_are_still_flagged(top, bottom):
+    f = _curl(top, bottom)
+    res = live.run_live(
+        frames(25), make_detect(left=f, right=f), exercise="curl", rules=RuleEngine.from_yaml(),
+        say=lambda _s: None,
+    )  # fmt: skip
+    a = res.summary["arms"]["l"]
+    assert a["reps"] >= 8 and a["faults_by_code"]["CURL_PARTIAL_ROM"] == a["reps"]
+
+
+def test_padding_the_metrics_window_changes_no_count_or_timing():
+    from formcoach.app.pipeline import Pipeline
+
+    def run(pad):
+        pipe = Pipeline(exercise="curl", per_arm=True, pad_rep_start_s=pad)
+        pipe.set_gate(True, 0.0)
+        for i in range(int(25 * FPS)):
+            t = i / FPS
+            pipe.on_frame(pose_frame(i, t, curl_deg(t, top=35, bottom=165), idle(t)))
+        return [r for r in pipe.finish(compute_imu=False).reps if r.arm == "l"]
+
+    plain, padded = run(0.0), run(1.0)
+    assert len(plain) == len(padded) >= 8
+    for a, b in zip(plain, padded, strict=True):
+        assert (a.t_start, a.t_end, a.duration_s) == (b.t_start, b.t_end, b.duration_s)
+        assert b.metrics["elbow_max"] > a.metrics["elbow_max"] + 15
+        # the same rep resampled to 30 steps over a longer window: the min moves a little
+        assert b.metrics["elbow_min"] == pytest.approx(a.metrics["elbow_min"], abs=1.0)

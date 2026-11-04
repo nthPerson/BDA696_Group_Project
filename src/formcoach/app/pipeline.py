@@ -225,6 +225,7 @@ class _Track:
         self.last_angles: dict[str, float] | None = None
         self.gap = 0
         self.offset = 0  # frames trimmed from the front of buf_t/buf_a so far
+        self.last_end_abs = 0  # absolute frame index where the previous rep ended
         self.bridged = 0
         self.invalid = 0
         self.reps: list[RepMetrics] = []
@@ -247,6 +248,7 @@ class _Track:
             v.clear()
         self.smooth.clear()
         self.offset = 0
+        self.last_end_abs = 0
 
 
 class Pipeline:
@@ -272,6 +274,7 @@ class Pipeline:
         view: str = "frontal",
         per_arm: bool = False,
         max_buffer_frames: int | None = None,
+        pad_rep_start_s: float = 0.0,
     ):
         self.exercise = exercise
         self.gate = gate
@@ -283,6 +286,7 @@ class Pipeline:
         self.view = view
         self.per_arm = per_arm
         self.max_buffer_frames = max_buffer_frames
+        self.pad_rep_start_s = pad_rep_start_s
 
         cfg = {**DEFAULT_REP_CONFIG[exercise], "adaptive": True}
         if rules is not None and hasattr(rules, "rep_config"):
@@ -438,11 +442,15 @@ class Pipeline:
         if rep is None:
             return None
 
+        end_abs = rep.i_end
         i_start = max(0, rep.i_start - track.offset)
         i_end = max(0, rep.i_end - track.offset)
         if i_start != rep.i_start or i_end != rep.i_end:
             rep = replace(rep, i_start=i_start, i_end=i_end)
         ts = np.asarray(track.buf_t)
+        if self.pad_rep_start_s > 0:
+            rep = replace(rep, i_start=self._padded_start(track, ts, rep.i_start))
+        track.last_end_abs = end_abs
         series = {k: np.asarray(v) for k, v in track.buf_a.items()}
         rm = compute_rep_metrics(self.exercise, rep, ts, series, side=track.side)
         rm.arm = track.arm
@@ -452,6 +460,22 @@ class Pipeline:
         track.reps.append(rm)
         self._emit_rep(track, rm)
         return rm
+
+    def _padded_start(self, track: _Track, ts: np.ndarray, i_start: int) -> int:
+        """Buffer index to start a rep's metrics window at: ``i_start`` moved back by up to
+        ``pad_rep_start_s`` seconds, but never into the previous rep or before the buffer.
+
+        The segmenter's window starts where the angle crosses the exit threshold, so the rest
+        position just before it (a curl's fully straight arm) is outside the window and
+        ``elbow_max`` would read about the exit threshold on every rep. Only the *metrics*
+        window grows: the rep's ``t_start``/``t_end``/``duration_s`` and the count are the
+        segmenter's, untouched."""
+        floor = max(0, track.last_end_abs - track.offset)
+        k = min(i_start, len(ts) - 1)
+        t0 = ts[k]
+        while k > floor and ts[k - 1] >= t0 - self.pad_rep_start_s:
+            k -= 1
+        return k
 
     def _other_arm_track(self, track: _Track) -> _Track | None:
         for t in self.tracks:

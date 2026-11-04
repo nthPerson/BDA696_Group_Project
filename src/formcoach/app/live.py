@@ -37,6 +37,7 @@ BLACK_FRAMES = 30  # a camera is called black after this many frames, all with m
 BLACK_MEAN = 2.0  # mean pixel value (0-255) below which a frame counts as black
 TRACE_S = 8.0  # seconds of angle history drawn in the HUD trace
 MAX_BUFFER_FRAMES = 3600  # per-arm angle buffer cap (about two minutes at 30 fps)
+REP_PAD_S = 1.0  # metrics window reaches this far back to the rest position (see Pipeline)
 FPS_WINDOW = 30  # frames averaged for the on-screen FPS readout
 
 DetectFn = Callable[[np.ndarray, int], "tuple[np.ndarray | None, np.ndarray | None]"]
@@ -139,6 +140,7 @@ def run_live(
         rep_config=rep_config,
         per_arm=True,
         max_buffer_frames=MAX_BUFFER_FRAMES,
+        pad_rep_start_s=REP_PAD_S,
         gate_name="device" if board is not None else "always_on",
     )
 
