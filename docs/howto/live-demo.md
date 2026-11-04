@@ -148,9 +148,12 @@ firmware change. For anything about the physical kit — wiring, flashing, batte
 
 ## 9. `--video`, `--headless`, `--out` / `--no-log`, and the log
 
-`--video FILE` plays a recording through the identical loop instead of a camera (wins if both are
-given) — useful without a webcam. `--headless` drops the window and prints `rep`/`fault`/`gate_*`
-lines instead (no OpenCV window is ever opened). Logging is **on by default** to
+`--video FILE` plays a recording through the identical loop instead of a camera (pass one of
+`--camera`/`--video`, not both) — useful without a webcam. `--headless` drops the window and prints
+`rep`/`fault`/`gate_*` lines instead (no OpenCV window is ever opened); with `--board` it also
+prints `wearable: <status>` whenever the status changes, the text the window's pill would show.
+`--gate`, `--speed` and `--session` are replay options and are rejected with `--camera`/`--video`;
+`--port` needs `--board`. Logging is **on by default** to
 `runs/live/<YYYYMMDD-HHMMSS>/`; `--out DIR` moves it, `--no-log` turns it off (the two conflict).
 `rep`/`fault` events carry `"arm": "l"|"r"|null`; replay events have no `arm` key at all, so read
 it with `.get("arm")`. `session.json` adds `arms`, `live`, `board`, `fps_mean`, `duration_s`,
@@ -171,6 +174,9 @@ rep["arm"]  # "l"
 - No IMU cross-check live: `reps_imu`/`reps_fused` are absent from the live summary (the board is
   on one wrist and can't validate both arms; replay still computes them).
 - Two-arm rules (e.g. `CURL_ASYMMETRY`) only run on reps where both arms overlap in time.
+- A rep with a stretch of lost tracking inside it (an arm hidden or out of frame for more than 3
+  frames, docs/02 §4.3) is not counted at all rather than judged on interpolated angles; replay
+  still interpolates. Rep numbers keep counting across a gate close and re-open.
 - Squat is a single whole-body counter; no per-leg tracking.
 - The camera must see the whole upper body, front view.
 - Rule thresholds are not yet validated on a real webcam clip (§5).

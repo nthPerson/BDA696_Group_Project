@@ -411,3 +411,27 @@ with a fake `BleakScanner.find_device_by_filter` (`tests/test_ble_find.py`) asse
 passes `timeout=2.0` and that the test does not sleep. Consequences: a board powered on late is
 found within about one round instead of up to ~40 s; `BLESource(scan_timeout=...)` call sites must
 use `scan_round_s` (no other caller in the repo besides the default).
+
+## ADR-0031 · Live per-arm fixes from the pre-PR review: pairing, rep numbers, tracking gaps · 2026-11-04 · accepted
+Context: an independent review of `feat/vision-first-run` found live-only behaviours that replay
+never exercises. (1) Two arms curling the same range but about two seconds apart got a false
+`CURL_ASYMMETRY` on one arm: `Pipeline._paired` compared a rep against the *elapsed* part of the
+other arm's rep in progress, so a rep that had only just begun counted as a full overlap.
+(2) Each `_Track.reset()` (gate close) starts a new segmenter, so with `--board` the rep numbers
+restarted at 0 after every gate re-open and `(arm, rep_id)` repeated in `events.parquet`.
+(3) A rep with a long tracking gap inside (arm hidden or out of frame) was still counted and
+judged on interpolated angles, against docs/02 §4.3 ("mark the segment invalid"). Decision:
+(1) the in-progress branch now measures the overlap against *this* rep's duration (≥ 50%, the
+same fraction as the completed-rep branch); (2) in per-arm mode `rep_id` is the arm's running
+count (`len(track.reps)`), continuous across gate cycles, and (3) per-arm mode drops a rep whose
+window contains a frame with no usable angle, i.e. a gap longer than `MAX_GAP_FRAMES` (3);
+replay (`per_arm=False`) keeps the segmenter's ids, which restart on every gate-open segment, and
+keeps interpolating, because both are in its golden output. Also: `Pipeline.finish()` closes the
+open gate segment in its result only (calling it twice no longer doubles `gated_seconds`); a
+`--rules` file is validated up front (malformed, or missing the chosen exercise, is a `ValueError`
+before the pose model is built); the live CLI rejects `--gate`/`--speed`/`--session`, `--port`
+without `--board`, and `--camera` with `--video`. Consequences: replay output is byte-identical
+(`tests/test_pipeline_equivalence.py` plus the replay-style tests in `tests/test_per_arm.py`, which
+pin gate-cycle numbering and gap bridging that the golden file does not); arms about half a rep or
+more apart no longer count as a two-arm set; a dropped rep leaves no event, only its lost frames
+in `frames_invalid`. Unvalidated on a real webcam, like ADR-0029; `rules.yaml` is unchanged.

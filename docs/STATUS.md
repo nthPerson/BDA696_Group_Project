@@ -9,6 +9,47 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-11-04 — Pre-PR review fixes on `feat/vision-first-run` (Claude Code with Christian)
+
+### What changed
+A second independent review of the whole branch (after `e85bcce`) found live-only problems that
+replay never reaches; fixed here, each with a regression test (ADR-0031):
+- Two arms curling the same range about two seconds apart no longer get a false `CURL_ASYMMETRY`
+  on one arm (`Pipeline._paired`, in-progress branch).
+- With `--board`, rep numbers keep counting after the gate re-opens (they restarted at 0, so
+  `(arm, rep_id)` repeated in `events.parquet`). Replay keeps its restart: the golden output has it.
+- A live rep with a tracking gap of more than 3 frames inside it is not counted (docs/02 §4.3)
+  instead of being judged on interpolated angles. Replay still interpolates.
+- `--rules` file problems (malformed, or missing the chosen exercise) are a clean exit 2 before
+  the pose model loads, not a `KeyError` after the first rep.
+- Import errors for OpenCV, MediaPipe, bleak and pyserial now include the real cause (e.g. a
+  missing `libGL.so.1` on WSL2) after the install hint.
+- `Pipeline.finish()` can be called twice; an unopenable `--video` leaves no empty session
+  directory; the camera is released before the wearable link shuts down; headless `--board` prints
+  `wearable: <status>` lines; the live CLI rejects `--gate`/`--speed`/`--session`, `--port` without
+  `--board`, and `--camera` with `--video` (they were silently ignored).
+- Tests: the golden replay test does not pin gate cycling or gap bridging (mutating
+  `MAX_GAP_FRAMES` or the reset on gate close still passed it), so `tests/test_per_arm.py` now pins
+  both for the replay-style pipeline; new tests cover `WindowShow` (q, Esc, closed window),
+  `run_live_demo` cleanup on every exit path and the default `BoardLink` clock. CI gets a
+  `test-vision` job (Ubuntu, `--extra vision`) because the existing jobs skip every OpenCV test.
+
+### Verified
+`make lint test` green (354 passed, 1 skipped: TensorFlow not installed). `formcoach demo --source
+replay --headless` compared against `origin/main` (23f192b): `events.parquet` and `frames.parquet`
+byte-identical, `session.json` differs only in the absolute fixture path. The new `test-vision`
+CI job has **not run yet** (needs the branch pushed).
+
+### Known, not changed
+`make live` ignores `POSE_MODEL` (`setup-live` honours it); `run_pipeline(side="l"|"r")` computes
+different metrics from main (no caller passes `side`); live squat has no visibility gating (same
+as main); `Pipeline`'s docstring misses `per_arm`/`max_buffer_frames`/`pad_rep_start_s`;
+`fetch_model` has no integrity check and `landmarker.py`'s header still says `make setup` downloads
+no models. Still needing hardware: on-screen L/R against the physical arm, real MediaPipe
+`visibility` against the 0.5 floor, window close on Windows/Linux, `--board` with real IMU samples.
+
+---
+
 ## 2026-11-04 — Live webcam demo (Claude Code with Christian)
 
 ### What changed
