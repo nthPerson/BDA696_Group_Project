@@ -9,6 +9,73 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-11-04 — Live webcam demo (Claude Code with Christian)
+
+### What changed
+- `formcoach demo --camera N` (or `make live CAMERA=N`) is built: one window — mirrored webcam
+  video with the MediaPipe skeleton, a rep counter per arm (good/flagged) with current elbow
+  angles, an angle trace with the rep threshold band, a status pill, and a ~3 s coaching banner
+  after each rep. One command, no `--side` flag: both arms together, alternating, or one arm are
+  each counted and judged per arm automatically; squat keeps one whole-body counter. `--board
+  ble|serial` (+ `--port`) follows the wearable: gate = the device's gate flag AND a sample in
+  the last 2 s, LEDs flash good-rep/fault; no board → gate always open ("webcam only"). Also:
+  `--exercise`, `--video FILE`, `--headless`, `--out DIR`/`--no-log`, `--model lite|full|heavy`,
+  `--rules FILE`. `formcoach pose fetch-model` downloads the pose model; `make setup-live` =
+  `uv sync` with the `vision`+`device` extras + fetch-model.
+- Logging is on by default to `runs/live/<YYYYMMDD-HHMMSS>/` (`events.parquet`, `frames.parquet`,
+  `session.json`; `runs/` is gitignored; no video or camera frames are ever written). `rep`/
+  `fault` events carry an `arm` key (`"l"`/`"r"`/`null`) only in live/per-arm mode — replay events
+  are unchanged and have no `arm` key, read it with `.get("arm")`. `session.json` gains `arms`
+  (per-arm reps/good/flagged/faults_by_code), `live`, `board`, `fps_mean`, `duration_s`, `source`,
+  `model`.
+- Found and fixed (`b07e6d0`): the adaptive `RepSegmenter` ends a rep at the exit threshold, so a
+  rep's `elbow_max` metric was measured near that threshold and `CURL_PARTIAL_ROM` fired on
+  **every** live curl — no rep was ever good. Fixed with `Pipeline(pad_rep_start_s=1.0)` in live
+  mode only (`REP_PAD_S` in `app/live.py`): only the rep's *metrics* window is padded back to the
+  rest position (never into the previous rep); the rep count and `t_start`/`t_end`/`duration_s`
+  are unchanged. Replay keeps `pad_rep_start_s=0`, so its golden output
+  (`tests/golden/replay_mmfit_w00_curls.json`) is byte-identical. Measured on synthetic curls
+  only (ADR-0029) — **not validated on a real webcam clip.**
+- Commits on `feat/vision-first-run` (none pushed, nothing opened as a PR yet): `c1a22c9`
+  mediapipe pin (ADR-0027), `f183d45` golden replay test, `2442c11` camera + model fetch,
+  `5f8ce50` BLE 2 s scan rounds + `BoardLink` (ADR-0030), `46ab462` HUD, `415cf5f` per-arm
+  `Pipeline` (ADR-0028), `34df78b` live loop, `a446dbb` CLI `--camera/--board/--video` + `make
+  live`, `b07e6d0` padded metrics window (ADR-0029), `e85bcce` review fixes; this docs change (`docs/howto/live-demo.md`,
+  README, ADR-0028–0030, this entry) follows as its own commit.
+- An independent `formcoach-reviewer` pass over the whole branch diff found, and `e85bcce` fixes
+  (each with a regression test): an arm that drops out mid-rep stayed "in progress" and made every
+  later rep of the other arm count as a two-arm rep (false `CURL_ASYMMETRY`, `LED_FAULT` instead of
+  good); `session.json` key order differed from main (now byte-identical for both gates, checked
+  with `cmp` against main's code); a failing log write could mask the camera error and skip the
+  totals; the camera could stay open if the board failed to open; `--model huge`, a missing display
+  and live-only flags without `--camera` gave tracebacks or were silently ignored; the BLE "is the
+  wearable on?" hint is back (every 10 s); the model download now times out.
+- Verified this session: `make lint test` green (301 passed, 1 skipped); `formcoach demo
+  --source replay --headless` unchanged (`reps 10 (pose) / 17 (imu) / 10 (fused)`); the live loop
+  runs end to end through the real MediaPipe model on a blank video (no person, 0 reps) and,
+  separately, on synthetic curl frames (8/8 good reps per arm, `arm` key present) — never on a
+  real camera, a real person, or the real wearable.
+
+### Next
+1. Christian: run the manual test from the design spec §9 and record the numbers here:
+   `uv run formcoach demo --camera 1` with both arms together, alternating, and one arm; then
+   `--board ble`.
+2. A teammate on a fresh clone: `make setup-live` then `make live CAMERA=1`.
+3. Christian films a front-view clip (about 10 clean and 10 sloppy curls; both arms, alternating,
+   one arm; saved under `data/team/`, never pushed) so Rochelle can ratify the webcam thresholds.
+   **Bryce and Rochelle: read `docs/howto/live-demo.md` first.**
+
+### Open questions
+- Counter/rules comparison on a real clip — none exists yet.
+- Whether the padded metrics window should become the default for replay too (would change the
+  goldens and ADR-0022's evidence) — not done.
+- Whether to push / open PRs — the mediapipe pin commit `c1a22c9` was meant to be its own PR.
+
+### Blockers
+- None.
+
+---
+
 ## 2026-10-28 — BMI160 fix merged, firmware 1.1.1 (Claude Code with Robert)
 
 ### What changed

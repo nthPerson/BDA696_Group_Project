@@ -342,3 +342,72 @@ starts the real graph in a subprocess and fails on 1.0.1; it skips without the e
 ships macOS wheels for arm64 only, so an Intel Mac cannot install the `vision` extra (true of the
 previous lock too); if a teammate has one, revisit (a). Linux x86_64/aarch64 and Windows
 amd64/arm64 have 1.1.1 wheels (verify on Robert's WSL2 and a Windows laptop).
+
+## ADR-0028 · Stateful `Pipeline`, one `_Track` per arm, `arm` key only in per-arm mode · 2026-11-04 · accepted
+Context: `run_pipeline` (`app/pipeline.py`) was IMU-driven — it looped IMU samples and pulled pose
+frames as a side effect, with all angle/rep/rules logic as closures inside that one function.
+The live demo has no IMU loop to drive it (webcam-only has no IMU at all) and needs a per-frame
+entry point; it also needs each arm counted and judged independently (curl/press/raise with both
+arms together, alternating, or one arm), which the existing `side="both"` cannot do because
+`primary_angle` takes the mean of the two elbows and halves a one-arm or alternating swing.
+Decision: the closures became a `Pipeline` class (`on_imu`/`set_gate`/`on_frame`/`skip_frame`/
+`finish`) holding one `_Track` per side; `per_arm=True` builds two tracks (`side="l"/"r"`,
+`arm="l"/"r"`) for curl/press/raise and one track (`arm=None`) for squat, while the default
+`per_arm=False` keeps the single `side="both"` track replay has always used. `run_pipeline` keeps
+its exact signature and is now a thin wrapper: build a `Pipeline`, feed it, call `finish()`. `rep`
+and `fault` event payloads gain an `"arm"` key (`"l"`/`"r"`/`None`) only when `per_arm=True`;
+replay events (`per_arm=False`) have no `arm` key at all. `tests/test_pipeline_equivalence.py`
+pins replay's events and summary against `tests/golden/replay_mmfit_w00_curls.json`, generated
+from the unmodified code before the refactor, so the refactor could not silently change replay
+output. Two-arm rules (`requires: two_arm`, e.g. `CURL_ASYMMETRY`) only fire for an arm track when
+the other arm's current or last rep overlaps this rep by ≥ 50% of the shorter rep's duration
+(`Pipeline._paired`), so an alternating or one-arm curl never trips them. Consequences:
+`formcoach demo --source replay --headless` is byte-identical (`reps 10 (pose) / 17 (imu) / 10
+(fused)`); any change to `Pipeline` must keep the golden test green; a live `Pipeline` never
+computes the IMU cross-check (`finish(compute_imu=False)`) because the board is on one wrist and
+cannot validate two arms.
+
+## ADR-0029 · Live-demo defaults; the padded metrics window fixes `CURL_PARTIAL_ROM` firing on every rep · 2026-11-04 · accepted
+Context: the design (`docs/superpowers/specs/2026-11-02-live-demo-design.md`) asked for one
+command, webcam-only by default with the wearable opt-in, reps logged per arm as good or flagged,
+and no IMU cross-check live. While building the live loop, feeding a synthetic clean curl through
+the shared `rules.yaml` showed the adaptive `RepSegmenter` ends a rep where the angle crosses the
+*exit* threshold (about 127-135° for a 35-165° curl), so a rep's `elbow_max` metric reads near
+that exit threshold even for a perfect full-range curl; with `CURL_PARTIAL_ROM` defined as
+`elbow_min > 75 or elbow_max < 140`, it fired on **every** live curl and no rep was ever "good"
+(same root cause as ADR-0022's 0.00 MM-Fit pass rate). Decision: (1) webcam-only
+(`AlwaysOnGate`) is the default, `--board ble|serial` is opt-in; (2) with a board, the gate is the
+device's gate flag **and** the board having sent a sample within the last 2 s
+(`BoardLink.alive`/`gate_open`); (3) good = a rep with no fault of any severity, flagged = ≥ 1
+fault; (4) logging is on by default to `runs/live/<timestamp>/` (`--out` moves it, `--no-log`
+disables it), writing only `events.parquet`/`frames.parquet`/`session.json`, never camera frames
+or video; (5) live `Pipeline` never computes `reps_imu`/`reps_fused` (`finish(compute_imu=False)`
+— the board can't cross-check two arms and it's an eval metric, not a demo feature); (6) the
+2026-10-21 spike's scale-free swing counter is **not** adopted — the adaptive `RepSegmenter`
+stays the only counter; (7) instead of tuning the shared `rules.yaml` or adding a second counter,
+`Pipeline` gained `pad_rep_start_s`: a completed rep's *metrics* window (not its count, not
+`t_start`/`t_end`/`duration_s`) is extended back up to 1.0 s toward the rest position before the
+segmenter's exit-crossing point, never into the previous rep (`Pipeline._padded_start`); live mode
+sets `pad_rep_start_s=1.0` (`REP_PAD_S` in `app/live.py`), replay keeps `0.0`, so replay's golden
+output is unchanged. Evidence, synthetic curls only: clean 50-150°, 35-165°, slow (4 s) and fast
+(1.6 s) curls on both arms all come out good (0 faults, `elbow_max` reads the true top of the
+curl, e.g. 150.0°); 90-130° and 40-100° curls are correctly flagged `CURL_PARTIAL_ROM`.
+Consequences: **no rep has been scored "good" on a real webcam clip, because none exists yet** —
+this fix is unvalidated against real MediaPipe angle noise, occlusion or a non-frontal view.
+Rochelle ratifies it (and decides whether a separate `rules.mediapipe-webcam.yaml` is still needed
+on top of it) once Christian films a clip; the shared `rules.yaml` itself was not changed and
+ADR-0022 still governs per-pose-source calibration.
+
+## ADR-0030 · BLE scan in 2 s rounds with no backoff; `scan_timeout` renamed `scan_round_s` · 2026-11-04 · accepted
+Context: `BLESource._find` ran `BleakScanner.discover(timeout=10)` on every attempt, with the
+reconnect backoff (1 → 30 s) applied between scans too, so a wearable switched on partway through
+a live session could take up to ~40 s to be found — too slow once the demo window is already open
+and coaching. Decision: `_find` now loops `BleakScanner.find_device_by_filter` (name prefix
+`FormCoach`) in `scan_round_s` (default 2.0 s) rounds with no backoff between rounds, returning
+the matched `BLEDevice` so `BleakClient` skips its own re-scan; the backoff (1 → 30 s) is kept
+only for reconnecting after a connection error once a device has been found. The constructor
+parameter is renamed `scan_timeout` → `scan_round_s` to describe what it now controls. Unit-tested
+with a fake `BleakScanner.find_device_by_filter` (`tests/test_ble_find.py`) asserting every round
+passes `timeout=2.0` and that the test does not sleep. Consequences: a board powered on late is
+found within about one round instead of up to ~40 s; `BLESource(scan_timeout=...)` call sites must
+use `scan_round_s` (no other caller in the repo besides the default).
