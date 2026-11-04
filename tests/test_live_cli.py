@@ -37,7 +37,8 @@ def fake_live(monkeypatch):
 
 
 def test_demo_help_lists_the_live_flags():
-    out = runner.invoke(app, ["demo", "--help"]).output
+    # typer forces colour on GitHub Actions, which splits "--model" with escape codes
+    out = re.sub(r"\x1b\[[0-9;]*m", "", runner.invoke(app, ["demo", "--help"]).output)
     for flag in ("--camera", "--board", "--video", "--no-log", "--model"):
         assert flag in out, flag
     assert "--side" not in out

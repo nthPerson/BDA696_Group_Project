@@ -25,8 +25,17 @@ GOLDEN = json.loads(
 )
 
 
+ABS_TOL = 1e-4
+"""Absolute float tolerance (degrees, seconds or torso units). The golden file was written on macOS;
+Linux and Windows differ in the last float32 digits of the joint angles (BLAS/SIMD paths), which
+moves small-valued metrics such as ``trunk_incl_at_bottom`` or ``knee_track_at_bottom`` by up to
+about 1e-5. A change in what the pipeline computes (a rep window, a threshold, a count) moves
+these by whole degrees or changes the event list, which is still compared exactly."""
+
+
 def _close(actual, expected, path="$"):
-    """Recursive equality: floats within 1e-6 relative (NaN equals NaN), everything else exact."""
+    """Recursive equality: floats within 1e-6 relative or ``ABS_TOL`` absolute (NaN equals NaN),
+    everything else exact."""
     if isinstance(expected, dict):
         assert isinstance(actual, dict) and actual.keys() == expected.keys(), path
         for k in expected:
@@ -36,7 +45,7 @@ def _close(actual, expected, path="$"):
         for i, (a, e) in enumerate(zip(actual, expected, strict=True)):
             _close(a, e, f"{path}[{i}]")
     elif isinstance(expected, float):
-        assert actual == pytest.approx(expected, rel=1e-6, abs=1e-9, nan_ok=True), path
+        assert actual == pytest.approx(expected, rel=1e-6, abs=ABS_TOL, nan_ok=True), path
     else:
         assert actual == expected, path
 
