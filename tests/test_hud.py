@@ -4,6 +4,7 @@ post-rep banner and word-wrapping are pure Python; ``render`` needs OpenCV and i
 
 from __future__ import annotations
 
+import builtins
 import dataclasses
 import math
 
@@ -186,3 +187,24 @@ def test_window_show_turns_a_display_error_into_a_friendly_runtime_error():
     window.title = "FormCoach"
     with pytest.raises(RuntimeError, match="--headless"):
         window(np.zeros((4, 4, 3), np.uint8))
+
+
+def test_cv2_import_error_keeps_the_real_cause(monkeypatch):
+    """On WSL2 ``import cv2`` can fail with a libGL error even after ``uv sync --extra
+    vision``; the install hint alone then sends the user in circles. The raised message must
+    keep both the hint and the original error."""
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "cv2":
+            raise ImportError(
+                "libGL.so.1: cannot open shared object file: No such file or directory"
+            )
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    with pytest.raises(ImportError) as exc_info:
+        hud._cv2()
+    msg = str(exc_info.value)
+    assert "uv sync --extra vision" in msg
+    assert "libGL.so.1: cannot open shared object file" in msg

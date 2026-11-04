@@ -164,8 +164,10 @@ class HudState:
 def _cv2():
     try:
         import cv2
-    except ImportError as exc:  # pragma: no cover - exercised only without the vision extra
-        raise ImportError("the live HUD needs OpenCV: `uv sync --extra vision`") from exc
+    except ImportError as exc:
+        raise ImportError(
+            f"the live HUD needs OpenCV: `uv sync --extra vision` (cv2 import failed: {exc})"
+        ) from exc
     return cv2
 
 

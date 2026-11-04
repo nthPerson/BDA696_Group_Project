@@ -583,6 +583,27 @@ def demo(
         if no_log and out is not None:
             console.print("[bold red]--out and --no-log contradict each other; pick one[/]")
             raise typer.Exit(2)
+        if camera is not None and video is not None:
+            console.print("[bold red]pass --camera (a webcam) or --video (a file), not both[/]")
+            raise typer.Exit(2)
+        replay_only = [
+            flag
+            for flag, used in (
+                ("--session", session is not None),
+                ("--gate", gate is not Gate.always_on),
+                ("--speed", speed != 0.0),
+            )
+            if used
+        ]
+        if replay_only:
+            console.print(
+                f"[bold red]{', '.join(replay_only)} only apply to --source replay; the live demo "
+                "uses the wearable's own gate when you pass --board[/]"
+            )
+            raise typer.Exit(2)
+        if port is not None and board is None:
+            console.print("[bold red]--port needs --board ble|serial (it names the wearable)[/]")
+            raise typer.Exit(2)
         _demo_live(
             camera=camera, video=video, board=board, port=port, exercise=exercise or "curl",
             model=model, rules=rules, headless=headless, out=out, no_log=no_log,
@@ -702,7 +723,8 @@ def _demo_live(
     quit_hint = "" if headless else "  (press q or Esc in the window to stop)"
     console.print(f"live demo: {where}, exercise={exercise}{quit_hint}", highlight=False)
     if board is not None:
-        console.print(f"looking for the wearable over {board.value}; the window shows its status")
+        status_where = "its status prints below" if headless else "the window shows its status"
+        console.print(f"looking for the wearable over {board.value}; {status_where}")
     try:
         live.run_live_demo(
             camera=camera,

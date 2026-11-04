@@ -44,7 +44,9 @@ def _bleak():
     try:
         import bleak
     except ImportError as exc:
-        raise ImportError("BLE input needs bleak: `uv sync --extra device`") from exc
+        raise ImportError(
+            f"BLE input needs bleak: `uv sync --extra device` (import failed: {exc})"
+        ) from exc
     return bleak
 
 

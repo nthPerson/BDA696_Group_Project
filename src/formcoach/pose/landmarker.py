@@ -117,7 +117,9 @@ def make_landmarker(variant: str = "lite", path: Path | None = None):
         from mediapipe.tasks import python as mp_python
         from mediapipe.tasks.python import vision as mp_vision
     except ImportError as exc:
-        raise ImportError("pose extraction needs MediaPipe: `uv sync --extra vision`") from exc
+        raise ImportError(
+            f"pose extraction needs MediaPipe: `uv sync --extra vision` (import failed: {exc})"
+        ) from exc
     options = mp_vision.PoseLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=str(path or model_path(variant))),
         running_mode=mp_vision.RunningMode.VIDEO,
@@ -144,7 +146,9 @@ def open_video(path: Path) -> Iterator[tuple[int, float, np.ndarray]]:
     try:
         import cv2
     except ImportError as exc:
-        raise ImportError("video reading needs OpenCV: `uv sync --extra vision`") from exc
+        raise ImportError(
+            f"video reading needs OpenCV: `uv sync --extra vision` (cv2 import failed: {exc})"
+        ) from exc
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise FileNotFoundError(f"cannot open video {path}")

@@ -225,6 +225,96 @@ def test_a_bad_board_setting_never_opens_the_camera(monkeypatch):
     assert opened == []
 
 
+# ---- a hand-edited --rules file (bug: KeyError deep in the loop, or a malformed-YAML traceback)
+
+
+def test_rules_file_missing_the_exercise_is_a_friendly_error_before_the_landmarker(
+    tmp_path, monkeypatch
+):
+    """A rules file that defines only ``curl`` but is used with ``--exercise press`` must fail
+    up front, naming the file, the exercise and what the file does define -- not deep inside the
+    loop on the first completed rep (``RuleEngine.rules_for`` raising ``KeyError``), and not
+    after the (slow, possibly-failing) landmarker has already been built."""
+    from formcoach.pose import landmarker
+
+    def explode(*_a, **_k):
+        raise AssertionError("make_landmarker must not be called")
+
+    monkeypatch.setattr(landmarker, "make_landmarker", explode)
+    rules_path = tmp_path / "curl_only.yaml"
+    rules_path.write_text("version: 1\nexercises:\n  curl:\n    rules: []\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        live.run_live_demo(
+            camera=0, video=None, board=None, port=None, exercise="press",
+            rules=rules_path, headless=True, say=lambda _s: None,
+        )  # fmt: skip
+    msg = str(exc_info.value)
+    assert str(rules_path) in msg
+    assert "press" in msg
+    assert "curl" in msg
+
+
+def test_missing_rules_file_still_raises_file_not_found(tmp_path):
+    missing = tmp_path / "nope.yaml"
+    with pytest.raises(FileNotFoundError):
+        live.run_live_demo(
+            camera=0, video=None, board=None, port=None, exercise="curl",
+            rules=missing, headless=True, say=lambda _s: None,
+        )  # fmt: skip
+
+
+def test_empty_rules_file_is_a_friendly_error(tmp_path):
+    rules_path = tmp_path / "empty.yaml"
+    rules_path.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot load rules file"):
+        live.run_live_demo(
+            camera=0, video=None, board=None, port=None, exercise="curl",
+            rules=rules_path, headless=True, say=lambda _s: None,
+        )  # fmt: skip
+
+
+def test_top_level_list_rules_file_is_a_friendly_error(tmp_path):
+    rules_path = tmp_path / "list.yaml"
+    rules_path.write_text("- curl\n- press\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot load rules file"):
+        live.run_live_demo(
+            camera=0, video=None, board=None, port=None, exercise="curl",
+            rules=rules_path, headless=True, say=lambda _s: None,
+        )  # fmt: skip
+
+
+def test_rule_missing_when_in_rules_file_is_a_friendly_error(tmp_path):
+    rules_path = tmp_path / "bad_rule.yaml"
+    rules_path.write_text(
+        "version: 1\nexercises:\n  curl:\n    rules:\n      - code: X\n        message: oops\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="cannot load rules file"):
+        live.run_live_demo(
+            camera=0, video=None, board=None, port=None, exercise="curl",
+            rules=rules_path, headless=True, say=lambda _s: None,
+        )  # fmt: skip
+
+
+def test_invalid_yaml_rules_file_is_a_friendly_error(tmp_path):
+    rules_path = tmp_path / "invalid.yaml"
+    rules_path.write_text("exercises: [1, 2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot load rules file"):
+        live.run_live_demo(
+            camera=0, video=None, board=None, port=None, exercise="curl",
+            rules=rules_path, headless=True, say=lambda _s: None,
+        )  # fmt: skip
+
+
+def test_demo_cli_with_a_bad_rules_file_exits_cleanly_with_no_traceback():
+    result = runner.invoke(
+        app, ["demo", "--camera", "0", "--rules", "BAD", "--exercise", "press", "--no-log"]
+    )
+    assert result.exit_code == 2
+    assert "BAD" in result.output and "Traceback" not in result.output
+
+
 def test_an_unknown_model_is_a_friendly_error_before_anything_opens():
     result = runner.invoke(app, ["demo", "--camera", "0", "--model", "huge", "--no-log"])
     assert result.exit_code == 2
@@ -236,3 +326,59 @@ def test_live_only_flags_without_camera_or_video_are_rejected():
         result = runner.invoke(app, ["demo", "--headless", *extra])
         assert result.exit_code == 2, extra
         assert "--camera" in result.output and "--video" in result.output
+
+
+# ---- flags the live demo cannot use are errors, not silently ignored ------------------------
+
+
+@pytest.mark.parametrize(
+    ("flags", "named"),
+    [
+        (["--session", "some_session"], "--session"),
+        (["--gate", "energy"], "--gate"),
+        (["--speed", "1"], "--speed"),
+    ],
+)
+def test_replay_only_flags_are_rejected_in_live_mode(fake_live, flags, named):
+    result = runner.invoke(app, ["demo", "--camera", "0", "--headless", "--no-log", *flags])
+    assert result.exit_code == 2, result.output
+    assert named in result.output and "replay" in result.output
+    assert fake_live.kwargs == {}
+
+
+def test_port_without_a_board_is_rejected_in_live_mode(fake_live):
+    result = runner.invoke(app, ["demo", "--camera", "0", "--headless", "--no-log", "--port", "X"])
+    assert result.exit_code == 2, result.output
+    assert "--port" in result.output and "--board" in result.output
+    assert fake_live.kwargs == {}
+
+
+def test_port_with_a_board_is_passed_through(fake_live):
+    result = runner.invoke(
+        app,
+        ["demo", "--camera", "0", "--headless", "--no-log", "--board", "serial", "--port", "COM3"],
+    )
+    assert result.exit_code == 0, result.output
+    assert fake_live.kwargs["port"] == "COM3" and fake_live.kwargs["board"] == "serial"
+
+
+def test_camera_and_video_together_are_rejected(fake_live, tmp_path):
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"")
+    result = runner.invoke(
+        app, ["demo", "--camera", "0", "--video", str(clip), "--headless", "--no-log"]
+    )
+    assert result.exit_code == 2, result.output
+    assert "--camera" in result.output and "--video" in result.output
+    assert fake_live.kwargs == {}
+
+
+def test_the_board_hint_does_not_mention_a_window_when_headless(fake_live):
+    headless = runner.invoke(
+        app, ["demo", "--camera", "0", "--headless", "--no-log", "--board", "ble"]
+    )
+    windowed = runner.invoke(app, ["demo", "--camera", "0", "--no-log", "--board", "ble"])
+    assert headless.exit_code == 0 and windowed.exit_code == 0
+    assert "looking for the wearable over ble" in headless.output
+    assert "window" not in headless.output
+    assert "the window shows its status" in windowed.output

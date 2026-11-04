@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 from formcoach.app import hud
 from formcoach.app.events import Event, EventLog
@@ -128,8 +129,12 @@ def run_live(
     The totals are printed through ``say`` and, when ``out_dir`` is given, ``events.parquet``,
     ``frames.parquet`` and ``session.json`` are written (even for zero reps) however the loop
     ends, including when ``frames`` or ``detect`` raises: the exception is re-raised only after
-    the log and totals are out. Returns a :class:`PipelineResult` whose ``summary`` carries
-    ``arms`` (per-arm totals), ``live``, ``board``, ``fps_mean`` (frames/s) and ``duration_s``.
+    the log and totals are out. The one exception: if ``frames`` raises before yielding anything
+    (a video that cannot be opened) nothing ran, so no log or totals are written. Without a
+    window (``show`` is ``None``) and with a ``board``, the board's status is printed through
+    ``say`` as ``"wearable: <status>"`` whenever it changes. Returns a :class:`PipelineResult`
+    whose ``summary`` carries ``arms`` (per-arm totals), ``live``, ``board``, ``fps_mean``
+    (frames/s) and ``duration_s``.
     """
     log = EventLog()
     pipe = Pipeline(
@@ -150,6 +155,7 @@ def run_live(
     stamps: deque[float] = deque(maxlen=FPS_WINDOW)
     means: list[float] = []
     hinted = False
+    last_status = ""
     last_ms = -1
     t_first: float | None = None
     t_last: float | None = None
@@ -178,6 +184,11 @@ def run_live(
             if board is not None:
                 board.poll()
                 gate = bool(board.gate_open())
+                if show is None:  # no window, so no status pill: print it when it changes
+                    status, _dim = hud.pill(True, board.state(), gate, board.name)
+                    if status != last_status:
+                        last_status = status
+                        say(f"wearable: {status}")
             else:
                 gate = True
             pipe.set_gate(gate, t)
@@ -249,9 +260,13 @@ def run_live(
         result.summary["duration_s"] = round(duration, 2)
         if extra_summary:
             result.summary.update(extra_summary)
-        for line in totals_lines(exercise, result.summary["arms"]):
-            say(line)
-        if out_dir is not None:
+        # a source that failed before its first frame (an unopenable video) ran nothing: no
+        # zero-rep totals and no empty session directory, just the error
+        nothing_ran = failed and n_frames == 0
+        if not nothing_ran:
+            for line in totals_lines(exercise, result.summary["arms"]):
+                say(line)
+        if out_dir is not None and not nothing_ran:
             try:
                 log.write(out_dir, result.summary)
                 result.out_dir = out_dir
@@ -321,15 +336,22 @@ def run_live_demo(
     ``rules`` YAML, an optional wearable (``board`` ``"ble"``/``"serial"`` on ``port``) and a
     window unless ``headless``. ``detect`` replaces the real landmarker (tests).
 
-    If both ``video`` and ``camera`` are given the video wins and no camera is opened.
+    If both ``video`` and ``camera`` are given the video wins and no camera is opened (the CLI
+    rejects the combination before it gets here).
 
     Raises:
-        ValueError: unknown ``exercise`` or ``board``, or neither ``camera`` nor ``video``.
-        FileNotFoundError: the model, video, camera or serial port is missing (messages say what
-            to do next).
+        ValueError: unknown ``exercise`` or ``board``, neither ``camera`` nor ``video``, the
+            ``rules`` file is malformed (bad YAML, a rule without ``when``, empty, or a
+            top-level list that cannot be read as the rules document), or the rules file (or
+            the packaged ``rules.yaml``) does not define ``exercise``. Raised before the
+            landmarker is built, so a hand-edited rules file never gets as far as opening the
+            camera or loading the pose model.
+        FileNotFoundError: the rules, model, video, camera or serial port is missing (messages
+            say what to do next).
         ImportError: the ``vision`` (OpenCV, MediaPipe) or ``device`` (bleak, pyserial) extra is
             not installed.
-        RuntimeError: the camera stopped sending frames mid-run (the log is written first).
+        RuntimeError: the camera stopped sending frames (the log is written first, unless not a
+            single frame had arrived).
     """
     from formcoach.pose import landmarker
     from formcoach.pose.reps import DEFAULT_REP_CONFIG
@@ -350,7 +372,15 @@ def run_live_demo(
     if video is not None and not Path(video).exists():
         raise FileNotFoundError(f"cannot open video {video}: no such file")
 
-    engine = RuleEngine.from_yaml(rules)
+    try:
+        engine = RuleEngine.from_yaml(rules)
+    except (yaml.YAMLError, KeyError, AttributeError, TypeError) as exc:
+        raise ValueError(f"cannot load rules file {rules}: {exc}") from exc
+    if exercise not in engine.exercises:
+        where = rules if rules is not None else "the packaged rules.yaml"
+        raise ValueError(
+            f"{where} has no rules for exercise {exercise!r}; it defines {sorted(engine.exercises)}"
+        )
     detector = detect if detect is not None else landmarker.make_landmarker(model)
 
     frames = None
@@ -393,10 +423,14 @@ def run_live_demo(
             extra_summary={"source": source, "model": model},
         )
     finally:
-        if show is not None:
-            show.close()
-        if link is not None:
-            link.close()
-        close = getattr(frames, "close", None)
-        if close is not None:
-            close()
+        # The camera is released first: closing the wearable link can take seconds (it joins its
+        # reader thread), and the camera light should go off when the user quits, not after.
+        # ExitStack runs callbacks last-in-first-out and still runs the rest if one raises.
+        with contextlib.ExitStack() as cleanup:
+            if link is not None:
+                cleanup.callback(link.close)
+            if show is not None:
+                cleanup.callback(show.close)
+            close = getattr(frames, "close", None)
+            if close is not None:
+                cleanup.callback(close)

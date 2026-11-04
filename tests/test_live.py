@@ -139,6 +139,22 @@ def test_run_live_writes_log_and_totals_when_frames_raise(tmp_path):
     assert any(s.startswith("L: ") for s in said)
 
 
+def test_run_live_writes_no_log_when_it_fails_before_the_first_frame(tmp_path):
+    """A video that cannot be opened never yields a frame: there is nothing to log, so no empty
+    session directory is left behind and no zero-rep totals are printed."""
+
+    def unopenable():
+        raise FileNotFoundError("cannot open video clip.mp4")
+        yield  # makes this a generator, like landmarker.open_video
+
+    said: list[str] = []
+    out = tmp_path / "run"
+    with pytest.raises(FileNotFoundError, match="cannot open video"):
+        live.run_live(unopenable(), make_detect(), exercise="curl", out_dir=out, say=said.append)
+    assert not out.exists()
+    assert said == []
+
+
 def test_run_live_writes_log_when_the_detector_raises(tmp_path):
     def boom(_frame, _t_ms):
         raise ValueError("model exploded")
@@ -284,6 +300,30 @@ class FlagSecondRep:
 
     def evaluate(self, rm, context=None):
         return [_Fault()] if rm.rep_id == 1 else []
+
+
+def test_a_headless_run_says_what_the_wearable_is_doing():
+    """No window means no status pill, so the same text is printed when it changes."""
+    board = FakeBoard()
+    said: list[str] = []
+    live.run_live(frames(30, board), make_detect(), exercise="curl", board=board, say=said.append)
+    assert [s for s in said if s.startswith("wearable:")] == [
+        "wearable: looking for board... | pose paused",
+        "wearable: FormCoach-8428 | gate ON | pose running",
+        "wearable: board silent - reconnecting",
+    ]
+
+
+def test_no_wearable_lines_without_a_board_or_with_a_window(monkeypatch):
+    monkeypatch.setattr(hud, "render", lambda frame, _lm, _state, **_kw: frame)
+    said: list[str] = []
+    live.run_live(frames(5), make_detect(), exercise="curl", say=said.append)
+    board = FakeBoard()
+    live.run_live(
+        frames(5, board), make_detect(), exercise="curl", board=board, show=lambda _f: True,
+        say=said.append,
+    )  # fmt: skip
+    assert not [s for s in said if s.startswith("wearable:")]
 
 
 def test_led_commands_follow_rep_quality():

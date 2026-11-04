@@ -34,6 +34,7 @@ def _cv2():
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "the overlay window needs OpenCV: `uv sync --extra vision` (or run with --headless)"
+            f" (cv2 import failed: {exc})"
         ) from exc
     return cv2
 
