@@ -1,0 +1,371 @@
+"""The live loop (plan Task 8): fake frames + a fake detector, no camera, no model, no cv2."""
+
+from __future__ import annotations
+
+import json
+
+import numpy as np
+import pytest
+
+from formcoach.app import hud, live
+from formcoach.io import protocol
+from formcoach.rules.engine import RuleEngine
+
+from .synthetic_pose import curl_deg, pose_frame
+
+FPS = 30.0
+BLANK = np.zeros((48, 64, 3), np.uint8)
+
+
+def frames(seconds: float, board=None):
+    """``(i, t, frame)`` at 30 fps; ``board.now`` follows the frame time for fake boards."""
+    for i in range(int(seconds * FPS)):
+        t = i / FPS
+        if board is not None:
+            board.now = t
+        yield i, t, BLANK
+
+
+def make_detect(left=curl_deg, right=curl_deg, *, missing=(), vis=(1.0, 1.0)):
+    """A detector keyed by frame time: ``left``/``right`` map t (s) -> elbow degrees; frames whose
+    t falls in a ``missing`` ``(a, b)`` window return ``(None, None)`` (no person)."""
+
+    def detect(_frame, t_ms):
+        t = t_ms / 1000.0
+        if any(a <= t < b for a, b in missing):
+            return None, None
+        pf = pose_frame(0, t, left(t), right(t), vis_l=vis[0], vis_r=vis[1])
+        img = np.zeros((33, 4), np.float32)
+        img[:, 0] = 0.5 + 0.5 * pf.world[:, 0]
+        img[:, 1] = 0.5 - 0.5 * pf.world[:, 1]
+        img[:, 3] = pf.visibility
+        return img, pf.world.astype(np.float32)
+
+    return detect
+
+
+def idle(_t):
+    return 170.0
+
+
+# ---- helpers ---------------------------------------------------------------------------------
+
+
+def test_pose_frame_from_detection_valid_and_missing():
+    img = np.random.default_rng(0).random((33, 4)).astype(np.float32)
+    world = np.random.default_rng(1).random((33, 3)).astype(np.float32)
+    ok = live.pose_frame_from_detection(7, 1.5, img, world)
+    assert ok.valid and ok.frame == 7 and ok.t == 1.5
+    assert ok.world.shape == (33, 3) and np.allclose(ok.world, world)
+    assert np.allclose(ok.visibility, img[:, 3]) and ok.image is not None
+
+    for args in ((None, None), (img, None), (None, world)):
+        bad = live.pose_frame_from_detection(8, 1.6, *args)
+        assert not bad.valid and bad.image is None
+        assert bad.world.shape == (33, 3) and np.isnan(bad.world).all()
+        assert bad.visibility.shape == (33,) and not bad.visibility.any()
+
+
+def test_looks_black():
+    assert live.looks_black([0.5] * 30)
+    assert not live.looks_black([0.5] * 29)
+    assert not live.looks_black([0.5] * 29 + [50.0])
+    assert not live.looks_black([])
+
+
+def test_totals_lines_per_arm_and_squat():
+    totals = {
+        "l": {"reps": 7, "good": 6, "flagged": 1, "faults_by_code": {"CURL_TOO_FAST": 1}},
+        "r": {"reps": 1, "good": 1, "flagged": 0, "faults_by_code": {}},
+    }
+    left, right = live.totals_lines("curl", totals)
+    assert left == "L: 7 reps (6 good, 1 flagged)  CURL_TOO_FAST x1"
+    assert right == "R: 1 rep (1 good, 0 flagged)"
+    squat = live.totals_lines(
+        "squat", {"all": {"reps": 3, "good": 3, "flagged": 0, "faults_by_code": {}}}
+    )
+    assert squat == ["all: 3 reps (3 good, 0 flagged)"]
+
+
+# ---- counting and logging --------------------------------------------------------------------
+
+
+def test_run_live_counts_each_arm_and_logs(tmp_path):
+    out = tmp_path / "run"
+    res = live.run_live(
+        frames(25), make_detect(), exercise="curl", rules=RuleEngine.from_yaml(), out_dir=out,
+        say=lambda _s: None,
+    )  # fmt: skip
+    arms = res.summary["arms"]
+    assert 8 <= arms["l"]["reps"] <= 10 and 8 <= arms["r"]["reps"] <= 10
+    assert res.summary["live"] is True and res.summary["gate"] == "always_on"
+    assert res.summary["board"] is None and res.summary["fps_mean"] == pytest.approx(30.0, abs=0.5)
+    for name in ("events.parquet", "frames.parquet", "session.json"):
+        assert (out / name).exists(), name
+    assert json.loads((out / "session.json").read_text())["arms"] == arms
+    assert res.out_dir == out
+    reps = [e for e in res.events if e.kind == "rep"]
+    assert {e.payload["arm"] for e in reps} == {"l", "r"}
+
+
+def test_run_live_only_one_arm_leaves_the_other_at_zero():
+    res = live.run_live(
+        frames(25), make_detect(right=idle), exercise="curl", rules=RuleEngine.from_yaml(),
+        say=lambda _s: None,
+    )  # fmt: skip
+    arms = res.summary["arms"]
+    assert 8 <= arms["l"]["reps"] <= 10
+    assert arms["r"] == {"reps": 0, "good": 0, "flagged": 0, "faults_by_code": {}}
+    codes = {f["code"] for f in (f for e in res.events if e.kind == "fault" for f in [e.payload])}
+    assert "CURL_ASYMMETRY" not in codes
+
+
+def test_run_live_prints_totals_at_exit():
+    said: list[str] = []
+    live.run_live(frames(10), make_detect(), exercise="curl", say=said.append)
+    assert any(s.startswith("L: ") for s in said) and any(s.startswith("R: ") for s in said)
+
+
+def test_run_live_writes_log_and_totals_when_frames_raise(tmp_path):
+    def dying():
+        yield from frames(5)
+        raise RuntimeError("camera 1 stopped sending frames")
+
+    said: list[str] = []
+    out = tmp_path / "run"
+    with pytest.raises(RuntimeError, match="stopped sending frames"):
+        live.run_live(dying(), make_detect(), exercise="curl", out_dir=out, say=said.append)
+    assert (out / "session.json").exists()
+    assert any(s.startswith("L: ") for s in said)
+
+
+def test_run_live_writes_log_when_the_detector_raises(tmp_path):
+    def boom(_frame, _t_ms):
+        raise ValueError("model exploded")
+
+    out = tmp_path / "run"
+    with pytest.raises(ValueError, match="model exploded"):
+        live.run_live(frames(3), boom, exercise="curl", out_dir=out, say=lambda _s: None)
+    assert (out / "session.json").exists()
+
+
+def test_run_live_ctrl_c_ends_normally(tmp_path):
+    def interrupted():
+        yield from frames(2)
+        raise KeyboardInterrupt
+
+    out = tmp_path / "run"
+    res = live.run_live(
+        interrupted(), make_detect(), exercise="curl", out_dir=out, say=lambda _s: None
+    )
+    assert res.frames_total == 60 and (out / "session.json").exists()
+
+
+def test_run_live_quits_when_show_returns_false(tmp_path, monkeypatch):
+    monkeypatch.setattr(hud, "render", lambda frame, _lm, _state, **_kw: frame)
+    seen = []
+
+    def show(frame):
+        seen.append(frame)
+        return len(seen) < 10
+
+    out = tmp_path / "run"
+    res = live.run_live(
+        frames(5), make_detect(), exercise="curl", show=show, out_dir=out, say=lambda _s: None
+    )
+    assert res.frames_total == 10 and len(seen) == 10
+    assert (out / "session.json").exists()
+
+
+def test_run_live_zero_reps_still_writes_zeroed_arms(tmp_path):
+    out = tmp_path / "run"
+    res = live.run_live(
+        frames(5), make_detect(left=idle, right=idle), exercise="curl", out_dir=out,
+        say=lambda _s: None,
+    )  # fmt: skip
+    zero = {"reps": 0, "good": 0, "flagged": 0, "faults_by_code": {}}
+    assert res.summary["arms"] == {"l": zero, "r": zero}
+    session = json.loads((out / "session.json").read_text())
+    assert session["arms"] == {"l": zero, "r": zero}
+    assert (out / "events.parquet").exists() and (out / "frames.parquet").exists()
+
+
+def test_run_live_survives_a_long_no_person_gap_and_resumes():
+    res = live.run_live(
+        frames(25), make_detect(missing=[(8.0, 16.0)]), exercise="curl",
+        rules=RuleEngine.from_yaml(), say=lambda _s: None,
+    )  # fmt: skip
+    assert res.summary["frames_invalid"] > 0
+    arms = res.summary["arms"]
+    assert arms["l"]["reps"] >= 6 and arms["r"]["reps"] >= 6
+    late = [e for e in res.events if e.kind == "rep" and e.t > 17.0]
+    assert late, "counting must resume after the person comes back"
+
+
+def test_hidden_arm_counts_nothing_and_the_other_keeps_going():
+    res = live.run_live(
+        frames(20), make_detect(vis=(1.0, 0.2)), exercise="curl", rules=RuleEngine.from_yaml(),
+        say=lambda _s: None,
+    )  # fmt: skip
+    assert res.summary["arms"]["r"]["reps"] == 0
+    assert res.summary["arms"]["l"]["reps"] >= 6
+
+
+def test_black_camera_hint_is_said_once():
+    said: list[str] = []
+    black = (np.zeros((48, 64, 3), np.uint8) for _ in range(40))
+    live.run_live(
+        ((i, i / FPS, f) for i, f in enumerate(black)), make_detect(), exercise="curl",
+        say=said.append, black_hint="camera 0 looks black",
+    )  # fmt: skip
+    assert said.count("camera 0 looks black") == 1
+
+
+def test_a_lit_camera_gets_no_hint():
+    said: list[str] = []
+    lit = ((i, i / FPS, np.full((48, 64, 3), 90, np.uint8)) for i in range(40))
+    live.run_live(
+        lit, make_detect(), exercise="curl", say=said.append, black_hint="camera 0 looks black"
+    )
+    assert "camera 0 looks black" not in said
+
+
+# ---- the wearable ----------------------------------------------------------------------------
+
+
+class FakeBoard:
+    """BoardLink-shaped: gate closed for 10 s, open 10-20 s, then silent (gate closed)."""
+
+    name = "FormCoach-8428"
+
+    def __init__(self, open_between=(10.0, 20.0), send_raises=False):
+        self.now = 0.0
+        self.open_between = open_between
+        self.send_raises = send_raises
+        self.sent: list[protocol.Command] = []
+
+    def poll(self):
+        return []
+
+    def gate_open(self):
+        a, b = self.open_between
+        return a <= self.now < b
+
+    def state(self):
+        if self.now < self.open_between[0]:
+            return "waiting"
+        return "ok" if self.gate_open() else "silent"
+
+    def send(self, cmd):
+        if self.send_raises:
+            raise OSError("link lost")
+        self.sent.append(cmd)
+
+
+def test_board_gate_follows_the_flag_and_goes_silent():
+    board = FakeBoard()
+    res = live.run_live(
+        frames(30, board), make_detect(), exercise="curl", board=board, say=lambda _s: None
+    )
+    assert res.frames_processed < res.frames_total
+    assert res.frames_processed == pytest.approx(10 * FPS, abs=2)
+    kinds = [e.kind for e in res.events if e.kind.startswith("gate_")]
+    assert kinds == ["gate_open", "gate_close"]
+    assert res.summary["gate"] == "device" and res.summary["board"] == "FormCoach-8428"
+
+
+class _Fault:
+    def as_dict(self):
+        return {"code": "TEST_FAULT", "severity": "warn", "message": "fix it"}
+
+
+class FlagSecondRep:
+    """Rules stand-in: the second rep of every arm gets a fault, all others are clean."""
+
+    def evaluate(self, rm, context=None):
+        return [_Fault()] if rm.rep_id == 1 else []
+
+
+def test_led_commands_follow_rep_quality():
+    board = FakeBoard(open_between=(0.0, 1e9))
+    res = live.run_live(
+        frames(25, board), make_detect(right=idle), exercise="curl", rules=FlagSecondRep(),
+        board=board, say=lambda _s: None,
+    )  # fmt: skip
+    reps = res.summary["arms"]["l"]["reps"]
+    assert reps >= 8
+    assert board.sent.count(protocol.Command.LED_FAULT) == 1
+    assert board.sent.count(protocol.Command.LED_GOOD_REP) == reps - 1
+
+
+def test_a_board_whose_send_raises_does_not_stop_the_loop():
+    board = FakeBoard(open_between=(0.0, 1e9), send_raises=True)
+    res = live.run_live(
+        frames(15, board), make_detect(), exercise="curl", board=board, say=lambda _s: None
+    )
+    assert res.summary["arms"]["l"]["reps"] >= 4
+
+
+# ---- the window ------------------------------------------------------------------------------
+
+
+def test_hud_state_wiring(monkeypatch):
+    states: list[hud.HudState] = []
+
+    def fake_render(frame, _lm, state, **_kw):
+        states.append(state)
+        return frame
+
+    monkeypatch.setattr(hud, "render", fake_render)
+    live.run_live(
+        frames(12), make_detect(), exercise="curl", show=lambda _f: True, say=lambda _s: None,
+        rules=RuleEngine.from_yaml(),
+    )  # fmt: skip
+    assert len(states) == 12 * 30
+    last = states[-1]
+    assert last.pill_text == "webcam only | gate always on" and not last.dim
+    assert last.totals["l"]["reps"] >= 3
+    assert set(last.angles) == {"l", "r"}
+    assert all(v is None or np.isfinite(v) for s in states for v in s.angles.values())
+    assert last.bands["l"][0] < last.bands["l"][1]
+    shown = [s.banner.text for s in states if s.banner is not None]
+    assert shown and shown[0].startswith(("L rep 1", "R rep 1"))
+
+
+def test_headless_run_never_renders(monkeypatch):
+    def explode(*_a, **_k):
+        raise AssertionError("render must not be called without a window")
+
+    monkeypatch.setattr(hud, "render", explode)
+    res = live.run_live(frames(3), make_detect(), exercise="curl", say=lambda _s: None)
+    assert res.frames_total == 90
+
+
+def test_the_hud_renders_real_frames_when_opencv_is_present():
+    pytest.importorskip("cv2")
+    out: list[np.ndarray] = []
+    live.run_live(
+        ((i, t, np.full((240, 320, 3), 60, np.uint8)) for i, t, _ in frames(4)),
+        make_detect(), exercise="curl", show=lambda f: out.append(f) or True,
+        say=lambda _s: None,
+    )  # fmt: skip
+    assert len(out) == 120 and out[0].shape == (240, 320, 3) and out[0].dtype == np.uint8
+
+
+# ---- Pipeline accessors the HUD relies on ----------------------------------------------------
+
+
+def test_pipeline_latest_angles_and_thresholds():
+    from formcoach.app.pipeline import Pipeline
+
+    pipe = Pipeline(exercise="curl", per_arm=True)
+    assert all(np.isnan(v) for v in pipe.latest_angles().values())
+    pipe.set_gate(True, 0.0)
+    pipe.on_frame(pose_frame(0, 0.0, 90.0, 120.0))
+    angles = pipe.latest_angles()
+    assert angles["l"] == pytest.approx(90.0, abs=0.5)
+    assert angles["r"] == pytest.approx(120.0, abs=0.5)
+    th = pipe.thresholds()
+    assert th["l"] == (60.0, 150.0) and th["r"] == (60.0, 150.0)
+    pipe.set_gate(False, 1.0)  # a closed gate clears the buffers
+    assert all(np.isnan(v) for v in pipe.latest_angles().values())

@@ -310,6 +310,32 @@ class Pipeline:
         """Longest per-track angle buffer currently held (frames)."""
         return max((len(t.buf_t) for t in self.tracks), default=0)
 
+    def latest_angles(self) -> dict[str, float]:
+        """Each track's primary angle (degrees) on its most recently processed frame, keyed like
+        :meth:`arm_totals` (``"l"``/``"r"``/``"all"``). ``NaN`` when that frame had no usable
+        angle, or when nothing has been processed since the last gate close. For the live HUD."""
+        out: dict[str, float] = {}
+        for track in self.tracks:
+            key = track.arm if track.arm is not None else "all"
+            if not track.buf_t:
+                out[key] = float("nan")
+                continue
+            last = {k: v[-1] for k, v in track.buf_a.items()}
+            out[key] = primary_angle(self.exercise, last, track.side)
+        return out
+
+    def thresholds(self) -> dict[str, tuple[float, float]]:
+        """Each track's current ``(enter, exit)`` rep thresholds in degrees (the adaptive values
+        once the segmenter has seen enough range, else the exercise defaults), keyed like
+        :meth:`arm_totals`. For the live HUD's trace band."""
+        return {
+            (t.arm if t.arm is not None else "all"): (
+                t.seg.sign * t.seg.enter,
+                t.seg.sign * t.seg.exit,
+            )
+            for t in self.tracks
+        }
+
     def on_imu(self, s: SISample, t: float | None = None) -> bool:
         """Update the gate from one IMU sample; returns the new gate state. Also stores
         ``s.t``/acceleration for the end-of-run IMU cross-check (``finish(compute_imu=True)``)."""
