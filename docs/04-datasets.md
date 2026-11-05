@@ -48,7 +48,7 @@ Public datasets are the primary training and evaluation data. Team recordings ar
 
 ## 6. Team validation recordings (secondary; ≈ 1 hour total; Phase 3)
 
-Purpose: confirm that public-data models transfer to our wearable, and validate the live pipeline and rules. **Not a training campaign.** Protocol (put this in `docs/recording-protocol.md` and in the `formcoach record` prompts):
+Purpose: confirm that public-data models transfer to our wearable, and validate the live pipeline and rules. **Not a training campaign.** The step-by-step guide teammates follow is `docs/recording-protocol.md`; the requirements it implements:
 
 - Subjects coded `S1`–`S5`; no names or faces stored outside each teammate's machine; only `imu.parquet`, `pose.parquet`, `events.parquet`, `meta.json` are shared; `video.mp4` stays local unless the owner agrees.
 - Per subject: 4 exercises × 2 sets × 8–10 reps of correct form, plus 1 set per exercise with one scripted fault (e.g. partial curl ROM, shallow squat, bent-elbow raise, no lockout press), light dumbbells or none.
