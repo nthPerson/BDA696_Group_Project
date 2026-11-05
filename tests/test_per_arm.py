@@ -4,6 +4,7 @@ per-arm metrics, visibility floor, two-arm rule pairing, ``arm_totals()``, buffe
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from formcoach.app import pipeline as pipeline_mod
@@ -394,3 +395,92 @@ def test_finish_can_be_called_twice_with_the_same_result():
     second = pipe.finish(compute_imu=False, end_t=2.0)
     assert first.summary["gated_seconds"] == second.summary["gated_seconds"] == 2.0
     assert first.summary == second.summary
+
+
+# --- live diagnostics: the counter state behind every frame goes to frames.parquet -------------
+
+_DIAG_COLS = {"ang", "enter", "exit", "armed"}
+
+
+def _frames_of(pipe, tmp_path):
+    """Write the pipeline's log and read ``frames.parquet`` back."""
+    pipe.log.write(tmp_path, {})
+    return pd.read_parquet(tmp_path / "frames.parquet")
+
+
+def test_live_frames_log_each_arms_segmenter_state(tmp_path):
+    """A right-arm-solo run that missed reps could not be explained from the old log (it held no
+    angles). Per counter: the angle the segmenter saw, its enter/exit thresholds in degrees and
+    whether it was armed; per arm the lowest landmark visibility."""
+    pipe, _events = _drive(
+        curl_deg,
+        lambda t: curl_deg(t, top=126.0, bottom=150.0),  # 24 deg: below the 25 deg floor
+        25.0,
+        gate_windows=[(10.0, 12.0)],
+        vis_r_fn=lambda t: 0.3 if 18.0 <= t < 20.0 else 1.0,
+    )
+    fr = _frames_of(pipe, tmp_path)
+    for k in ("l", "r"):
+        for name in _DIAG_COLS:
+            assert f"{name}_{k}" in fr.columns, (name, k)
+        assert f"vis_{k}" in fr.columns
+    assert not [c for c in fr.columns if c.endswith("_all")]
+    assert all(
+        str(fr[c].dtype) == "float64" for c in fr.columns if c not in ("processed", "gate_state")
+    )
+
+    on = fr[fr["processed"]]
+    last = on.iloc[-1]
+    # left arm: full curl, so it arms; thresholds sit inside the 50-150 deg swing, enter < exit
+    assert last["armed_l"] == 1.0
+    assert 50.0 < last["enter_l"] < last["exit_l"] < 150.0
+    assert on["ang_l"].min() >= 49.0 and on["ang_l"].max() <= 151.0
+    # right arm: 24 deg swing (10th-90th percentile range ~23 deg) never reaches min_range 25 deg
+    assert (on["armed_r"] == 0.0).all()
+    assert pipe.arm_totals()["r"]["reps"] == 0 and pipe.arm_totals()["l"]["reps"] >= 4
+    assert on["ang_r"].min() >= 125.0 and on["ang_r"].max() <= 151.0
+    # visibility is logged as given, and a long low-visibility stretch leaves no angle
+    low = on[(on["t"] >= 18.5) & (on["t"] < 19.5)]
+    assert len(low) > 0
+    assert ((low["vis_r"] - 0.3).abs() < 1e-9).all() and low["ang_r"].isna().all()
+    assert ((low["vis_l"] - 1.0).abs() < 1e-9).all() and low["ang_l"].notna().all()
+    # gate-closed frames carry no diagnostics at all
+    off = fr[~fr["processed"]]
+    assert len(off) > 0 and off["t"].between(10.0, 12.0).all()
+    diag = [c for c in fr.columns if c not in ("t", "processed", "gate_state")]
+    assert off[diag].isna().all().all()
+
+
+def test_a_curl_that_barely_moves_never_arms_the_counter_and_a_bigger_one_does(tmp_path):
+    """The 10th-90th percentile of the last 6 s must span ``min_range`` before anything counts, so
+    a small movement is silent. The log shows it as ``armed == 0`` with the angle still moving."""
+    small, _ = _drive(curl_deg, lambda t: curl_deg(t, top=126.0, bottom=150.0), 20.0)
+    big, _ = _drive(curl_deg, lambda t: curl_deg(t, top=100.0, bottom=150.0), 20.0)
+    small_fr = _frames_of(small, tmp_path / "small")
+    big_fr = _frames_of(big, tmp_path / "big")
+    assert (small_fr["armed_r"] == 0.0).all() and small.arm_totals()["r"]["reps"] == 0
+    assert small_fr["ang_r"].max() - small_fr["ang_r"].min() > 20.0  # it did move
+    assert big_fr["armed_r"].iloc[-1] == 1.0 and big.arm_totals()["r"]["reps"] >= 5
+
+
+def test_replay_style_frames_keep_exactly_the_original_columns(tmp_path):
+    """Replay output must not change: no diagnostics for the single-track, non-per-arm pipeline."""
+    pipe, _events = _drive(curl_deg, curl_deg, 10.0, per_arm=False)
+    fr = _frames_of(pipe, tmp_path)
+    assert list(fr.columns) == ["t", "processed", "gate_state"]
+    assert len(fr) == int(10.0 * FPS)
+
+
+def test_a_fixed_threshold_segmenter_is_always_armed():
+    """``armed`` only means something for adaptive thresholds."""
+    from formcoach.pose.reps import RepSegmenter
+
+    assert RepSegmenter(enter=60.0, exit=150.0).armed is True
+    adaptive = RepSegmenter(enter=60.0, exit=150.0, adaptive=True)
+    assert adaptive.armed is False
+    for i in range(60):
+        adaptive.push(i / FPS, 100.0 + 0.1 * (i % 2))  # flat: stays unarmed
+    assert adaptive.armed is False
+    for i in range(60, 240):
+        adaptive.push(i / FPS, curl_deg(i / FPS))
+    assert adaptive.armed is True

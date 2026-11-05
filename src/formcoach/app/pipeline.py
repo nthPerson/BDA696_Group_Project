@@ -201,10 +201,15 @@ def _arm_joint_names(side: str) -> tuple[str, str, str]:
     return (f"shoulder_{side}", f"elbow_{side}", f"wrist_{side}")
 
 
+def _arm_min_visibility(fr: PoseFrame, side: str) -> float:
+    """Lowest MediaPipe visibility (0-1) of ``side``'s shoulder, elbow and wrist in ``fr``."""
+    idx = [fr.skeleton.index(name) for name in _arm_joint_names(side)]
+    return float(np.min(fr.visibility[idx]))
+
+
 def _arm_visible(fr: PoseFrame, side: str) -> bool:
     """Whether ``side``'s shoulder, elbow and wrist all meet ``MIN_ARM_VISIBILITY`` in ``fr``."""
-    idx = [fr.skeleton.index(name) for name in _arm_joint_names(side)]
-    return bool(np.min(fr.visibility[idx]) >= MIN_ARM_VISIBILITY)
+    return _arm_min_visibility(fr, side) >= MIN_ARM_VISIBILITY
 
 
 class _Track:
@@ -222,6 +227,7 @@ class _Track:
         self.buf_t: list[float] = []
         self.buf_a: dict[str, list[float]] = {k: [] for k in TRACKED}
         self.smooth: deque[float] = deque(maxlen=5)
+        self.last_p = float("nan")  # primary angle (deg) the segmenter last saw; NaN if none
         self.last_angles: dict[str, float] | None = None
         self.gap = 0
         self.offset = 0  # frames trimmed from the front of buf_t/buf_a so far
@@ -247,6 +253,7 @@ class _Track:
         for v in self.buf_a.values():
             v.clear()
         self.smooth.clear()
+        self.last_p = float("nan")
         self.offset = 0
         self.last_end_abs = 0
 
@@ -382,16 +389,37 @@ class Pipeline:
     def on_frame(self, fr: PoseFrame) -> list[RepMetrics]:
         """Log the frame; process it (angles → reps → rules, per track) only while the gate is
         open. Returns the reps completed by this frame, across all tracks."""
-        self.log.frame(fr.t, self.gate_state, self.gate_state)
         completed: list[RepMetrics] = []
         if not self.gate_state:
+            self.log.frame(fr.t, False, False)
             return completed
         a_global = self._angles(fr)
         for track in self.tracks:
             rm = self._push_track(track, fr, a_global)
             if rm is not None:
                 completed.append(rm)
+        self.log.frame(fr.t, True, True, **self._frame_diagnostics(fr))
         return completed
+
+    def _frame_diagnostics(self, fr: PoseFrame) -> dict[str, float]:
+        """Per-frame counter state for the live log (per-arm mode only; replay logs none, so its
+        ``frames.parquet`` is unchanged). For each counter ``k`` (``l``, ``r`` or ``all``):
+        ``ang_k`` the angle in degrees the segmenter saw (5-frame median, NaN if none),
+        ``enter_k``/``exit_k`` its current thresholds in degrees, ``armed_k`` 1.0 once the last
+        ``window_s`` of angle spans ``min_range`` (before that nothing can count as a rep), and
+        ``vis_{l,r}`` the arm's lowest landmark visibility (0-1)."""
+        if not self.per_arm:
+            return {}
+        out: dict[str, float] = {}
+        for track in self.tracks:
+            k = track.arm if track.arm is not None else "all"
+            out[f"ang_{k}"] = track.last_p
+            out[f"enter_{k}"] = track.seg.sign * track.seg.enter
+            out[f"exit_{k}"] = track.seg.sign * track.seg.exit
+            out[f"armed_{k}"] = 1.0 if track.seg.armed else 0.0
+            if track.arm is not None:
+                out[f"vis_{k}"] = _arm_min_visibility(fr, track.side)
+        return out
 
     def skip_frame(self, t: float) -> None:
         """Log a frame as skipped (no gate information), e.g. trailing frames after the last
@@ -438,6 +466,7 @@ class Pipeline:
         if np.isfinite(p):
             track.smooth.append(p)
             p = float(np.median(track.smooth))
+        track.last_p = p
         rep = track.seg.push(fr.t, p)
         if rep is None:
             return None

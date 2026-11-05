@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from formcoach.app import hud, live
@@ -106,6 +107,21 @@ def test_run_live_counts_each_arm_and_logs(tmp_path):
     assert res.out_dir == out
     reps = [e for e in res.events if e.kind == "rep"]
     assert {e.payload["arm"] for e in reps} == {"l", "r"}
+
+
+def test_run_live_logs_the_counter_state_for_both_arms(tmp_path):
+    """The live frames.parquet carries what each arm's segmenter saw, so a run that missed reps
+    can be explained from the log (the idle arm stays unarmed, the moving arm arms)."""
+    out = tmp_path / "run"
+    live.run_live(
+        frames(25), make_detect(right=idle), exercise="curl", rules=RuleEngine.from_yaml(),
+        out_dir=out, say=lambda _s: None,
+    )  # fmt: skip
+    fr = pd.read_parquet(out / "frames.parquet")
+    for col in ("ang_l", "enter_l", "exit_l", "armed_l", "vis_l", "armed_r", "vis_r"):
+        assert col in fr.columns, col
+    assert fr["armed_l"].iloc[-1] == 1.0
+    assert (fr["armed_r"] == 0.0).all()
 
 
 def test_run_live_only_one_arm_leaves_the_other_at_zero():
