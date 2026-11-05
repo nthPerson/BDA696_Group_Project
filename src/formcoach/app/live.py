@@ -345,9 +345,11 @@ def run_live_demo(
     detect: DetectFn | None = None,
 ) -> PipelineResult:
     """Assemble and run the live demo: ``video`` (a file, played through the same loop) or
-    ``camera`` (an OpenCV index), the MediaPipe ``model`` variant, the packaged rules or the
-    ``rules`` YAML, an optional wearable (``board`` ``"ble"``/``"serial"`` on ``port``) and a
-    window unless ``headless``. ``detect`` replaces the real landmarker (tests).
+    ``camera`` (an OpenCV index), the MediaPipe ``model`` variant, the ``rules`` YAML (default:
+    the packaged ``rules.mediapipe-webcam.yaml``, ADR-0033; the replay demo keeps ``rules.yaml``
+    and the file used is recorded as ``rules`` in ``session.json``), an optional wearable
+    (``board`` ``"ble"``/``"serial"`` on ``port``) and a window unless ``headless``. ``detect``
+    replaces the real landmarker (tests).
 
     If both ``video`` and ``camera`` are given the video wins and no camera is opened (the CLI
     rejects the combination before it gets here).
@@ -356,7 +358,7 @@ def run_live_demo(
         ValueError: unknown ``exercise`` or ``board``, neither ``camera`` nor ``video``, the
             ``rules`` file is malformed (bad YAML, a rule without ``when``, empty, or a
             top-level list that cannot be read as the rules document), or the rules file (or
-            the packaged ``rules.yaml``) does not define ``exercise``. Raised before the
+            the packaged webcam rules) does not define ``exercise``. Raised before the
             landmarker is built, so a hand-edited rules file never gets as far as opening the
             camera or loading the pose model.
         FileNotFoundError: the rules, model, video, camera or serial port is missing (messages
@@ -368,7 +370,7 @@ def run_live_demo(
     """
     from formcoach.pose import landmarker
     from formcoach.pose.reps import DEFAULT_REP_CONFIG
-    from formcoach.rules.engine import RuleEngine
+    from formcoach.rules.engine import WEBCAM_RULES, RuleEngine
 
     if exercise not in DEFAULT_REP_CONFIG:
         raise ValueError(
@@ -385,12 +387,13 @@ def run_live_demo(
     if video is not None and not Path(video).exists():
         raise FileNotFoundError(f"cannot open video {video}: no such file")
 
+    rules_file = Path(rules) if rules is not None else WEBCAM_RULES
     try:
-        engine = RuleEngine.from_yaml(rules)
+        engine = RuleEngine.from_yaml(rules_file)
     except (yaml.YAMLError, KeyError, AttributeError, TypeError) as exc:
-        raise ValueError(f"cannot load rules file {rules}: {exc}") from exc
+        raise ValueError(f"cannot load rules file {rules_file}: {exc}") from exc
     if exercise not in engine.exercises:
-        where = rules if rules is not None else "the packaged rules.yaml"
+        where = rules if rules is not None else f"the packaged {WEBCAM_RULES.name}"
         raise ValueError(
             f"{where} has no rules for exercise {exercise!r}; it defines {sorted(engine.exercises)}"
         )
@@ -433,7 +436,7 @@ def run_live_demo(
             say=say,
             out_dir=out_dir,
             black_hint=hint,
-            extra_summary={"source": source, "model": model},
+            extra_summary={"source": source, "model": model, "rules": rules_file.name},
         )
     finally:
         # The camera is released first: closing the wearable link can take seconds (it joins its

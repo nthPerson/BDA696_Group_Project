@@ -15,6 +15,8 @@ from pathlib import Path
 import yaml
 
 DEFAULT_RULES = Path(__file__).with_name("rules.yaml")
+# the live webcam demo's default (ADR-0033): rules.yaml with provisional MediaPipe curl thresholds
+WEBCAM_RULES = Path(__file__).with_name("rules.mediapipe-webcam.yaml")
 OPS = {
     "gt": lambda v, t: v > t,
     "ge": lambda v, t: v >= t,

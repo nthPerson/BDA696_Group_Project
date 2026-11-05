@@ -545,7 +545,11 @@ def demo(
     out: Annotated[Path | None, typer.Option(help="Write events/frames/session.json here.")] = None,
     speed: Annotated[float, typer.Option(help="Replay pacing: 0 = fastest, 1 = real time.")] = 0.0,
     rules: Annotated[
-        Path | None, typer.Option(help="rules.yaml override (default packaged v1)")
+        Path | None,
+        typer.Option(
+            help="Rules file override (default: rules.yaml for replay, "
+            "rules.mediapipe-webcam.yaml for --camera/--video)."
+        ),
     ] = None,
     camera: Annotated[
         int | None,

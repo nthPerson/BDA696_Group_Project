@@ -467,6 +467,60 @@ def test_the_hud_renders_real_frames_when_opencv_is_present():
     assert len(out) == 120 and out[0].shape == (240, 320, 3) and out[0].dtype == np.uint8
 
 
+# ---- the live demo's default rules (ADR-0033) ------------------------------------------------
+
+
+def _demo(tmp_path, name, **kw):
+    """``run_live_demo`` over a fake camera and detector, headless, logging to ``tmp_path/name``."""
+    from formcoach.pose import camera as camera_mod
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(camera_mod, "open_camera", lambda index, **_kw: frames(2))
+        return live.run_live_demo(
+            camera=0, video=None, board=None, port=None, exercise="curl", headless=True,
+            out_dir=tmp_path / name, say=lambda _s: None, detect=make_detect(), **kw,
+        )  # fmt: skip
+
+
+def test_the_live_demo_defaults_to_the_webcam_rules_and_logs_which_file(tmp_path):
+    from formcoach.rules.engine import DEFAULT_RULES
+
+    _demo(tmp_path, "default")
+    _demo(tmp_path, "explicit", rules=DEFAULT_RULES)
+    assert json.loads((tmp_path / "default/session.json").read_text())["rules"] == (
+        "rules.mediapipe-webcam.yaml"
+    )
+    assert json.loads((tmp_path / "explicit/session.json").read_text())["rules"] == "rules.yaml"
+
+
+def _judged(top, bottom, rules_path):
+    """Both arms curl ``top``..``bottom`` degrees for 25 s; returns the left arm's totals."""
+    f = _curl(top, bottom)
+    res = live.run_live(
+        frames(25), make_detect(left=f, right=f), exercise="curl",
+        rules=RuleEngine.from_yaml(rules_path), say=lambda _s: None,
+    )  # fmt: skip
+    return res.summary["arms"]["l"]
+
+
+def test_a_webcam_range_curl_is_good_under_the_webcam_rules_but_flagged_by_the_defaults():
+    """A curl that a webcam reads as ~88-150 deg (the real runs of 2026-11-04) is flagged as a
+    partial range by the design defaults and is a good rep under the live webcam rules."""
+    from formcoach.rules.engine import DEFAULT_RULES, WEBCAM_RULES
+
+    webcam = _judged(88, 150, WEBCAM_RULES)
+    assert webcam["reps"] >= 8 and webcam["good"] == webcam["reps"]
+    default = _judged(88, 150, DEFAULT_RULES)
+    assert default["faults_by_code"] == {"CURL_PARTIAL_ROM": default["reps"]}
+
+
+def test_a_rep_that_barely_bends_the_elbow_is_still_flagged_by_the_webcam_rules():
+    from formcoach.rules.engine import WEBCAM_RULES
+
+    arm = _judged(125, 170, WEBCAM_RULES)
+    assert arm["reps"] >= 8 and arm["faults_by_code"]["CURL_PARTIAL_ROM"] == arm["reps"]
+
+
 # ---- Pipeline accessors the HUD relies on ----------------------------------------------------
 
 
