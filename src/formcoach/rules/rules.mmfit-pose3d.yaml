@@ -89,6 +89,7 @@ exercises:
     - code: PRESS_ASYMMETRY
       severity: info
       message: Lock out both arms together at the top.
+      requires: two_arm
       when:
       - metric: elbow_top_asymmetry
         op: gt

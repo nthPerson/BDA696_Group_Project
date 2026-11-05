@@ -133,7 +133,7 @@ def test_render_draws_on_the_frame():
         angles={"l": 38.4, "r": 42.0},
         pill_text="FormCoach-8428 | gate ON | pose running",
         dim=False,
-        banner=hud.Banner(text="L rep 7: Good rep", kind="good", expires_at=3.0),
+        banners={"l": hud.Banner(text="L rep 7: Good rep", kind="good", expires_at=3.0)},
         fps=24.0,
         trace={"l": [(0.0, 150.0), (0.5, 90.0), (1.0, 55.0)]},
         bands={"l": (60.0, 150.0)},
@@ -151,6 +151,38 @@ def test_render_draws_on_the_frame():
     assert patch.mean() < 0.5 * 255
 
 
+def test_render_stacks_one_banner_per_counter():
+    """Both arms' banners are drawn, each in its own colour, so a fault on one arm is not hidden
+    by the other arm's "Good rep" (the old single banner was replaced by whichever came last)."""
+    pytest.importorskip("cv2")
+    h, w = 480, 640
+    blank = np.zeros((h, w, 3), dtype=np.uint8)
+
+    def state(banners):
+        return hud.HudState(
+            exercise="curl",
+            totals={"l": {"reps": 3, "good": 2}, "r": {"reps": 3, "good": 3}},
+            angles={},
+            pill_text="webcam only | gate always on",
+            dim=False,
+            banners=banners,
+            fps=0.0,
+            trace={},
+            bands={},
+        )
+
+    left = hud.Banner("L rep 3: Slow down", "warn", 3.0)
+    right = hud.Banner("R rep 3: Good rep", "good", 3.0)
+    only_right = hud.render(blank, None, state({"r": right}))
+    both = hud.render(blank, None, state({"l": left, "r": right}))
+    # the bottom-most line is where a single banner's line always sat, so the right arm's text
+    # is unchanged and the left arm's warn text appears in the rows above it
+    band = slice(h - 34 - 26 - 20, h - 34 - 26 + 6)  # one line (26 px) above the bottom line
+    assert not np.array_equal(both[band], only_right[band])
+    orange = np.all(both == hud._BANNER_COLOR["warn"], axis=2)
+    assert orange[band].any() and not orange[h - 34 - 20 :].any()
+
+
 def test_render_without_landmarks_or_angles_does_not_crash():
     pytest.importorskip("cv2")
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -160,7 +192,7 @@ def test_render_without_landmarks_or_angles_does_not_crash():
         angles={"l": None, "r": float("nan")},
         pill_text="webcam only | gate always on",
         dim=False,
-        banner=None,
+        banners={},
         fps=0.0,
         trace={},
         bands={},

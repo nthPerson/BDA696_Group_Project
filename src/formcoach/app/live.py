@@ -40,6 +40,8 @@ TRACE_S = 8.0  # seconds of angle history drawn in the HUD trace
 MAX_BUFFER_FRAMES = 3600  # per-arm angle buffer cap (about two minutes at 30 fps)
 REP_PAD_S = 1.0  # metrics window reaches this far back to the rest position (see Pipeline)
 FPS_WINDOW = 30  # frames averaged for the on-screen FPS readout
+FAULT_FLASH_S = 0.8  # firmware fault flash (ui.cpp): a newer LED command cancels it, so a good-rep
+# command is held back for this long after a fault one (wall seconds on the injectable clock)
 
 DetectFn = Callable[[np.ndarray, int], "tuple[np.ndarray | None, np.ndarray | None]"]
 
@@ -121,8 +123,10 @@ def run_live(
     returns ``(image_landmarks (33, 4), world_landmarks (33, 3))`` or ``(None, None)`` when no
     person is found; ``t_ms`` is strictly increasing. ``board`` is a
     :class:`formcoach.app.board.BoardLink` (or anything with ``poll``/``gate_open``/``state``/
-    ``send``/``name``): the gate follows ``board.gate_open()`` and every completed rep sends
-    ``Command.LED_GOOD_REP`` (no fault) or ``Command.LED_FAULT``; ``send`` errors are ignored.
+    ``send``/``name``): the gate follows ``board.gate_open()``. Reps completed on one frame send
+    ONE LED command: ``Command.LED_FAULT`` if any of them has a fault, else
+    ``Command.LED_GOOD_REP``, and a good-rep command is not sent within :data:`FAULT_FLASH_S`
+    of a fault one (it would cancel the device's fault flash). ``send`` errors are ignored.
     ``show`` receives each rendered HUD frame; leave it ``None`` for a headless run (OpenCV is
     then never touched). ``on_event`` sees every ``rep``/``fault``/``gate_*`` event as it happens.
 
@@ -150,7 +154,8 @@ def run_live(
     )
 
     totals = pipe.arm_totals()
-    banner: hud.Banner | None = None
+    banners: dict[str, hud.Banner] = {}  # one per counter ("l", "r", "all"), each expires alone
+    fault_led_at: float | None = None  # when LED_FAULT was last sent (clock seconds)
     trace: dict[str, deque[tuple[float, float]]] = {k: deque() for k in totals}
     stamps: deque[float] = deque(maxlen=FPS_WINDOW)
     means: list[float] = []
@@ -204,12 +209,19 @@ def run_live(
                 pipe.skip_frame(t)
                 completed = []
 
-            for rep in completed:
-                banner = hud.Banner.from_rep(rep, clock())
-                led = protocol.Command.LED_FAULT if rep.faults else protocol.Command.LED_GOOD_REP
-                send_led(led)
             if completed:
+                now = clock()
+                for rep in completed:  # each counter keeps its own banner: a later arm in this
+                    banners[getattr(rep, "arm", None) or "all"] = hud.Banner.from_rep(rep, now)
                 totals = pipe.arm_totals()
+                # ONE command per frame, so arms finishing together cannot overwrite each other's
+                # LED flash: any fault wins. A good-rep command is skipped while a fault flash is
+                # still showing (an arm finishing a frame or two later would cancel it).
+                if any(rep.faults for rep in completed):
+                    send_led(protocol.Command.LED_FAULT)
+                    fault_led_at = now
+                elif fault_led_at is None or now - fault_led_at >= FAULT_FLASH_S:
+                    send_led(protocol.Command.LED_GOOD_REP)
 
             if show is None:
                 continue
@@ -221,8 +233,9 @@ def run_live(
                     pts.append((t, deg))
                 while pts and t - pts[0][0] > TRACE_S:
                     pts.popleft()
-            if banner is not None and clock() >= banner.expires_at:
-                banner = None
+            now = clock()
+            for key in [k for k, b in banners.items() if now >= b.expires_at]:
+                del banners[key]
             pill_text, dim = hud.pill(
                 board is not None,
                 board.state() if board is not None else "ok",
@@ -238,7 +251,7 @@ def run_live(
                 angles={k: (None if np.isnan(v) else float(v)) for k, v in angles.items()},
                 pill_text=pill_text,
                 dim=dim,
-                banner=banner,
+                banners=dict(banners),  # a copy: the HUD state must not change after the frame
                 fps=fps,
                 trace={k: list(v) for k, v in trace.items()},
                 bands=pipe.thresholds(),

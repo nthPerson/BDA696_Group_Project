@@ -342,6 +342,50 @@ def test_replay_style_pipeline_still_counts_a_rep_across_a_long_gap():
     assert pipeline_mod.MAX_GAP_FRAMES == 3
 
 
+def _press_run(left_fn, right_fn, seconds: float = 30.0):
+    """A live-style (per-arm, padded) press ``Pipeline`` at 30 fps; returns ``(pipe, events)``."""
+    events = []
+    pipe = Pipeline(
+        exercise="press",
+        per_arm=True,
+        rules=RuleEngine.from_yaml(),
+        on_event=events.append,
+        pad_rep_start_s=REP_PAD_S,
+    )
+    pipe.set_gate(True, 0.0)
+    for i in range(int(seconds * FPS)):
+        t = i / FPS
+        pipe.on_frame(pose_frame(i, t, left_fn(t), right_fn(t)))
+    return pipe, events
+
+
+def test_a_one_arm_press_is_not_flagged_for_asymmetry_by_the_idle_arm():
+    """``elbow_top_asymmetry`` always compares both arms, so with the left arm pressing 80-170 deg
+    and the right arm held bent at 100 deg it read ~70 deg on every rep. PRESS_ASYMMETRY is a
+    two-arm rule (``requires: two_arm``), like CURL_ASYMMETRY, so a one-arm set has none."""
+    pipe, events = _press_run(lambda t: curl_deg(t, top=80.0, bottom=170.0), lambda t: 100.0)
+    totals = pipe.arm_totals()
+    assert totals["l"]["reps"] >= 10
+    assert totals["l"]["good"] == totals["l"]["reps"]
+    assert totals["l"]["faults_by_code"] == {}
+    assert totals["r"]["reps"] == 0
+    assert _faults(events, "PRESS_ASYMMETRY") == []
+
+
+def test_two_arms_pressing_together_still_flag_press_asymmetry_on_both_arms():
+    """The rule still fires for a real two-arm set: the right arm tops out at 130 deg while the
+    left locks out at 170 deg."""
+    pipe, events = _press_run(
+        lambda t: curl_deg(t, top=80.0, bottom=170.0),
+        lambda t: curl_deg(t, top=80.0, bottom=130.0),
+    )
+    totals = pipe.arm_totals()
+    assert totals["l"]["reps"] >= 10 and totals["r"]["reps"] >= 10
+    for arm in ("l", "r"):
+        flagged = [e for e in _faults(events, "PRESS_ASYMMETRY") if e.payload["arm"] == arm]
+        assert len(flagged) == totals[arm]["reps"], (arm, len(flagged), totals[arm])
+
+
 def test_finish_can_be_called_twice_with_the_same_result():
     """``finish`` is a snapshot: the open gate segment is closed in the result only, so a second
     call does not count it twice."""

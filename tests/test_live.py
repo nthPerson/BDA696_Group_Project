@@ -328,14 +328,89 @@ def test_no_wearable_lines_without_a_board_or_with_a_window(monkeypatch):
 
 def test_led_commands_follow_rep_quality():
     board = FakeBoard(open_between=(0.0, 1e9))
-    res = live.run_live(
+    res = live.run_live(  # the clock follows frame time: the fault-flash guard is in wall seconds
         frames(25, board), make_detect(right=idle), exercise="curl", rules=FlagSecondRep(),
-        board=board, say=lambda _s: None,
+        board=board, say=lambda _s: None, clock=lambda: board.now,
     )  # fmt: skip
     reps = res.summary["arms"]["l"]["reps"]
     assert reps >= 8
     assert board.sent.count(protocol.Command.LED_FAULT) == 1
     assert board.sent.count(protocol.Command.LED_GOOD_REP) == reps - 1
+
+
+FIRMWARE_FAULT_FLASH_S = 0.8  # firmware/src/app/ui.cpp: a fault flash lasts 800 ms
+
+
+class TimedBoard(FakeBoard):
+    """A always-open FakeBoard that also records the (wall) time of every command it is sent."""
+
+    def __init__(self):
+        super().__init__(open_between=(0.0, 1e9))
+        self.log: list[tuple[float, protocol.Command]] = []
+
+    def send(self, cmd):
+        self.log.append((self.now, cmd))
+        super().send(cmd)
+
+
+class FlagLeftSecondRep:
+    """Rules stand-in: only the LEFT arm's second rep gets a fault."""
+
+    def evaluate(self, rm, context=None):
+        return [_Fault()] if rm.arm == "l" and rm.rep_id == 1 else []
+
+
+@pytest.mark.parametrize(
+    "right_lag_frames", [-1, 0, 1], ids=["right-1-early", "same", "right-1-late"]
+)
+def test_a_clean_arm_finishing_with_a_faulty_one_hides_neither_banner_nor_led(
+    monkeypatch, right_lag_frames
+):
+    """Both arms curl together; the left arm's second rep has a fault, the right arm's is clean.
+    Whether the right arm finishes on the same frame or one frame either side, the left arm's
+    fault text stays on screen next to the right arm's "Good rep", and the device is not sent a
+    good-rep command while the fault flash (0.8 s) is still showing."""
+    states: list[hud.HudState] = []
+
+    def fake_render(frame, _lm, state, **_kw):
+        states.append(state)
+        return frame
+
+    monkeypatch.setattr(hud, "render", fake_render)
+    board = TimedBoard()
+    shift = right_lag_frames / FPS
+    live.run_live(
+        frames(12, board), make_detect(right=lambda t: curl_deg(t - shift)), exercise="curl",
+        rules=FlagLeftSecondRep(), board=board, show=lambda _f: True, say=lambda _s: None,
+        clock=lambda: board.now,
+    )  # fmt: skip
+
+    faults = [t for t, cmd in board.log if cmd == protocol.Command.LED_FAULT]
+    assert len(faults) == 1
+    flash = [cmd for t, cmd in board.log if faults[0] <= t < faults[0] + FIRMWARE_FAULT_FLASH_S]
+    assert flash == [protocol.Command.LED_FAULT], "a good-rep command would cancel the fault flash"
+
+    both = [
+        s for s in states
+        if s.banners.get("l") is not None and s.banners["l"].text == "L rep 2: fix it"
+        and s.banners.get("r") is not None and s.banners["r"].text == "R rep 2: Good rep"
+    ]  # fmt: skip
+    assert both, "the left arm's fault must be on screen together with the right arm's banner"
+    shown = [s for s in states if "l" in s.banners and s.banners["l"].text == "L rep 2: fix it"]
+    # it stays until the left arm's own next rep (2.5 s later) replaces it; with one shared banner
+    # the right arm's banner took its place after at most a frame
+    assert len(shown) >= 2 * FPS, "the fault banner must stay up on its own"
+
+
+def test_a_good_rep_command_is_sent_again_once_the_fault_flash_is_over():
+    board = TimedBoard()
+    live.run_live(
+        frames(25, board), make_detect(right=idle), exercise="curl", rules=FlagLeftSecondRep(),
+        board=board, say=lambda _s: None, clock=lambda: board.now,
+    )  # fmt: skip
+    (fault_t,) = [t for t, cmd in board.log if cmd == protocol.Command.LED_FAULT]
+    later = [t for t, cmd in board.log if cmd == protocol.Command.LED_GOOD_REP and t > fault_t]
+    assert later and min(later) - fault_t >= FIRMWARE_FAULT_FLASH_S
 
 
 def test_a_board_whose_send_raises_does_not_stop_the_loop():
@@ -368,7 +443,7 @@ def test_hud_state_wiring(monkeypatch):
     assert set(last.angles) == {"l", "r"}
     assert all(v is None or np.isfinite(v) for s in states for v in s.angles.values())
     assert last.bands["l"][0] < last.bands["l"][1]
-    shown = [s.banner.text for s in states if s.banner is not None]
+    shown = [b.text for s in states for b in s.banners.values()]
     assert shown and shown[0].startswith(("L rep 1", "R rep 1"))
 
 

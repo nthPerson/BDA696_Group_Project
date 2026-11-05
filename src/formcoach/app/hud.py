@@ -2,8 +2,8 @@
 
 Over the mirrored live video: per-arm rep counters top-left, a board/gate status pill
 top-right, an elbow-angle label beside each tracked elbow, an angle trace with its rep
-enter/exit band in the lower third, a coaching banner after every rep, and ``fps`` in a
-bottom corner.
+enter/exit band in the lower third, a coaching banner after every rep (one per counter, so two
+arms that finish together are both shown, stacked), and ``fps`` in a bottom corner.
 
 Everything except :func:`render` and :class:`WindowShow` is pure Python with no OpenCV
 dependency, so this module imports without the ``vision`` extra; ``cv2`` is imported lazily
@@ -24,6 +24,7 @@ from formcoach.app.overlay import EDGES
 from formcoach.pose.skeletons import MEDIAPIPE33, Skeleton
 
 BANNER_S = 3.0  # how long a post-rep banner stays on screen (s)
+BANNER_ORDER = ("l", "r", "all")  # top-to-bottom order of the stacked banners (the counter keys)
 MIN_DRAW_VIS = 0.5  # landmark visibility floor for drawing a skeleton point/edge
 
 _SEVERITY_RANK = {"warn": 1, "info": 0}
@@ -155,7 +156,7 @@ class HudState:
     angles: dict[str, float | None]
     pill_text: str
     dim: bool
-    banner: Banner | None
+    banners: dict[str, Banner]  # latest unexpired banner per counter: "l", "r" or "all" (squat)
     fps: float
     trace: dict[str, list[tuple[float, float]]]
     bands: dict[str, tuple[float, float]]
@@ -310,9 +311,9 @@ def _draw_trace(cv2, frame, state: HudState, scale: float) -> None:
     cv2.rectangle(frame, (x0, y0), (x1, y1), (120, 120, 120), 1)
 
 
-def _draw_banner(cv2, frame, state: HudState, scale: float) -> None:
-    if state.banner is None:
-        return
+def _draw_banners(cv2, frame, state: HudState, scale: float) -> None:
+    """Stack the banners bottom-left in counter order (L, R, then ``all``), each in its own
+    colour; the last line of the last banner sits where a single banner's last line always did."""
     h, w = frame.shape[:2]
     font_scale = 0.62 * scale
     thickness = max(round(2 * scale), 1)
@@ -322,12 +323,19 @@ def _draw_banner(cv2, frame, state: HudState, scale: float) -> None:
         (tw, _th), _ = cv2.getTextSize(s, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
         return tw
 
-    lines = wrap_lines(state.banner.text, max_width, measure)
-    color = _BANNER_COLOR.get(state.banner.kind, (255, 255, 255))
+    rows: list[tuple[str, tuple[int, int, int]]] = []
+    for key in BANNER_ORDER:
+        banner = state.banners.get(key)
+        if banner is None:
+            continue
+        color = _BANNER_COLOR.get(banner.kind, (255, 255, 255))
+        rows.extend((line, color) for line in wrap_lines(banner.text, max_width, measure))
+    if not rows:
+        return
     line_h = int(26 * scale)
     bottom_margin = int(34 * scale)
-    y = h - bottom_margin - (len(lines) - 1) * line_h
-    for line in lines:
+    y = h - bottom_margin - (len(rows) - 1) * line_h
+    for line, color in rows:
         _put_text(cv2, frame, line, (int(12 * scale), y), font_scale, color, thickness)
         y += line_h
 
@@ -369,7 +377,7 @@ def render(
     _draw_pill(cv2, frame, state, scale)
     _draw_angle_labels(cv2, frame, lm, skeleton, state, scale)
     _draw_trace(cv2, frame, state, scale)
-    _draw_banner(cv2, frame, state, scale)
+    _draw_banners(cv2, frame, state, scale)
     _draw_fps(cv2, frame, state, scale)
     return frame
 
