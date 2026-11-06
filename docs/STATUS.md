@@ -9,6 +9,33 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-11-05 — Recording protocol written; PR #14 re-checked (Claude Code with Robert)
+
+### What changed
+- `docs/recording-protocol.md`: the step-by-step guide for the team validation recordings
+  (12 sets per person, one recording per set, three claps as the IMU/video sync marker, a
+  `sets.csv` label file, what is shared and what stays local). ADR-0034. `docs/04-datasets.md`
+  §6 points at it. **Draft: not piloted on hardware, and not yet sent to the team.**
+- PR #14 (live webcam demo) re-checked at `2889584`: both requested fixes are in (one-arm press
+  no longer flagged `PRESS_ASYMMETRY`; one banner per counter and one LED command per frame).
+  The replay demo's `events.parquet` and `frames.parquet` are byte-identical to `main`. The PR
+  also gained provisional webcam curl thresholds and per-frame counter logging; see its own
+  STATUS entries.
+
+### Next
+1. Robert: pilot one set from the protocol on a kit (`formcoach record --source ble` has no
+   recorded hardware run; PR #14 is merged). Fix the guide where the pilot disagrees.
+2. Robert: post subject codes, the upload location and the deadline; then send the guide.
+3. Build the clap aligner and `eval transfer` (ADR-0034) while the team records.
+
+### Open questions
+- Where the shared files go (`data/team/` is gitignored and video never leaves a laptop).
+
+### Blockers
+- None.
+
+---
+
 ## 2026-11-04 — Live webcam rules: provisional MediaPipe thresholds for curl (Claude Code with Christian)
 
 ### What changed

@@ -510,3 +510,20 @@ not confirmed. Decision: change no threshold yet; live runs now log each counter
 thresholds, armed flag and arm visibility per frame (extra `frames.parquet` columns, live only,
 replay output byte-identical). Whether `min_range_deg`/`window_s` in this file should change waits
 for a re-run that shows the cause.
+
+## ADR-0034 · Team recordings: one recording per set, camera app for video, three claps as the sync marker · 2026-11-05 · proposed (pilot pending)
+
+`formcoach record` writes IMU
+only (`--camera` is not wired), and the wearable's clock and a video's `frame / fps` clock share
+no origin. Options: (a) wire camera capture into `record` and timestamp frames on the laptop
+clock next to `t_arrival`, which is the right long-term answer but is new code that has to work
+on three operating systems before anyone can record; (b) mark set boundaries with the wearable's
+button, which K2 and K3 failed in the 2026-10-28 self-test; (c) record video with the laptop's
+camera app, one short recording per set, with three claps in view of the camera before the
+reps and a `sets.csv` line per set (`session_id, exercise, form, reps, notes`). Decision: (c),
+written up in `docs/recording-protocol.md`, so recording is not blocked on tooling. The claps
+give an accelerometer spike and a hands-together video frame to align on; short clips bound any
+drift from a variable frame rate. Consequences: an aligner that uses the claps must be written
+before `eval gating` can run on team sessions; `eval transfer` (a stub) needs a `data/team`
+loader that reads `sets.csv`; threshold ratification and the go/no-go need only `pose.parquet`
+and `sets.csv`. Status stays "proposed" until Robert has run one set end to end on a kit.
