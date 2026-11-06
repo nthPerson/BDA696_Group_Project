@@ -188,3 +188,60 @@ def test_requires_tags_are_honoured_when_a_context_is_given(eng):
     assert [f.code for f in eng.evaluate(_rep("squat", m2), context={"frontal_view"})] == [
         "SQUAT_KNEE_VALGUS"
     ]
+
+
+# ---- the live webcam rules (ADR-0033) ---------------------------------------------------------
+
+
+def test_the_webcam_rules_are_the_defaults_with_only_two_curl_rules_changed():
+    """rules.mediapipe-webcam.yaml is a copy of rules.yaml; only CURL_PARTIAL_ROM and CURL_SWING
+    may differ, so a change to any other default cannot silently go missing from the live demo."""
+    import yaml
+
+    default = yaml.safe_load(engine.DEFAULT_RULES.read_text(encoding="utf-8"))
+    webcam = yaml.safe_load(engine.WEBCAM_RULES.read_text(encoding="utf-8"))
+    assert webcam.pop("pose_source") == "mediapipe-webcam-provisional"
+    assert default.pop("pose_source") == "design-defaults"
+
+    def curl_when(doc, code):
+        rule = next(r for r in doc["exercises"]["curl"]["rules"] if r["code"] == code)
+        return [(c["metric"], c["op"], c["threshold"]) for c in rule["when"]]
+
+    assert curl_when(webcam, "CURL_PARTIAL_ROM") == [
+        ("elbow_min", "gt", 115.0),
+        ("elbow_max", "lt", 128.079),
+    ]
+    assert curl_when(webcam, "CURL_SWING") == [
+        ("upper_arm_trunk_drift", "gt", 35.0),
+        ("elbow_drift_max", "gt", 0.35),
+    ]
+    assert curl_when(default, "CURL_PARTIAL_ROM") != curl_when(webcam, "CURL_PARTIAL_ROM")
+    assert curl_when(default, "CURL_SWING") != curl_when(webcam, "CURL_SWING")
+    for doc in (default, webcam):  # everything else, message and severity included, is identical
+        for rule in doc["exercises"]["curl"]["rules"]:
+            if rule["code"] in ("CURL_PARTIAL_ROM", "CURL_SWING"):
+                rule["when"] = None
+    assert webcam == default
+
+
+@pytest.mark.parametrize(
+    ("change", "webcam_codes", "default_codes"),
+    [
+        # what a webcam reads for an ordinary, fully ranged curl
+        ({"elbow_min": 88.0, "elbow_max": 150.0}, [], ["CURL_PARTIAL_ROM"]),
+        ({"upper_arm_trunk_drift": 30.0, "elbow_drift_max": 0.25}, [], ["CURL_SWING"]),
+        # the worst strict (back-to-the-wall) reps of the first labeled test, 2026-11-04
+        ({"elbow_min": 106.8, "elbow_max": 156.0}, [], ["CURL_PARTIAL_ROM"]),
+        ({"upper_arm_trunk_drift": 32.9, "elbow_drift_max": 0.31}, [], ["CURL_SWING"]),
+        # still caught: a rep that barely bends the elbow, and a clearly swinging elbow
+        ({"elbow_min": 125.0, "elbow_max": 170.0}, ["CURL_PARTIAL_ROM"], ["CURL_PARTIAL_ROM"]),
+        ({"upper_arm_trunk_drift": 40.0}, ["CURL_SWING"], ["CURL_SWING"]),
+        ({"elbow_drift_max": 0.40}, ["CURL_SWING"], ["CURL_SWING"]),
+    ],
+)
+def test_webcam_curl_rules_versus_the_design_defaults(change, webcam_codes, default_codes):
+    rep = _rep("curl", {**CORRECT["curl"], **change})
+    webcam = engine.RuleEngine.from_yaml(engine.WEBCAM_RULES)
+    default = engine.RuleEngine.from_yaml(engine.DEFAULT_RULES)
+    assert [f.code for f in webcam.evaluate(rep)] == webcam_codes
+    assert [f.code for f in default.evaluate(rep)] == default_codes

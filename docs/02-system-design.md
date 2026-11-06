@@ -145,6 +145,11 @@ Config-driven (`rules.yaml`), multi-label per rep, every rule outputs `{code, se
 - v0: OpenCV window with skeleton, rep counter, exercise name, last fault text; keyboard shortcuts for exercise select (1–4), start/stop, quit.
 - Send `0x01`/`0x02` to the wearable on each rep; log `t_rep_end` (IMU clock mapped to laptop clock) and `t_feedback` for latency.
 - Session log: `events.parquet` (rep and fault events) + `frames.parquet` (processed/skipped) + `session.json` summary.
+  Live (per-arm) runs add float columns to `frames.parquet`, NaN on gate-closed frames: per counter `k` in
+  `l`/`r` (`all` for squat) `ang_k` (deg the segmenter saw, 5-frame median), `enter_k`/`exit_k` (its current
+  thresholds, deg), `armed_k` (1.0 once the last `window_s` of angle spans `min_range`; before that nothing can
+  count as a rep), and `vis_l`/`vis_r` (lowest landmark visibility of that arm, 0-1). Replay writes none, so its
+  `frames.parquet` is still `t, processed, gate_state`.
 - v1: Streamlit page to open a session folder and show rep timeline, fault distribution, angle curves, gating timeline.
 
 ## 5. Data schema (common across datasets)
@@ -183,6 +188,9 @@ Post-training int8 (full integer, representative dataset ≥ 500 windows); repor
 
 Angles from world landmarks; "torso" = mid-shoulder to mid-hip distance. All thresholds **(default, calibrate)** on MM-Fit correct-form reps: set each threshold at the 5th/95th percentile of the correct-form distribution, then verify with perturbation tests.
 
+<!-- Thresholds below are the design defaults. The live webcam demo uses rules.mediapipe-webcam.yaml,
+which changes CURL_PARTIAL_ROM and CURL_SWING for MediaPipe pose (ADR-0033, provisional). -->
+
 | Exercise | Primary angle (rep) | Fault code | Rule |
 |---|---|---|---|
 | Bicep curl | elbow flexion; rep = min < 60°, return > 150° | `CURL_PARTIAL_ROM` | min elbow angle > 75° or max < 140° |
@@ -191,7 +199,7 @@ Angles from world landmarks; "torso" = mid-shoulder to mid-hip distance. All thr
 | | | `CURL_ASYMMETRY` | left/right min-angle difference > 20° (two-arm curls only) |
 | Overhead press | elbow angle; rep = bottom < 90°, top > 160° | `PRESS_NO_LOCKOUT` | max elbow angle < 155° |
 | | | `PRESS_TRUNK_LEAN` | trunk inclination > 15° from vertical at any point |
-| | | `PRESS_ASYMMETRY` | left/right elbow angle differ > 20° at top |
+| | | `PRESS_ASYMMETRY` | left/right elbow angle differ > 20° at top (two-arm presses only) |
 | | | `PRESS_TOO_FAST` | rep duration < 1.0 s |
 | Lateral raise | shoulder abduction; rep = peak > 75° | `RAISE_OVER` | peak abduction > 100° |
 | | | `RAISE_PARTIAL` | peak abduction < 65° |

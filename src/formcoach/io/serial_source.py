@@ -65,7 +65,7 @@ def _pyserial():
     except ImportError as exc:
         raise ImportError(
             "serial input needs pyserial: `uv sync --extra device` "
-            "(then --port /dev/ttyACM0 or COM5)"
+            f"(then --port /dev/ttyACM0 or COM5) (import failed: {exc})"
         ) from exc
     return serial
 

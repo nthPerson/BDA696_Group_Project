@@ -12,8 +12,12 @@ SOURCE  ?= replay
 PORT    ?=
 MODEL   ?= cnn
 VIEWER_PORT ?= 8000
+POSE_MODEL ?= lite
+CAMERA  ?= 0
+EXERCISE ?= curl
+BOARD   ?=
 
-.PHONY: help setup setup-all lint format test data convert profile features session-check device-check attach-xiao train-gate eval demo record ble-viewer \
+.PHONY: help setup setup-all setup-live lint format test data convert profile features session-check device-check attach-xiao train-gate eval demo live record ble-viewer \
 	    fw-build fw-upload fw-monitor clean
 
 help: ## list targets
@@ -27,6 +31,11 @@ setup: ## create .venv, install formcoach + dev tools, install pre-commit hooks
 setup-all: ## like setup, plus vision/device/train/app extras (large downloads)
 	$(UV) sync --all-extras --group dev
 	$(RUN) pre-commit install
+
+setup-live: ## like setup, plus vision/device extras and the pose model (POSE_MODEL=lite|full|heavy)
+	$(UV) sync --group dev --extra vision --extra device
+	$(RUN) pre-commit install
+	$(RUN) formcoach pose fetch-model --model $(POSE_MODEL)
 
 lint: ## ruff check + format check (what CI runs)
 	$(RUN) ruff check .
@@ -62,6 +71,9 @@ eval: ## regenerate every table and figure under reports/
 
 demo: ## run the full pipeline (SOURCE=replay|serial|ble; replay needs no hardware)
 	$(RUN) formcoach demo --source $(SOURCE) $(if $(PORT),--port $(PORT),)
+
+live: ## live webcam coaching (CAMERA=0|1|.. EXERCISE=curl|press|raise|squat; BOARD=ble|serial adds the wearable)
+	$(RUN) formcoach demo --camera $(CAMERA) --exercise $(EXERCISE) $(if $(BOARD),--board $(BOARD),) $(if $(PORT),--port $(PORT),)
 
 ble-viewer: ## serve the browser BLE live viewer on http://localhost:8000/ble-viewer/ (VIEWER_PORT=8000)
 	$(RUN) formcoach viewer --port $(VIEWER_PORT)

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +24,7 @@ import numpy as np
 from formcoach.app import gate as gate_mod
 from formcoach.app.events import Event, EventLog
 from formcoach.io.replay import FIXTURE_SESSION, PoseFrame, PoseReplay, ReplaySource
-from formcoach.io.source import IMUSource
+from formcoach.io.source import IMUSource, SISample
 from formcoach.pose import angles as angles_mod
 from formcoach.pose.reps import DEFAULT_REP_CONFIG, PoseRep, RepSegmenter
 from formcoach.pose.skeletons import Skeleton, joint
@@ -32,6 +32,8 @@ from formcoach.pose.skeletons import Skeleton, joint
 REP_STEPS = 30
 TRACKED = angles_mod.ANGLE_NAMES
 MAX_GAP_FRAMES = 3  # docs/02 §4.3: bridge gaps <= 3 frames, longer gaps are invalid
+MIN_ARM_VISIBILITY = 0.5  # docs/02 §4.3: an arm is tracked only if shoulder/elbow/wrist >= this
+TWO_ARM_OVERLAP = 0.5  # fraction of the shorter rep's duration two arms must overlap to pair
 
 
 @dataclass
@@ -45,6 +47,7 @@ class RepMetrics:
     angles: dict[str, np.ndarray]  # each (REP_STEPS,)
     metrics: dict[str, float]
     faults: list[dict] = field(default_factory=list)
+    arm: str | None = None  # "l" | "r" | None (squat, or when per-arm tracking is off)
 
     def as_payload(self) -> dict:
         return {
@@ -89,7 +92,10 @@ class _UpEstimator:
 def primary_angle(exercise: str, a: dict[str, float], side: str = "both") -> float:
     key = DEFAULT_REP_CONFIG[exercise]["angle"]
     if side == "both":
-        return float(np.nanmean([a[f"{key}_l"], a[f"{key}_r"]]))
+        pair = [a[f"{key}_l"], a[f"{key}_r"]]
+        if np.isnan(pair).all():  # no person in frame: NaN without numpy's empty-mean warning
+            return float("nan")
+        return float(np.nanmean(pair))
     return float(a[f"{key}_{side}"])
 
 
@@ -111,9 +117,17 @@ def resample_rep_angles(
     return res
 
 
-def metrics_from_angles(res: dict[str, np.ndarray], duration_s: float) -> dict[str, float]:
+def metrics_from_angles(
+    res: dict[str, np.ndarray], duration_s: float, side: str = "both"
+) -> dict[str, float]:
     """Scalar rep metrics (degrees, seconds, torso units) from the 30-step angle series; the
-    keys are the metric names rules.yaml refers to."""
+    keys are the metric names rules.yaml refers to.
+
+    ``side`` = ``"both"`` (default, bit-identical to the original behaviour) averages every
+    paired series 0.5*(left + right); ``"l"``/``"r"`` uses that side's series alone, so a
+    one-arm rep is not diluted by an idle arm. ``elbow_min_l/_r``, ``elbow_asymmetry`` and
+    ``elbow_top_asymmetry`` always compare both raw sides regardless of ``side``.
+    """
 
     def mn(k):
         return float(np.nanmin(res[k])) if np.isfinite(res[k]).any() else float("nan")
@@ -130,7 +144,10 @@ def metrics_from_angles(res: dict[str, np.ndarray], duration_s: float) -> dict[s
         "knee_track",
         "hip_knee_height",
     )
-    both = {k: 0.5 * (res[f"{k}_l"] + res[f"{k}_r"]) for k in pairs}
+    if side == "both":
+        both = {k: 0.5 * (res[f"{k}_l"] + res[f"{k}_r"]) for k in pairs}
+    else:
+        both = {k: res[f"{k}_{side}"] for k in pairs}
     bottom = int(np.nanargmin(both["knee"])) if np.isfinite(both["knee"]).any() else 0
     peak_abd = (
         int(np.nanargmax(both["shoulder_abd"])) if np.isfinite(both["shoulder_abd"]).any() else 0
@@ -165,13 +182,484 @@ def metrics_from_angles(res: dict[str, np.ndarray], duration_s: float) -> dict[s
 
 
 def compute_rep_metrics(
-    exercise: str, rep: PoseRep, ts: np.ndarray, series: dict[str, np.ndarray], source: str = "pose"
+    exercise: str,
+    rep: PoseRep,
+    ts: np.ndarray,
+    series: dict[str, np.ndarray],
+    source: str = "pose",
+    side: str = "both",
 ) -> RepMetrics:
     """Resample every tracked angle over the rep to ``REP_STEPS`` and derive scalar metrics
-    (documented keys consumed by rules.yaml; see docs/02 §7)."""
+    (documented keys consumed by rules.yaml; see docs/02 §7). ``side`` is forwarded to
+    :func:`metrics_from_angles` (see there)."""
     res = resample_rep_angles(rep, ts, series)
     return RepMetrics(exercise, rep.rep_id, rep.t_start, rep.t_end, rep.duration_s, source, res,
-                      metrics_from_angles(res, rep.duration_s))  # fmt: skip
+                      metrics_from_angles(res, rep.duration_s, side=side))  # fmt: skip
+
+
+def _arm_joint_names(side: str) -> tuple[str, str, str]:
+    return (f"shoulder_{side}", f"elbow_{side}", f"wrist_{side}")
+
+
+def _arm_min_visibility(fr: PoseFrame, side: str) -> float:
+    """Lowest MediaPipe visibility (0-1) of ``side``'s shoulder, elbow and wrist in ``fr``."""
+    idx = [fr.skeleton.index(name) for name in _arm_joint_names(side)]
+    return float(np.min(fr.visibility[idx]))
+
+
+def _arm_visible(fr: PoseFrame, side: str) -> bool:
+    """Whether ``side``'s shoulder, elbow and wrist all meet ``MIN_ARM_VISIBILITY`` in ``fr``."""
+    return _arm_min_visibility(fr, side) >= MIN_ARM_VISIBILITY
+
+
+class _Track:
+    """One rep-counting lane: its own adaptive segmenter, angle buffer and bridge/NaN gap state.
+
+    ``side`` selects which arm's (or both arms') series feeds the primary angle and the rep
+    metrics (:func:`primary_angle`, :func:`compute_rep_metrics`); ``arm`` is the label
+    (``"l"``/``"r"``/``None``) attached to this track's reps and events.
+    """
+
+    def __init__(self, *, side: str, arm: str | None, cfg: dict):
+        self.side = side
+        self.arm = arm
+        self.cfg = cfg
+        self.buf_t: list[float] = []
+        self.buf_a: dict[str, list[float]] = {k: [] for k in TRACKED}
+        self.smooth: deque[float] = deque(maxlen=5)
+        self.last_p = float("nan")  # primary angle (deg) the segmenter last saw; NaN if none
+        self.last_angles: dict[str, float] | None = None
+        self.gap = 0
+        self.offset = 0  # frames trimmed from the front of buf_t/buf_a so far
+        self.last_end_abs = 0  # absolute frame index where the previous rep ended
+        self.bridged = 0
+        self.invalid = 0
+        self.reps: list[RepMetrics] = []
+        self.seg = self._new_segmenter()
+
+    def _new_segmenter(self) -> RepSegmenter:
+        cfg = self.cfg
+        return RepSegmenter(
+            enter=cfg["enter"], exit=cfg["exit"], mode=cfg["mode"], adaptive=cfg["adaptive"],
+            window_s=cfg.get("window_s", 6.0), min_range=cfg.get("min_range", 25.0),
+            frac=cfg.get("frac", 0.3),
+        )  # fmt: skip
+
+    def reset(self) -> None:
+        """Drop all buffered frames and start a fresh segmenter (on gate close)."""
+        self.seg = self._new_segmenter()
+        self.last_angles, self.gap = None, 0
+        self.buf_t.clear()
+        for v in self.buf_a.values():
+            v.clear()
+        self.smooth.clear()
+        self.last_p = float("nan")
+        self.offset = 0
+        self.last_end_abs = 0
+
+
+class Pipeline:
+    """Stateful gate → angles → reps → rules pipeline (one or two :class:`_Track`\\ s).
+
+    ``on_imu``/``set_gate`` drive the gate; ``on_frame``/``skip_frame`` feed pose frames;
+    ``finish`` closes the run and returns a :class:`PipelineResult`. ``run_pipeline`` is a thin
+    wrapper that merges an :class:`IMUSource` with a pose-frame iterator the way the replay path
+    always has; a live loop (no IMU) drives the same object directly.
+    """
+
+    def __init__(
+        self,
+        *,
+        exercise: str,
+        gate: gate_mod.GateBase | None = None,
+        gate_name: str = "always_on",
+        rules=None,
+        log: EventLog | None = None,
+        on_event: Callable[[Event], None] | None = None,
+        side: str = "both",
+        rep_config: dict | None = None,
+        view: str = "frontal",
+        per_arm: bool = False,
+        max_buffer_frames: int | None = None,
+        pad_rep_start_s: float = 0.0,
+    ):
+        self.exercise = exercise
+        self.gate = gate
+        self.gate_name = gate_name
+        self.rules = rules
+        self.log = log or EventLog()
+        self.on_event = on_event
+        self.side = side
+        self.view = view
+        self.per_arm = per_arm
+        self.max_buffer_frames = max_buffer_frames
+        self.pad_rep_start_s = pad_rep_start_s
+
+        cfg = {**DEFAULT_REP_CONFIG[exercise], "adaptive": True}
+        if rules is not None and hasattr(rules, "rep_config"):
+            cfg.update(rules.rep_config(exercise))
+        if rep_config:
+            cfg.update(rep_config)
+        self.cfg = cfg
+
+        self.up = _UpEstimator()
+        self.gate_state = False
+        self.gated_seg_start: float | None = None
+        self.gated_segments: list[tuple[float, float]] = []
+        self.imu_t: list[float] = []
+        self.imu_acc: list[tuple[float, float, float]] = []
+
+        if per_arm and exercise in ("curl", "press", "raise"):
+            self.tracks = [_Track(side="l", arm="l", cfg=cfg), _Track(side="r", arm="r", cfg=cfg)]
+        else:
+            self.tracks = [_Track(side=side, arm=None, cfg=cfg)]
+
+    @property
+    def gate_open(self) -> bool:
+        """Current gate state."""
+        return self.gate_state
+
+    @property
+    def buffered_frames(self) -> int:
+        """Longest per-track angle buffer currently held (frames)."""
+        return max((len(t.buf_t) for t in self.tracks), default=0)
+
+    def latest_angles(self) -> dict[str, float]:
+        """Each track's primary angle (degrees) on its most recently processed frame, keyed like
+        :meth:`arm_totals` (``"l"``/``"r"``/``"all"``). ``NaN`` when that frame had no usable
+        angle, or when nothing has been processed since the last gate close. For the live HUD."""
+        out: dict[str, float] = {}
+        for track in self.tracks:
+            key = track.arm if track.arm is not None else "all"
+            if not track.buf_t:
+                out[key] = float("nan")
+                continue
+            last = {k: v[-1] for k, v in track.buf_a.items()}
+            out[key] = primary_angle(self.exercise, last, track.side)
+        return out
+
+    def thresholds(self) -> dict[str, tuple[float, float]]:
+        """Each track's current ``(enter, exit)`` rep thresholds in degrees (the adaptive values
+        once the segmenter has seen enough range, else the exercise defaults), keyed like
+        :meth:`arm_totals`. For the live HUD's trace band."""
+        return {
+            (t.arm if t.arm is not None else "all"): (
+                t.seg.sign * t.seg.enter,
+                t.seg.sign * t.seg.exit,
+            )
+            for t in self.tracks
+        }
+
+    def on_imu(self, s: SISample, t: float | None = None) -> bool:
+        """Update the gate from one IMU sample; returns the new gate state. Also stores
+        ``s.t``/acceleration for the end-of-run IMU cross-check (``finish(compute_imu=True)``)."""
+        self.imu_t.append(s.t)
+        self.imu_acc.append((s.ax, s.ay, s.az))
+        state = self.gate.update(s)
+        self.set_gate(state, t if t is not None else s.t)
+        return state
+
+    def set_gate(self, open_: bool, t: float) -> None:
+        """Force the gate open/closed at time ``t`` (s); emits ``gate_open``/``gate_close`` and
+        resets every track's buffers on close. A no-op if the state does not change."""
+        open_ = bool(open_)
+        if open_ == self.gate_state:
+            return
+        self.gate_state = open_
+        if open_:
+            self.gated_seg_start = t
+            self._emit("gate_open", t)
+        else:
+            start = self.gated_seg_start if self.gated_seg_start is not None else t
+            self.gated_segments.append((start, t))
+            self._emit("gate_close", t)
+            for track in self.tracks:
+                track.reset()
+
+    def _angles(self, fr: PoseFrame) -> dict[str, float] | None:
+        """Joint angles (degrees) for one frame, or ``None`` when invalid/non-finite."""
+        if not fr.valid or not np.isfinite(fr.world).all():
+            return None
+        u = self.up.update(fr.world, fr.skeleton)
+        return {
+            k: float(v[0])
+            for k, v in angles_mod.joint_angles(fr.world[None], fr.skeleton, u).items()
+        }
+
+    def on_frame(self, fr: PoseFrame) -> list[RepMetrics]:
+        """Log the frame; process it (angles → reps → rules, per track) only while the gate is
+        open. Returns the reps completed by this frame, across all tracks."""
+        completed: list[RepMetrics] = []
+        if not self.gate_state:
+            self.log.frame(fr.t, False, False)
+            return completed
+        a_global = self._angles(fr)
+        for track in self.tracks:
+            rm = self._push_track(track, fr, a_global)
+            if rm is not None:
+                completed.append(rm)
+        self.log.frame(fr.t, True, True, **self._frame_diagnostics(fr))
+        return completed
+
+    def _frame_diagnostics(self, fr: PoseFrame) -> dict[str, float]:
+        """Per-frame counter state for the live log (per-arm mode only; replay logs none, so its
+        ``frames.parquet`` is unchanged). For each counter ``k`` (``l``, ``r`` or ``all``):
+        ``ang_k`` the angle in degrees the segmenter saw (5-frame median, NaN if none),
+        ``enter_k``/``exit_k`` its current thresholds in degrees, ``armed_k`` 1.0 once the last
+        ``window_s`` of angle spans ``min_range`` (before that nothing can count as a rep), and
+        ``vis_{l,r}`` the arm's lowest landmark visibility (0-1)."""
+        if not self.per_arm:
+            return {}
+        out: dict[str, float] = {}
+        for track in self.tracks:
+            k = track.arm if track.arm is not None else "all"
+            out[f"ang_{k}"] = track.last_p
+            out[f"enter_{k}"] = track.seg.sign * track.seg.enter
+            out[f"exit_{k}"] = track.seg.sign * track.seg.exit
+            out[f"armed_{k}"] = 1.0 if track.seg.armed else 0.0
+            if track.arm is not None:
+                out[f"vis_{k}"] = _arm_min_visibility(fr, track.side)
+        return out
+
+    def skip_frame(self, t: float) -> None:
+        """Log a frame as skipped (no gate information), e.g. trailing frames after the last
+        IMU sample."""
+        self.log.frame(t, False, False)
+
+    def _trim_track(self, track: _Track) -> None:
+        if self.max_buffer_frames is None:
+            return
+        n = len(track.buf_t)
+        if n > 2 * self.max_buffer_frames:
+            drop = n - self.max_buffer_frames
+            track.buf_t = track.buf_t[drop:]
+            for k in track.buf_a:
+                track.buf_a[k] = track.buf_a[k][drop:]
+            track.offset += drop
+
+    def _push_track(
+        self, track: _Track, fr: PoseFrame, a_global: dict[str, float] | None
+    ) -> RepMetrics | None:
+        """Angles for one frame on one track; invalid/low-visibility frames reuse the track's
+        last good angles for up to MAX_GAP_FRAMES consecutive frames (docs/02 §4.3), longer gaps
+        become NaN. Returns the rep this frame completed on this track, if any."""
+        needs_visibility = self.per_arm and track.arm is not None
+        visible = a_global is not None and (not needs_visibility or _arm_visible(fr, track.side))
+        if visible:
+            track.gap = 0
+            a = dict(a_global)
+            track.last_angles = a
+        else:
+            track.gap += 1
+            if track.last_angles is not None and track.gap <= MAX_GAP_FRAMES:
+                a = dict(track.last_angles)
+                track.bridged += 1
+            else:
+                a = dict.fromkeys(TRACKED, float("nan"))
+                track.invalid += 1
+        track.buf_t.append(fr.t)
+        for k in TRACKED:
+            track.buf_a[k].append(a[k])
+        self._trim_track(track)
+
+        p = primary_angle(self.exercise, a, track.side)
+        if np.isfinite(p):
+            track.smooth.append(p)
+            p = float(np.median(track.smooth))
+        track.last_p = p
+        rep = track.seg.push(fr.t, p)
+        if rep is None:
+            return None
+
+        end_abs = rep.i_end
+        i_start = max(0, rep.i_start - track.offset)
+        i_end = max(0, rep.i_end - track.offset)
+        if i_start != rep.i_start or i_end != rep.i_end:
+            rep = replace(rep, i_start=i_start, i_end=i_end)
+        if self.per_arm and self._has_tracking_gap(track, rep.i_start, rep.i_end):
+            # live only: a rep with a stretch of lost tracking inside would be judged on
+            # interpolated angles (docs/02 4.3: such a segment is invalid), so it is not counted
+            track.last_end_abs = end_abs
+            return None
+        ts = np.asarray(track.buf_t)
+        if self.pad_rep_start_s > 0:
+            rep = replace(rep, i_start=self._padded_start(track, ts, rep.i_start))
+        track.last_end_abs = end_abs
+        series = {k: np.asarray(v) for k, v in track.buf_a.items()}
+        rm = compute_rep_metrics(self.exercise, rep, ts, series, side=track.side)
+        rm.arm = track.arm
+        if self.per_arm:
+            # live numbering follows the counter on screen across gate close/reopen (replay keeps
+            # the segmenter's ids, which restart at 0 on every gate-open segment: golden output)
+            rm.rep_id = len(track.reps)
+        if self.rules is not None:
+            context = self._context(track, rm)
+            rm.faults = [f.as_dict() for f in self.rules.evaluate(rm, context=context)]
+        track.reps.append(rm)
+        self._emit_rep(track, rm)
+        return rm
+
+    def _has_tracking_gap(self, track: _Track, i_start: int, i_end: int) -> bool:
+        """Whether any frame in the buffer window ``[i_start, i_end]`` has no usable primary
+        angle. Frames inside a gap of up to ``MAX_GAP_FRAMES`` carry the bridged angles, so a
+        non-finite value here means the track lost the person for longer than that."""
+        key = DEFAULT_REP_CONFIG[self.exercise]["angle"]
+        sides = ("l", "r") if track.side == "both" else (track.side,)
+        cols = [np.asarray(track.buf_a[f"{key}_{s}"][i_start : i_end + 1]) for s in sides]
+        return bool(np.isnan(np.column_stack(cols)).all(axis=1).any())
+
+    def _padded_start(self, track: _Track, ts: np.ndarray, i_start: int) -> int:
+        """Buffer index to start a rep's metrics window at: ``i_start`` moved back by up to
+        ``pad_rep_start_s`` seconds, but never into the previous rep or before the buffer.
+
+        The segmenter's window starts where the angle crosses the exit threshold, so the rest
+        position just before it (a curl's fully straight arm) is outside the window and
+        ``elbow_max`` would read about the exit threshold on every rep. Only the *metrics*
+        window grows: the rep's ``t_start``/``t_end``/``duration_s`` and the count are the
+        segmenter's, untouched."""
+        floor = max(0, track.last_end_abs - track.offset)
+        k = min(i_start, len(ts) - 1)
+        t0 = ts[k]
+        while k > floor and ts[k - 1] >= t0 - self.pad_rep_start_s:
+            k -= 1
+        return k
+
+    def _other_arm_track(self, track: _Track) -> _Track | None:
+        for t in self.tracks:
+            if t is not track and t.arm is not None:
+                return t
+        return None
+
+    def _paired(self, other: _Track, rep: RepMetrics) -> bool:
+        """Whether ``other``'s last completed rep, or its rep in progress, overlaps ``rep`` by
+        at least ``TWO_ARM_OVERLAP`` of the shorter one's duration (so two-arm rules only fire
+        on reps the two arms actually did together)."""
+        if other.reps:
+            lr = other.reps[-1]
+            shorter = min(rep.duration_s, lr.duration_s)
+            overlap = min(rep.t_end, lr.t_end) - max(rep.t_start, lr.t_start)
+            if shorter > 0 and overlap >= TWO_ARM_OVERLAP * shorter:
+                return True
+        start = other.seg.rep_start_t
+        # a hidden arm leaves its segmenter stuck mid-rep (NaN angles are skipped, not ended), so
+        # only trust the in-progress rep while that arm is still being tracked or bridged
+        if start is not None and other.gap <= MAX_GAP_FRAMES:
+            # The in-progress rep's final length is unknown, so measure the overlap against
+            # *this* rep's duration. (Using the elapsed part of the other rep would make a rep
+            # that has only just begun look like a full overlap and pair arms that are seconds
+            # apart.) The other arm judges the same pair, by the branch above, once it finishes.
+            overlap = rep.t_end - max(rep.t_start, start)
+            if rep.duration_s > 0 and overlap >= TWO_ARM_OVERLAP * rep.duration_s:
+                return True
+        return False
+
+    def _context(self, track: _Track, rm: RepMetrics) -> set[str]:
+        context: set[str] = set()
+        if self.view == "frontal":
+            context.add("frontal_view")
+        if track.arm is None:
+            if track.side == "both":
+                context.add("two_arm")
+        else:
+            other = self._other_arm_track(track)
+            if other is not None and self._paired(other, rm):
+                context.add("two_arm")
+        return context
+
+    def _emit(self, kind: str, t: float, **payload) -> Event:
+        e = self.log.event(kind, t, **payload)
+        if self.on_event:
+            self.on_event(e)
+        return e
+
+    def _emit_rep(self, track: _Track, rm: RepMetrics) -> None:
+        payload = rm.as_payload()
+        if self.per_arm:
+            payload["arm"] = track.arm
+        self._emit("rep", rm.t_end, **payload)
+        for f in rm.faults:
+            fault_payload = dict(f)
+            if self.per_arm:
+                fault_payload["arm"] = track.arm
+            self._emit("fault", rm.t_end, rep_id=rm.rep_id, **fault_payload)
+
+    def arm_totals(self) -> dict[str, dict]:
+        """Per-track totals keyed ``"l"``/``"r"`` (or ``"all"`` for a single whole-body track):
+        ``{"reps": int, "good": int, "flagged": int, "faults_by_code": {code: n}}``. Good = no
+        fault of any severity; flagged = at least one."""
+        out: dict[str, dict] = {}
+        for track in self.tracks:
+            key = track.arm if track.arm is not None else "all"
+            good = sum(1 for r in track.reps if not r.faults)
+            by_code: dict[str, int] = {}
+            for r in track.reps:
+                for f in r.faults:
+                    by_code[f["code"]] = by_code.get(f["code"], 0) + 1
+            out[key] = {
+                "reps": len(track.reps),
+                "good": good,
+                "flagged": len(track.reps) - good,
+                "faults_by_code": by_code,
+            }
+        return out
+
+    def finish(self, *, end_t: float | None = None, compute_imu: bool = True) -> PipelineResult:
+        """Close the run and return the :class:`PipelineResult`. An open gate segment is closed
+        at the last IMU sample's time if there is one, else ``end_t``, else the segment start.
+        ``compute_imu=False`` (live mode: one board on one wrist cannot validate both arms)
+        omits ``reps_imu``/``reps_fused``/``imu_seconds`` from the summary."""
+        # the open segment is closed in this result only (a local copy), so finish() can be
+        # called again, or the run continued, without counting it twice
+        segments = list(self.gated_segments)
+        if self.gate_state and self.gated_seg_start is not None:
+            if self.imu_t:
+                seg_end = self.imu_t[-1]
+            elif end_t is not None:
+                seg_end = end_t
+            else:
+                seg_end = self.gated_seg_start
+            segments.append((self.gated_seg_start, seg_end))
+
+        all_reps = sorted((r for t in self.tracks for r in t.reps), key=lambda r: r.t_end)
+        # per-arm mode has two tracks looking at the same frames: report the larger count so
+        # these never exceed frames_total (one track: identical to the sum)
+        bridged = max((t.bridged for t in self.tracks), default=0)
+        invalid = max((t.invalid for t in self.tracks), default=0)
+        imu_reps: list = []
+        if compute_imu:
+            imu_t = np.asarray(self.imu_t)
+            imu_acc = np.asarray(self.imu_acc)
+            imu_reps = _imu_reps(imu_t, imu_acc, segments)
+        # key order is the original run_pipeline's (session.json is written in this order)
+        summary: dict = {
+            "exercise": self.exercise,
+            "gate": self.gate.name if self.gate is not None else self.gate_name,
+            "reps": len(all_reps),
+            "reps_pose": len(all_reps),
+        }
+        if compute_imu:
+            summary["reps_imu"] = len(imu_reps)
+            summary["reps_fused"] = _fuse(all_reps, imu_reps)
+        summary.update(
+            {
+                "faults": sum(len(r.faults) for r in all_reps),
+                "frames_total": self.log.frames_total,
+                "frames_processed": self.log.frames_processed,
+                "frames_processed_pct": round(
+                    100.0 * self.log.frames_processed / max(self.log.frames_total, 1), 1
+                ),
+                "frames_bridged": bridged,
+                "frames_invalid": invalid,
+                "gated_seconds": round(sum(b - a for a, b in segments), 2),
+            }
+        )
+        if compute_imu:
+            summary["imu_seconds"] = round((imu_t[-1] - imu_t[0]) if len(imu_t) > 1 else 0.0, 2)
+        if self.per_arm:
+            summary["arms"] = self.arm_totals()
+        return PipelineResult(
+            self.log.events, self.log.frames_total, self.log.frames_processed, all_reps, summary
+        )
 
 
 def run_pipeline(
@@ -190,141 +678,27 @@ def run_pipeline(
     """Run IMU + pose through gate → angles → reps → rules; returns events and counts.
 
     ``side`` = ``both`` (two-arm exercise, enables ``requires: two_arm`` rules) or ``l``/``r``;
-    ``view`` = ``frontal`` (enables ``requires: frontal_view`` rules) or ``side``.
+    ``view`` = ``frontal`` (enables ``requires: frontal_view`` rules) or ``side``. Thin wrapper
+    around :class:`Pipeline` that merges ``imu`` and ``frames`` by time, the way replay always
+    has: every IMU sample updates the gate, every pending pose frame up to that time is fed in.
     """
-    context = {"two_arm"} if side == "both" else set()
-    if view == "frontal":
-        context.add("frontal_view")
-    cfg = {**DEFAULT_REP_CONFIG[exercise], "adaptive": True}
-    if rules is not None and hasattr(rules, "rep_config"):
-        cfg.update(rules.rep_config(exercise))
-    if rep_config:
-        cfg.update(rep_config)
-    log = log or EventLog()
+    pipe = Pipeline(
+        exercise=exercise, gate=gate, rules=rules, log=log, on_event=on_event,
+        side=side, rep_config=rep_config, view=view,
+    )  # fmt: skip
     frame_iter = iter(frames)
     pending = next(frame_iter, None)
-    up = _UpEstimator()
-
-    def new_segmenter() -> RepSegmenter:
-        return RepSegmenter(
-            enter=cfg["enter"], exit=cfg["exit"], mode=cfg["mode"], adaptive=cfg["adaptive"],
-            window_s=cfg.get("window_s", 6.0), min_range=cfg.get("min_range", 25.0),
-            frac=cfg.get("frac", 0.3),
-        )  # fmt: skip
-
-    seg = new_segmenter()
-    buf_t: list[float] = []
-    buf_a: dict[str, list[float]] = {k: [] for k in TRACKED}
-    smooth: deque[float] = deque(maxlen=5)
-    reps: list[RepMetrics] = []
-    gate_state = False
-    gated_segments: list[tuple[float, float]] = []
-    seg_start: float | None = None
-    imu_t: list[float] = []
-    imu_acc: list[tuple[float, float, float]] = []
-
-    def emit(kind: str, t: float, **payload) -> None:
-        e = log.event(kind, t, **payload)
-        if on_event:
-            on_event(e)
-
-    last_angles: dict[str, float] | None = None
-    gap = 0
-    counts = {"invalid": 0, "bridged": 0}
-
-    def process_frame(fr: PoseFrame) -> None:
-        """Angles for one frame; invalid frames reuse the last good angles for up to
-        MAX_GAP_FRAMES consecutive frames (docs/02 §4.3), longer gaps become NaN."""
-        nonlocal reps, last_angles, gap
-        if not fr.valid or not np.isfinite(fr.world).all():
-            gap += 1
-            if last_angles is not None and gap <= MAX_GAP_FRAMES:
-                a = dict(last_angles)
-                counts["bridged"] += 1
-            else:
-                a = dict.fromkeys(TRACKED, float("nan"))
-                counts["invalid"] += 1
-        else:
-            gap = 0
-            u = up.update(fr.world, fr.skeleton)
-            a = {
-                k: float(v[0])
-                for k, v in angles_mod.joint_angles(fr.world[None], fr.skeleton, u).items()
-            }
-            last_angles = a
-        buf_t.append(fr.t)
-        for k in TRACKED:
-            buf_a[k].append(a[k])
-        p = primary_angle(exercise, a, side)
-        if np.isfinite(p):
-            smooth.append(p)
-            p = float(np.median(smooth))
-        rep = seg.push(fr.t, p)
-        if rep is not None:
-            ts = np.asarray(buf_t)
-            series = {k: np.asarray(v) for k, v in buf_a.items()}
-            rm = compute_rep_metrics(exercise, rep, ts, series)
-            if rules is not None:
-                rm.faults = [f.as_dict() for f in rules.evaluate(rm, context=context)]
-            reps.append(rm)
-            emit("rep", rep.t_end, **rm.as_payload())
-            for f in rm.faults:
-                emit("fault", rep.t_end, rep_id=rm.rep_id, **f)
-
-    def reset_pose_state() -> None:
-        nonlocal seg, last_angles, gap
-        seg = new_segmenter()
-        last_angles, gap = None, 0
-        buf_t.clear()
-        for v in buf_a.values():
-            v.clear()
-        smooth.clear()
-
     for s in imu.iter_samples():
-        imu_t.append(s.t)
-        imu_acc.append((s.ax, s.ay, s.az))
-        new_state = gate.update(s)
-        if new_state != gate_state:
-            gate_state = new_state
-            if gate_state:
-                seg_start = s.t
-                emit("gate_open", s.t)
-            else:
-                gated_segments.append((seg_start if seg_start is not None else s.t, s.t))
-                emit("gate_close", s.t)
-                reset_pose_state()
+        pipe.on_imu(s)
         while pending is not None and pending.t <= s.t:
-            log.frame(pending.t, gate_state, gate_state)
-            if gate_state:
-                process_frame(pending)
+            pipe.on_frame(pending)
             pending = next(frame_iter, None)
     imu.close()
-    if gate_state and seg_start is not None:
-        gated_segments.append((seg_start, imu_t[-1] if imu_t else seg_start))
     # trailing frames after the last IMU sample are skipped (no gate information)
     while pending is not None:
-        log.frame(pending.t, False, False)
+        pipe.skip_frame(pending.t)
         pending = next(frame_iter, None)
-
-    imu_reps = _imu_reps(np.asarray(imu_t), np.asarray(imu_acc), gated_segments)
-    fused = _fuse(reps, imu_reps)
-    summary = {
-        "exercise": exercise,
-        "gate": gate.name,
-        "reps": len(reps),
-        "reps_pose": len(reps),
-        "reps_imu": len(imu_reps),
-        "reps_fused": fused,
-        "faults": sum(len(r.faults) for r in reps),
-        "frames_total": log.frames_total,
-        "frames_processed": log.frames_processed,
-        "frames_processed_pct": round(100.0 * log.frames_processed / max(log.frames_total, 1), 1),
-        "frames_bridged": counts["bridged"],
-        "frames_invalid": counts["invalid"],
-        "gated_seconds": round(sum(b - a for a, b in gated_segments), 2),
-        "imu_seconds": round((imu_t[-1] - imu_t[0]) if len(imu_t) > 1 else 0.0, 2),
-    }
-    return PipelineResult(log.events, log.frames_total, log.frames_processed, reps, summary)
+    return pipe.finish()
 
 
 def _imu_reps(t: np.ndarray, acc: np.ndarray, segments: list[tuple[float, float]]) -> list:

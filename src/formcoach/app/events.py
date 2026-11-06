@@ -21,14 +21,19 @@ class EventLog:
     def __init__(self) -> None:
         self.events: list[Event] = []
         self.frames: list[tuple[float, bool, bool]] = []  # t, processed, gate_state
+        self._extras: list[dict[str, float]] = []  # per-frame diagnostics, parallel to frames
 
     def event(self, kind: str, t: float, **payload) -> Event:
         e = Event(kind, float(t), payload)
         self.events.append(e)
         return e
 
-    def frame(self, t: float, processed: bool, gate_state: bool) -> None:
+    def frame(self, t: float, processed: bool, gate_state: bool, **extra: float) -> None:
+        """Log one frame. ``extra`` (live mode: segmenter input, thresholds, visibility) becomes
+        extra ``frames.parquet`` columns, NaN on frames that gave none; with no extras at all
+        (replay) the file keeps exactly ``t, processed, gate_state``."""
         self.frames.append((float(t), bool(processed), bool(gate_state)))
+        self._extras.append(extra)
 
     @property
     def frames_total(self) -> int:
@@ -51,6 +56,8 @@ class EventLog:
         )
         ev.to_parquet(out_dir / "events.parquet", index=False)
         fr = pd.DataFrame(self.frames, columns=["t", "processed", "gate_state"])
+        for key in sorted({k for e in self._extras for k in e}):
+            fr[key] = pd.Series([e.get(key, float("nan")) for e in self._extras], dtype="float64")
         fr.to_parquet(out_dir / "frames.parquet", index=False)
         (out_dir / "session.json").write_text(
             json.dumps(summary, indent=2, default=_json_default), encoding="utf-8"

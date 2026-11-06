@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import builtins
+import importlib.util
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 
@@ -38,9 +43,71 @@ def test_missing_model_file_gives_download_hint(tmp_path, monkeypatch):
         landmarker.model_path("lite")
 
 
+def test_real_landmarker_starts_on_this_machine():
+    """The real MediaPipe graph starts and runs one frame. mediapipe 1.0.1 aborted here on Apple
+    Silicon (ADR-0027); the abort is a C++ crash, not an exception, hence the subprocess.
+    Skipped without the ``vision`` extra or the Lite model (CI has neither)."""
+    if importlib.util.find_spec("mediapipe") is None:
+        pytest.skip("needs `uv sync --extra vision`")
+    if not (landmarker.MODELS_DIR / "pose_landmarker_lite.task").exists():
+        pytest.skip("needs models/pose_landmarker_lite.task")
+    code = (
+        "import numpy as np\n"
+        "from formcoach.pose.landmarker import make_landmarker\n"
+        "img, world = make_landmarker('lite')(np.zeros((480, 640, 3), np.uint8), 0)\n"
+        "assert img is None and world is None\n"
+        "print('ok')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and "ok" in r.stdout, r.stderr[-2000:]
+
+
 def test_extract_video_missing_video_or_extra(tmp_path):
     with pytest.raises((FileNotFoundError, ImportError)):
         landmarker.extract_video(tmp_path / "nope.mp4")
+
+
+def _fake_import_raising(name_to_fail: str, message: str):
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == name_to_fail:
+            raise ImportError(message)
+        return real_import(name, *args, **kwargs)
+
+    return fake_import
+
+
+def test_make_landmarker_import_error_keeps_the_real_cause(monkeypatch):
+    """A WSL2 ``libGL`` failure importing mediapipe must not be hidden behind the install hint
+    alone (it already ran ``uv sync --extra vision``)."""
+    monkeypatch.setattr(
+        builtins,
+        "__import__",
+        _fake_import_raising(
+            "mediapipe", "libGL.so.1: cannot open shared object file: No such file or directory"
+        ),
+    )
+    with pytest.raises(ImportError) as exc_info:
+        landmarker.make_landmarker("lite")
+    msg = str(exc_info.value)
+    assert "uv sync --extra vision" in msg
+    assert "libGL.so.1: cannot open shared object file" in msg
+
+
+def test_open_video_import_error_keeps_the_real_cause(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        builtins,
+        "__import__",
+        _fake_import_raising(
+            "cv2", "libGL.so.1: cannot open shared object file: No such file or directory"
+        ),
+    )
+    with pytest.raises(ImportError) as exc_info:
+        next(landmarker.open_video(tmp_path / "nope.mp4"))
+    msg = str(exc_info.value)
+    assert "uv sync --extra vision" in msg
+    assert "libGL.so.1: cannot open shared object file" in msg
 
 
 def test_pose_extract_cli_fails_cleanly_without_video():

@@ -2,8 +2,10 @@
 
 Notifications on the IMU characteristic carry 5-sample batches (``protocol.unpack_batch``);
 :class:`BatchDecoder` turns them into SI samples with drop accounting and is unit-tested with
-fake packets. :class:`BLESource` runs bleak's asyncio loop in a background thread, reconnects
-with backoff, and exposes the same ``iter_samples()`` / ``send()`` as the serial source.
+fake packets. :class:`BLESource` runs bleak's asyncio loop in a background thread: it scans for
+the wearable in ``scan_round_s`` second rounds with no backoff (:meth:`BLESource._find`), then
+reconnects with backoff on connection errors, and exposes the same ``iter_samples()`` /
+``send()`` as the serial source.
 """
 
 from __future__ import annotations
@@ -42,7 +44,9 @@ def _bleak():
     try:
         import bleak
     except ImportError as exc:
-        raise ImportError("BLE input needs bleak: `uv sync --extra device`") from exc
+        raise ImportError(
+            f"BLE input needs bleak: `uv sync --extra device` (import failed: {exc})"
+        ) from exc
     return bleak
 
 
@@ -53,13 +57,13 @@ class BLESource:
         self,
         name_prefix: str = protocol.DEVICE_NAME_PREFIX,
         address: str | None = None,
-        scan_timeout: float = 10.0,
+        scan_round_s: float = 2.0,
         queue_size: int = 5000,
     ):
         self.bleak = _bleak()
         self.name_prefix = name_prefix
         self.address = address
-        self.scan_timeout = scan_timeout
+        self.scan_round_s = scan_round_s
         self.decoder = BatchDecoder()
         self.q: queue.Queue[SISample | None] = queue.Queue(maxsize=queue_size)
         self.cmd_q: queue.Queue[protocol.Command] = queue.Queue()
@@ -82,17 +86,37 @@ class BLESource:
         asyncio.run(self._main())
 
     async def _find(self):
+        """Return what ``BleakClient`` should connect to: the given ``address`` unchanged, or a
+        scanned ``BLEDevice`` (so the client skips its own re-scan).
+
+        Scans in ``scan_round_s`` second rounds via ``BleakScanner.find_device_by_filter`` until
+        a device whose name starts with ``name_prefix`` turns up or ``_stop`` is set. There is no
+        backoff between rounds, so a wearable that is switched back on is found within one round
+        instead of waiting out a long fixed scan timeout.
+        """
         bleak = self.bleak
         if self.address:
             return self.address
-        devices = await bleak.BleakScanner.discover(timeout=self.scan_timeout)
-        for d in devices:
-            if d.name and d.name.startswith(self.name_prefix):
-                self.device_name = d.name
-                return d.address
-        raise RuntimeError(
-            f"no {self.name_prefix}* device found in {self.scan_timeout:.0f} s; is the wearable on?"
-        )
+
+        def _matches(device, _adv) -> bool:
+            return bool(device.name and device.name.startswith(self.name_prefix))
+
+        print(f"# ble: scanning for {self.name_prefix}* ({self.scan_round_s:.0f} s rounds)...")
+        rounds = 0
+        while not self._stop.is_set():
+            device = await bleak.BleakScanner.find_device_by_filter(
+                _matches, timeout=self.scan_round_s
+            )
+            if device is not None:
+                self.device_name = device.name
+                return device
+            rounds += 1
+            if rounds % 5 == 0:  # every ~10 s with the default rounds; stay quiet in between
+                print(
+                    f"# ble: no {self.name_prefix}* device found yet "
+                    f"({rounds * self.scan_round_s:.0f} s); is the wearable switched on?"
+                )
+        raise RuntimeError("stopped")
 
     async def _main(self) -> None:
         import asyncio
@@ -101,8 +125,10 @@ class BLESource:
         backoff = 1.0
         while not self._stop.is_set():
             try:
-                address = await self._find()
-                async with bleak.BleakClient(address) as client:
+                # a given address (str) or a scanned BLEDevice: BleakClient accepts either and,
+                # given the BLEDevice, skips its own re-scan.
+                target = await self._find()
+                async with bleak.BleakClient(target) as client:
                     backoff = 1.0
 
                     def on_imu(_h, data: bytearray) -> None:

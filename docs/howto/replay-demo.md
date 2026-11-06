@@ -1,7 +1,7 @@
 # How to: run and extend the replay demo (pose → reps pipeline, no hardware)
 
 **Owner:** Rochelle Reyes (pose, angles, reps) · Bryce Hall (app, demo) · **Built by:** Claude Code with Robert on 2026-09-24 · **PR:** #5
-**Checkpoint:** 3 (`docs/00-START-HERE.md`) · **State:** works on the committed 30 s MM-Fit fixture; webcam/MediaPipe path written but not run (no `vision` extra installed here)
+**Checkpoint:** 3 (`docs/00-START-HERE.md`) · **State:** works on the committed 30 s MM-Fit fixture; the webcam/MediaPipe path now runs live — see `docs/howto/live-demo.md`
 
 ## 1. Run it (verified 2026-09-24 on Linux/WSL2)
 
@@ -81,10 +81,10 @@ adaptive constants, rerun `make demo` and check `expected 10` still holds.
 
 ## 5. Could not verify / open questions
 
-- MediaPipe path (`pose extract`, `Overlay`) is written against the MediaPipe Tasks API
-  (`PoseLandmarker`, VIDEO mode) but **not executed**: the `vision` extra is not installed
-  here and no MM-Fit video was downloaded (w00_rgb.mp4 is 2.17 GB). First run: `uv sync
-  --extra vision`, download the `.task` file the command prints, then run on any webcam clip.
+- MediaPipe path (`pose extract`, the live webcam demo) now runs on this machine (`uv sync
+  --extra vision`, model fetched). For the live loop, window, per-arm counting and the optional
+  wearable, see `docs/howto/live-demo.md` — it has not yet been run on a real webcam or a real
+  person (see that doc's §5).
 - Absolute angle thresholds in docs/02 §7 do not match MM-Fit's lifted 3-D pose; rules in
   PR 5 must be calibrated per pose source (the report will say which source it used).
 - The IMU peak counter over-counts inside a 30 s clip that includes non-curl movement

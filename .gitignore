@@ -20,6 +20,7 @@ data/processed/*
 !data/processed/.gitkeep
 data/team/*
 !data/team/.gitkeep
+runs/
 *.mp4
 *.npy
 *.mat

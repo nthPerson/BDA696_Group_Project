@@ -16,6 +16,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from formcoach import __version__
 
@@ -60,6 +61,11 @@ class Source(StrEnum):
     serial = "serial"
     ble = "ble"
     fake = "fake"  # software wearable for dry runs and tests (io/fake.py)
+
+
+class Board(StrEnum):
+    ble = "ble"
+    serial = "serial"
 
 
 class Gate(StrEnum):
@@ -232,6 +238,24 @@ def pose_extract(
         console.print(f"[bold red]{exc}[/]")
         raise typer.Exit(2) from exc
     console.print(f"[green]wrote[/] {path}")
+
+
+@pose_app.command("fetch-model")
+def pose_fetch_model(
+    model: Annotated[str, typer.Option(help="lite | full | heavy")] = "lite",
+) -> None:
+    """Download the MediaPipe pose model into models/ (skipped when it is already there).
+
+    Needed once before `demo --camera N` (`make setup-live` runs it for you).
+    """
+    from formcoach.pose import landmarker
+
+    try:
+        path = landmarker.fetch_model(model)
+    except (OSError, RuntimeError, ValueError, ImportError) as exc:
+        console.print(f"[bold red]{escape(str(exc))}[/]")
+        raise typer.Exit(2) from exc
+    console.print(f"[green]pose model ready[/] {path}")
 
 
 # ---- train -----------------------------------------------------------------------------------
@@ -521,19 +545,84 @@ def demo(
     out: Annotated[Path | None, typer.Option(help="Write events/frames/session.json here.")] = None,
     speed: Annotated[float, typer.Option(help="Replay pacing: 0 = fastest, 1 = real time.")] = 0.0,
     rules: Annotated[
-        Path | None, typer.Option(help="rules.yaml override (default packaged v1)")
+        Path | None,
+        typer.Option(
+            help="Rules file override (default: rules.yaml for replay, "
+            "rules.mediapipe-webcam.yaml for --camera/--video)."
+        ),
     ] = None,
+    camera: Annotated[
+        int | None,
+        typer.Option(help="Live coaching from this webcam index (try 0, then 1, 2 ...)."),
+    ] = None,
+    video: Annotated[
+        Path | None, typer.Option(help="Live coaching from a video file instead of a webcam.")
+    ] = None,
+    board: Annotated[
+        Board | None, typer.Option(help="With --camera: also follow the wearable (ble | serial).")
+    ] = None,
+    model: Annotated[str, typer.Option(help="Pose model for live mode: lite | full | heavy.")] = (
+        "lite"
+    ),
+    no_log: Annotated[
+        bool, typer.Option("--no-log", help="Live mode: do not write a session log.")
+    ] = False,
 ) -> None:
     """Run the full pipeline: IMU source -> gate -> pose -> reps -> rules -> overlay.
 
     `--source replay` needs no hardware and must always work; it is the demo of record.
+
+    `--camera N` (or `--video FILE`) is the live demo: one window with your skeleton, a rep
+    counter per arm, elbow angles and a coaching banner after every rep. Both arms, alternating
+    arms or one arm at a time are counted automatically; add `--board ble` to gate it with the
+    wearable. Each run is logged to runs/live/<timestamp>/ unless you pass `--no-log`.
     """
+    if camera is not None or video is not None:
+        if source is not Source.replay:
+            console.print(
+                f"[bold red]--source {source.value} does not combine with --camera/--video; "
+                "use --board ble|serial with --camera[/]"
+            )
+            raise typer.Exit(2)
+        if no_log and out is not None:
+            console.print("[bold red]--out and --no-log contradict each other; pick one[/]")
+            raise typer.Exit(2)
+        if camera is not None and video is not None:
+            console.print("[bold red]pass --camera (a webcam) or --video (a file), not both[/]")
+            raise typer.Exit(2)
+        replay_only = [
+            flag
+            for flag, used in (
+                ("--session", session is not None),
+                ("--gate", gate is not Gate.always_on),
+                ("--speed", speed != 0.0),
+            )
+            if used
+        ]
+        if replay_only:
+            console.print(
+                f"[bold red]{', '.join(replay_only)} only apply to --source replay; the live demo "
+                "uses the wearable's own gate when you pass --board[/]"
+            )
+            raise typer.Exit(2)
+        if port is not None and board is None:
+            console.print("[bold red]--port needs --board ble|serial (it names the wearable)[/]")
+            raise typer.Exit(2)
+        _demo_live(
+            camera=camera, video=video, board=board, port=port, exercise=exercise or "curl",
+            model=model, rules=rules, headless=headless, out=out, no_log=no_log,
+        )  # fmt: skip
+        return
+    if board is not None or no_log or model != "lite":
+        console.print("[bold red]--board, --model and --no-log need --camera or --video[/]")
+        raise typer.Exit(2)
     if source is not Source.replay:
         stub(
             f"demo --source {source.value}",
             4,
             f"stream from {source.value}{f' on {port}' if port else ''} through gate={gate.value}"
-            " (Checkpoint 4 wires the serial/BLE sources).",
+            " (Checkpoint 4 wires the serial/BLE sources)."
+            " For live webcam coaching use: formcoach demo --camera N --board ble.",
         )
         return
     from formcoach.app import pipeline
@@ -574,6 +663,93 @@ def demo(
     )
     if out:
         console.print(f"wrote {out}/events.parquet frames.parquet session.json")
+
+
+def _live_metric_text(exercise: str, metrics: dict) -> str:
+    """The one-line range summary for a ``rep`` line, by exercise (degrees)."""
+    if exercise == "squat":
+        return f"knee min {metrics['knee_min']:.0f} deg"
+    if exercise == "raise":
+        return f"abduction peak {metrics['abd_peak']:.0f} deg"
+    return f"elbow {metrics['elbow_min']:.0f}-{metrics['elbow_max']:.0f} deg"
+
+
+def _live_event_printer(exercise: str):
+    """``on_event`` callback for the live demo: rep, fault and gate lines, one per event."""
+
+    def show(e) -> None:
+        arm = e.payload.get("arm")
+        prefix = f"{arm.upper()} " if arm else ""
+        if e.kind == "rep":
+            p = e.payload
+            console.print(
+                f"[green]{prefix}rep {p['rep_id'] + 1}[/]  t={e.t:.1f}s  dur={p['duration_s']:.1f}s"
+                f"  {_live_metric_text(exercise, p['metrics'])}",
+                highlight=False,
+            )
+        elif e.kind == "fault":
+            console.print(
+                f"[red]{prefix}{e.payload.get('code')}[/]: {escape(e.payload.get('message', ''))}",
+                highlight=False,
+            )
+        elif e.kind in ("gate_open", "gate_close"):
+            console.print(f"[cyan]{e.kind}[/] t={e.t:.1f}s")
+
+    return show
+
+
+def _demo_live(
+    *,
+    camera: int | None,
+    video: Path | None,
+    board: Board | None,
+    port: str | None,
+    exercise: str,
+    model: str,
+    rules: Path | None,
+    headless: bool,
+    out: Path | None,
+    no_log: bool,
+) -> None:
+    """The live branch of ``demo``: pick the log directory, run, print where the log went."""
+    from datetime import datetime
+
+    from formcoach.app import live
+
+    if no_log:
+        out_dir = None
+    elif out is not None:
+        out_dir = out
+    else:
+        out_dir = Path("runs") / "live" / datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    where = f"video {video}" if video is not None else f"camera {camera}"
+    quit_hint = "" if headless else "  (press q or Esc in the window to stop)"
+    console.print(f"live demo: {where}, exercise={exercise}{quit_hint}", highlight=False)
+    if board is not None:
+        status_where = "its status prints below" if headless else "the window shows its status"
+        console.print(f"looking for the wearable over {board.value}; {status_where}")
+    try:
+        live.run_live_demo(
+            camera=camera,
+            video=video,
+            board=board.value if board is not None else None,
+            port=port,
+            exercise=exercise,
+            model=model,
+            rules=rules,
+            headless=headless,
+            out_dir=out_dir,
+            say=lambda line: console.print(escape(line), highlight=False),
+            on_event=_live_event_printer(exercise),
+        )
+    except (FileNotFoundError, ImportError, OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[bold red]{escape(str(exc))}[/]")
+        if out_dir is not None and (out_dir / "session.json").exists():
+            console.print(f"wrote {out_dir}/events.parquet frames.parquet session.json")
+        raise typer.Exit(2) from exc
+    if out_dir is not None:
+        console.print(f"wrote {out_dir}/events.parquet frames.parquet session.json")
 
 
 def _open_source(source: Source, port: str | None, duration: float):

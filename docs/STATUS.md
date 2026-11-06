@@ -9,6 +9,308 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-11-04 — Live webcam rules: provisional MediaPipe thresholds for curl (Claude Code with Christian)
+
+### What changed
+- Christian's first real webcam curl runs scored 0 good reps out of 54 (`CURL_PARTIAL_ROM` 51,
+  `CURL_SWING` 51). New packaged `src/formcoach/rules/rules.mediapipe-webcam.yaml` (ADR-0033): a
+  copy of `rules.yaml` with `CURL_PARTIAL_ROM` at `elbow_min > 103.869` / `elbow_max < 128.079`
+  (the MM-Fit-calibrated values) and `CURL_SWING` at `> 35°` / `> 0.30` (round 1; revised after the
+  first labeled test, see below). `formcoach demo
+  --camera/--video` uses it by default; `--rules` overrides; replay still uses `rules.yaml`.
+  `session.json` records which file judged the run (`rules`).
+- Tests: `tests/test_rules.py` (the file differs from the defaults in exactly those two rules;
+  webcam-range and swinging reps against both files), `tests/test_live.py` (default file and the
+  `rules` key; a 88-150° curl is good under the webcam rules and flagged by the defaults; a
+  barely-bending curl is still flagged).
+- `docs/howto/live-demo.md` and `docs/02` §7 point at the new file.
+
+### Verified
+- Against the 54 logged reps: `CURL_PARTIAL_ROM` 51 → 8 flagged, `CURL_SWING` 51 → 17 flagged,
+  good reps 0 → 28 (before two-arm asymmetry). **This is by construction** (the swing threshold is
+  the ~70th percentile of the same reps), so it shows the thresholds are in range, not that they
+  are right.
+- `ruff check` and `ruff format --check` clean; **370 passed, 1 skipped** (TensorFlow not
+  installed; 361 before this entry). Mutation check: replacing the webcam file with the defaults
+  fails 4 tests, and making the live demo ignore the file fails the default-file test.
+- Replay is unchanged: no diff in `tests/golden/` or `reports/`, and `rules.yaml` is untouched.
+
+### Christian's test of the new rules (reported 2026-11-04)
+Christian: he ran it once for both the strict and the swingy test, "it works better", but "the
+media pipe outline is kinda shaky". He gave no counts; these are read from
+`runs/live/20261104-221325/session.json` (curl, `rules.mediapipe-webcam.yaml`, `lite`, 141 s,
+29.6 fps mean): **L 16 reps (5 good), R 17 reps (6 good)**, `CURL_SWING` 19, `CURL_PARTIAL_ROM` 5,
+`CURL_TOO_FAST` 5, `CURL_ASYMMETRY` 2; earlier runs under the design defaults were 0 good of 54.
+The log does not say which reps were strict and which swingy, so this is **not** the labeled
+check; the 11 good reps sit at 28-34° / 0.19-0.30, right under the 35° / 0.30 swing limits.
+- Shaky skeleton outline: **recorded, not fixed** (Christian: "maybe we can just put it in the
+  comments"). Cause unconfirmed. Known: the HUD draws raw per-frame landmarks, the landmarker is
+  `VIDEO` mode, `lite` is the least stable size. Untested guess: the same noise inflates the
+  drift metrics. Options for later, none done: smooth only what is drawn (cosmetic, replay-safe),
+  try `--model full`, or smooth the angle series before the metrics (changes results, needs its
+  own ADR and a replay check). Owner: Christian/Rochelle to decide. Also in `docs/howto/live-demo.md` §6.
+
+### First labeled test and round-2 numbers (Christian, 2026-11-04)
+Christian ran the two tests I asked for, in order: strict (back and upper arms against a wall)
+= `runs/live/20261104-221856`, then swingy = `222027`, where he did "a mixture of both arms and 1
+arm", so the swing label is per run, not per rep. He also said the first (strict) test "went
+well"; the log agrees on swing. Both runs were judged by `rules.mediapipe-webcam.yaml`.
+- **Strict, 22 reps (L 8, R 14): 15 good.** Left arm 8 of 8 good. Swing clean on 21 of 22 (arm
+  drift 25-33°; the one hit was `elbow_drift_max` 0.31 vs 0.30). The 6 other flags were
+  `CURL_PARTIAL_ROM` on the right arm, `elbow_min` 104-107 vs the 103.869 limit.
+- **Swingy, 9 reps (L 4, R 5): 2 good.** 4 flagged for swing, all right arm, all by arm drift
+  (37-44°); the 4 left-arm reps read 28-33° like strict, but with mixed arms we do not know they
+  were swung, so this is **not** a detection rate. Tempo (`CURL_TOO_FAST`) hit 4 of 9.
+- **Revised (still provisional):** `CURL_PARTIAL_ROM` `elbow_min > 115`, `CURL_SWING`
+  `elbow_drift_max > 0.35`; arm drift 35° and `elbow_max < 128.079` unchanged. They remove exactly
+  the 7 strict misses and keep the earlier barely-bending reps (124, 137) flagged. **Unscored:** set
+  using the same two runs, so they need a new labeled round. Pass criteria: strict (both arms) good
+  with no swing fault; every-rep-swung (both arms) flagged; half-range flagged.
+- Checks that ran: rules file confirmed in both `session.json`; per-arm rep counts read;
+  `CURL_ASYMMETRY` fired 0 times (not tested by this). Did not run: partial-range labels, a
+  per-rep swing label, a held-out strict set.
+
+### Round 3: re-test of the round-2 numbers (Christian, 2026-11-04, three fresh runs, both arms together)
+Order as asked: strict, every-rep-swung, half-range. Christian: "first two went well, last one seemed
+a bit relaxed" (the log cannot say whether that means his half-range curls or the rule). All three
+`session.json` name `rules.mediapipe-webcam.yaml`.
+- **Strict** `20261104-222614`: 16 reps, **16 good**. `upper_arm_trunk_drift` 30-34 (limit 35),
+  `elbow_drift_max` up to 0.31 (limit 0.35), `elbow_min` 88-93. Pass.
+- **Every-rep-swung** `222655`: 16 reps, 1 good, **15 of 16 flagged `CURL_SWING`** (left 7 of 8,
+  right 8 of 8; flagged reps read 37-73°). The unflagged one read 34° / 0.27. Pass.
+- **Half-range** `222733`: 25 reps, 16 good; only **6 of 25 flagged `CURL_PARTIAL_ROM`**
+  (`elbow_min > 115`), plus `CURL_TOO_FAST` on 5. `elbow_min` median 111 (strict 91), but 9 of 25
+  read 106.8 or less, the strict maximum seen. **Inconclusive** for the 115 limit: that set was not
+  clearly half-range, so it is not used to move the limit. Not changed.
+- Margins are thin: strict arm drift tops out at 34 against the 35 limit, and the lowest flagged
+  swung rep is 37. The same strict curl read `elbow_min` 88-93 in one session and 104-107 on the
+  right arm in another, so absolute `elbow_min` limits move with camera setup (one person, one
+  session each).
+- Checks that ran: labeled strict and every-rep-swung sets on fresh runs, rules file confirmed.
+  Did not run: a clean half-range set, a second person, a different camera position.
+
+### Round 4: right-arm solo missed reps (Christian, 2026-11-04) - open
+Christian: "when I did right arm solo, more than half of my reps didn't get registered". He gave no
+count of what he did. From `runs/live/20261104-223036` (104 s, `rules.mediapipe-webcam.yaml`, 29.8 fps,
+3091 frames, `frames_invalid` 27): L 10 reps (4 good), R 8 reps (0 good). Right-arm reps start at
+4.6, 7.5, 10.4, 15.1, 18.1 s, then **none between 18 s and 66 s**, then 66.4, 70.2, 87.9 s; left reps
+run 4.8-48.1 s. The log cannot say which stretches were solo or how many reps he did.
+- Ruled out as the main cause: tracking. `frames_invalid` is 27 of 3091 frames (max over the two
+  arms), so the right arm was visible nearly all the time.
+- Suspect, **unproven**: the adaptive counter (`RepSegmenter`) does not count anything until the last
+  6 s of angle spans `min_range_deg` 25 (10th to 90th percentile). The counted right-arm reps span
+  only 23-52 deg (elbow max minus min; most 31-37), so small or relaxed reps near 25 deg, or one
+  rep after a pause, can be silently ignored. The old log kept no angles, so this could not be checked.
+- **Changed (logging only, no behaviour or threshold change):** live runs now write the counter state
+  per frame to `frames.parquet` (`ang_*`, `enter_*`, `exit_*`, `armed_*`, `vis_l/vis_r`; documented in
+  docs/02 §4.6 and the live-demo howto §6, §9). `RepSegmenter.armed` exposes the flag.
+- Verified: `make lint test` clean, **377 passed, 1 skipped** (TensorFlow not installed) plus the 21
+  viewer tests. New tests in `tests/test_per_arm.py` (columns and values per arm, NaN on gate-closed
+  frames, small vs large movement arms or not, replay-style columns stay `t, processed, gate_state`,
+  `armed` flag) and `tests/test_live.py` (a real `run_live` writes them). Mutation checks: dropping the
+  diagnostics fails 2 tests, logging them for replay-style fails 1, forcing `armed` true fails 3.
+  Replay: `formcoach demo --source replay --headless` on the working tree vs the previous commit
+  (`a295cdf`, detached worktree): `events.parquet` and `frames.parquet` byte-identical, `session.json`
+  differs only in the fixture's absolute path; no change under `tests/golden/` or `reports/`.
+  Real webcam run: Christian reported "appears to be working good. I did one or two good reps just
+  to test" (no counts; a smoke test, **not** the right-arm-solo re-run). The newest log
+  (`20261104-233200`, 66.7 s, 29.8 fps, `rules.mediapipe-webcam.yaml`; L 5 reps, R 11) has more reps
+  than that, so which run he meant is unconfirmed. In it all 12 new columns are present with sensible
+  values (`ang` 92-165 deg, `armed` 0/1, `vis` 0-1). Right arm armed on 61% of frames, left 24%. The
+  right arm was unarmed in three 2.7-6 s stretches (20.5-26.6, 39.0-41.7, 58.9-63.0 s) in which its
+  angle moved 31-36 deg with no rep counted; that fits the suspected cause but **does not prove it**,
+  because we do not know what Christian was doing in them. Not verified: the baseline for the
+  replay comparison is the branch's previous commit, not `origin/main`.
+- **Next, needs Christian:** one right-arm-solo set (and ideally a left-arm one) with this logging,
+  counting your reps out loud or noting the number done. Then read `armed_r`, `vis_r`, `ang_r` for
+  the uncounted stretches. Only if `armed_r` is 0 while curling is `rep_segmentation.min_range_deg` /
+  `window_s` in `rules.mediapipe-webcam.yaml` worth changing (tradeoff: more jitter "reps"), and that
+  needs its own labeled re-test.
+
+### Known, not changed
+- **The webcam curl thresholds are provisional**: swing now passed a fresh labeled test (strict
+  16 of 16 good, swung 15 of 16 flagged) but with thin margins and one person; the range limit is
+  untested (half-range set inconclusive). Needs a clean half-range set (forearm horizontal on
+  every rep, both arms) and more subjects. Owner: Rochelle ratifies or replaces
+  (ADR-0022/0029), with Christian recording the labeled runs.
+- Press, raise and squat still use the design defaults, which will very likely misfire on a webcam
+  the same way (their range rules). No webcam data for them yet. Owner: Christian/Rochelle.
+- Several logged "reps" last 0.5-0.7 s and barely bend the elbow (jitter counted as a rep by the
+  segmenter). Not addressed. Owner: Rochelle.
+- `frames.parquet` of runs recorded before this change stores no angles, so those runs (every one up
+  to and including `20261104-223036`) cannot be re-judged under new thresholds (only the per-rep
+  metrics in `events.parquet` can). `20261104-233200` is the first with the columns. New live runs
+  log the counter state per frame (see "Round 4"). Replay's `frames.parquet` is unchanged.
+- Right-arm-solo missed reps: **open, cause not confirmed** (see "Round 4"). Owner: Christian re-runs;
+  Rochelle decides any `rep_segmentation` change.
+
+## 2026-11-04 — Two fixes from Robert's PR #14 review (Claude Code with Christian)
+
+### What changed
+- **One-arm press no longer flagged `PRESS_ASYMMETRY` on every rep.** The rule compares both arms
+  but had no `requires: two_arm` tag (`CURL_ASYMMETRY` has one). Added it in `rules.yaml` and
+  `rules.mmfit-pose3d.yaml`; `docs/02` §7 now says "two-arm presses only". Replay and
+  `eval rules` already run with `two_arm`, so their output is unchanged.
+- **Two-arm set: both banners and the fault LED survive.** `HudState.banner` is now `banners`
+  (one per counter, own 3 s expiry, drawn stacked L over R). `run_live` sends one LED command per
+  frame (`LED_FAULT` if any rep that frame has a fault) and holds `LED_GOOD_REP` back for 0.8 s
+  after an `LED_FAULT` (`live.FAULT_FLASH_S`, the firmware flash length).
+- Tests: `tests/test_per_arm.py` (one-arm press all good; two-arm press still flagged on both
+  arms), `tests/test_live.py` (left fault + right clean on the same frame, one frame later and one
+  frame earlier; good-rep LED returns after the flash), `tests/test_hud.py` (stacked render).
+  `test_led_commands_follow_rep_quality` now passes `clock=` because the guard is in wall seconds.
+- ADR-0032 in `docs/DECISIONS.md`; `docs/howto/live-demo.md` §8 describes the LED/banner rules.
+
+### Verified
+- Reproduced first: Robert's one-arm press script gave `l`: 12 reps, 0 good, `PRESS_ASYMMETRY` x12.
+  After the rule change the same set is 12 reps, all good, and `PRESS_ASYMMETRY` still fires on both
+  arms when two arms press 170 deg vs 130 deg.
+- `make lint test` green: ruff check and format clean; **361 passed, 1 skipped** (TensorFlow not
+  installed) in pytest, 21/21 in the Node viewer tests. Was 354 passed before this entry (+7 new).
+- Replay is unchanged: `tests/golden/` and `reports/` have no diff, and the golden replay and
+  `test_pipeline_equivalence.py` pass.
+- Mutation check on the new live tests: guard off (`FAULT_FLASH_S = 0`) fails the one-frame-late
+  case; one LED command per rep fails the same-frame and late cases; one shared banner fails all
+  three. The one-arm press test fails (0 good of 12) with the rule line removed.
+- Not run on hardware: the LED flash on a real device, and the stacked banners over a real webcam
+  frame (rendered once from synthetic data only). The `test-vision` CI job still needs the branch pushed.
+
+### Known, not changed
+- Serial reader thread dying silently; `session.json` `reps` counting both arms; the 1 s
+  reach-back applying to live only; the minor review items. Owner: Robert, follow-up PRs (his call
+  in the review: "not needed in this PR").
+- A long wrapped left-arm banner can overlap the bottom of the angle-trace panel when two banners
+  are stacked (readable, not moved). Owner: Christian, to look at on a real webcam frame.
+
+## 2026-11-04 — Pre-PR review fixes on `feat/vision-first-run` (Claude Code with Christian)
+
+### What changed
+A second independent review of the whole branch (after `e85bcce`) found live-only problems that
+replay never reaches; fixed here, each with a regression test (ADR-0031):
+- Two arms curling the same range about two seconds apart no longer get a false `CURL_ASYMMETRY`
+  on one arm (`Pipeline._paired`, in-progress branch).
+- With `--board`, rep numbers keep counting after the gate re-opens (they restarted at 0, so
+  `(arm, rep_id)` repeated in `events.parquet`). Replay keeps its restart: the golden output has it.
+- A live rep with a tracking gap of more than 3 frames inside it is not counted (docs/02 §4.3)
+  instead of being judged on interpolated angles. Replay still interpolates.
+- `--rules` file problems (malformed, or missing the chosen exercise) are a clean exit 2 before
+  the pose model loads, not a `KeyError` after the first rep.
+- Import errors for OpenCV, MediaPipe, bleak and pyserial now include the real cause (e.g. a
+  missing `libGL.so.1` on WSL2) after the install hint.
+- `Pipeline.finish()` can be called twice; an unopenable `--video` leaves no empty session
+  directory; the camera is released before the wearable link shuts down; headless `--board` prints
+  `wearable: <status>` lines; the live CLI rejects `--gate`/`--speed`/`--session`, `--port` without
+  `--board`, and `--camera` with `--video` (they were silently ignored).
+- Tests: the golden replay test does not pin gate cycling or gap bridging (mutating
+  `MAX_GAP_FRAMES` or the reset on gate close still passed it), so `tests/test_per_arm.py` now pins
+  both for the replay-style pipeline; new tests cover `WindowShow` (q, Esc, closed window),
+  `run_live_demo` cleanup on every exit path and the default `BoardLink` clock. CI gets a
+  `test-vision` job (Ubuntu, `--extra vision`) because the existing jobs skip every OpenCV test.
+
+### Verified
+`make lint test` green (354 passed, 1 skipped: TensorFlow not installed). `formcoach demo --source
+replay --headless` compared against `origin/main` (23f192b): `events.parquet` and `frames.parquet`
+byte-identical, `session.json` differs only in the absolute fixture path. The new `test-vision`
+CI job has **not run yet** (needs the branch pushed).
+
+### Known, not changed
+`make live` ignores `POSE_MODEL` (`setup-live` honours it); `run_pipeline(side="l"|"r")` computes
+different metrics from main (no caller passes `side`); live squat has no visibility gating (same
+as main); `Pipeline`'s docstring misses `per_arm`/`max_buffer_frames`/`pad_rep_start_s`;
+`fetch_model` has no integrity check and `landmarker.py`'s header still says `make setup` downloads
+no models. Still needing hardware: on-screen L/R against the physical arm, real MediaPipe
+`visibility` against the 0.5 floor, window close on Windows/Linux, `--board` with real IMU samples.
+
+---
+
+## 2026-11-04 — Live webcam demo (Claude Code with Christian)
+
+### What changed
+- `formcoach demo --camera N` (or `make live CAMERA=N`) is built: one window — mirrored webcam
+  video with the MediaPipe skeleton, a rep counter per arm (good/flagged) with current elbow
+  angles, an angle trace with the rep threshold band, a status pill, and a ~3 s coaching banner
+  after each rep. One command, no `--side` flag: both arms together, alternating, or one arm are
+  each counted and judged per arm automatically; squat keeps one whole-body counter. `--board
+  ble|serial` (+ `--port`) follows the wearable: gate = the device's gate flag AND a sample in
+  the last 2 s, LEDs flash good-rep/fault; no board → gate always open ("webcam only"). Also:
+  `--exercise`, `--video FILE`, `--headless`, `--out DIR`/`--no-log`, `--model lite|full|heavy`,
+  `--rules FILE`. `formcoach pose fetch-model` downloads the pose model; `make setup-live` =
+  `uv sync` with the `vision`+`device` extras + fetch-model.
+- Logging is on by default to `runs/live/<YYYYMMDD-HHMMSS>/` (`events.parquet`, `frames.parquet`,
+  `session.json`; `runs/` is gitignored; no video or camera frames are ever written). `rep`/
+  `fault` events carry an `arm` key (`"l"`/`"r"`/`null`) only in live/per-arm mode — replay events
+  are unchanged and have no `arm` key, read it with `.get("arm")`. `session.json` gains `arms`
+  (per-arm reps/good/flagged/faults_by_code), `live`, `board`, `fps_mean`, `duration_s`, `source`,
+  `model`.
+- Found and fixed (`b07e6d0`): the adaptive `RepSegmenter` ends a rep at the exit threshold, so a
+  rep's `elbow_max` metric was measured near that threshold and `CURL_PARTIAL_ROM` fired on
+  **every** live curl — no rep was ever good. Fixed with `Pipeline(pad_rep_start_s=1.0)` in live
+  mode only (`REP_PAD_S` in `app/live.py`): only the rep's *metrics* window is padded back to the
+  rest position (never into the previous rep); the rep count and `t_start`/`t_end`/`duration_s`
+  are unchanged. Replay keeps `pad_rep_start_s=0`, so its golden output
+  (`tests/golden/replay_mmfit_w00_curls.json`) is byte-identical. Measured on synthetic curls
+  only (ADR-0029) — **not validated on a real webcam clip.**
+- Commits on `feat/vision-first-run` (none pushed, nothing opened as a PR yet): `c1a22c9`
+  mediapipe pin (ADR-0027), `f183d45` golden replay test, `2442c11` camera + model fetch,
+  `5f8ce50` BLE 2 s scan rounds + `BoardLink` (ADR-0030), `46ab462` HUD, `415cf5f` per-arm
+  `Pipeline` (ADR-0028), `34df78b` live loop, `a446dbb` CLI `--camera/--board/--video` + `make
+  live`, `b07e6d0` padded metrics window (ADR-0029), `e85bcce` review fixes; this docs change (`docs/howto/live-demo.md`,
+  README, ADR-0028–0030, this entry) follows as its own commit.
+- An independent `formcoach-reviewer` pass over the whole branch diff found, and `e85bcce` fixes
+  (each with a regression test): an arm that drops out mid-rep stayed "in progress" and made every
+  later rep of the other arm count as a two-arm rep (false `CURL_ASYMMETRY`, `LED_FAULT` instead of
+  good); `session.json` key order differed from main (now byte-identical for both gates, checked
+  with `cmp` against main's code); a failing log write could mask the camera error and skip the
+  totals; the camera could stay open if the board failed to open; `--model huge`, a missing display
+  and live-only flags without `--camera` gave tracebacks or were silently ignored; the BLE "is the
+  wearable on?" hint is back (every 10 s); the model download now times out.
+- Verified this session: `make lint test` green (301 passed, 1 skipped); `formcoach demo
+  --source replay --headless` unchanged (`reps 10 (pose) / 17 (imu) / 10 (fused)`); the live loop
+  runs end to end through the real MediaPipe model on a blank video (no person, 0 reps) and,
+  separately, on synthetic curl frames (8/8 good reps per arm, `arm` key present).
+- Manual test, later the same day (Christian, macOS, `uv run formcoach demo --camera 1`, no
+  `--board`): he ran it on a real webcam with a real person and reports it works. **No rep
+  counts, flagged reps or fps were recorded**, so this is a smoke test, not a measurement.
+- Wearable, same day (Christian's board, USB serial `28:84:85:B3:90:EC`): built and flashed fw
+  1.1.1 (`make fw-upload`); it advertises as `FormCoach-8428` and the web BLE viewer connects, but
+  the boot banner says `bmi160 NOT FOUND at 0x00` (no I2C reply at 0x68 or 0x69), so the firmware
+  sends no samples and the demo's pill says `looking for board...`. The cause is **not known**
+  (wiring, a solder joint, no 3V3 at the module, or a bad module); not metered, module not
+  swapped. The slide switch is not involved (the IMU is on the 3V3 pin). `--board ble|serial` has
+  therefore never run with real samples. No `docs/devices.md` row yet.
+
+### Next
+1. Christian: repeat the webcam test with the design spec §9 checklist and record the numbers
+   here: `uv run formcoach demo --camera 1` with both arms together, alternating, and one arm.
+   Then `--board ble` once a board with a working IMU exists.
+1a. Whoever has the bench: find why Christian's board reports `bmi160 NOT FOUND` (swap SDA/SCL
+   first, then meter 3.3 V at the module, then try another module; `docs/assembly-day.md`).
+   After a fix, reset the board, read the boot banner, then `make device-check PORT=... KIT=...`
+   and add its `docs/devices.md` row.
+2. A teammate on a fresh clone: `make setup-live` then `make live CAMERA=1`.
+3. Christian films a front-view clip (about 10 clean and 10 sloppy curls; both arms, alternating,
+   one arm; saved under `data/team/`, never pushed) so Rochelle can ratify the webcam thresholds.
+   **Bryce and Rochelle: read `docs/howto/live-demo.md` first.**
+
+### Open questions
+- Counter/rules comparison on a real clip — none exists yet.
+- Whether the padded metrics window should become the default for replay too (would change the
+  goldens and ADR-0022's evidence) — not done.
+- Whether to push / open PRs — the mediapipe pin commit `c1a22c9` was meant to be its own PR.
+- **Robert:** the BLE name `FormCoach-XXXX` is built from `ESP.getEfuseMac() & 0xFFFF`, which is
+  the *first* two MAC bytes (`28:84` → `8428`). K1 (`28:84:85:B3:8F:05`) and Christian's board
+  (`28:84:85:B3:90:EC`) both advertise `FormCoach-8428`, so kits from one batch can't be told
+  apart in the BLE chooser. Not changed here; `firmware/src/app/main.cpp` `deviceName()` and the
+  docs that say "low 16 bits of the MAC" are yours to decide.
+- `BoardLink` swallows every exception in its reader thread, so a reader that has died shows the
+  same `looking for board...` as a board that isn't there. Not fixed.
+
+### Blockers
+- Christian's board has no IMU detected (above), so the wearable path can't be tested end to end
+  from his machine. The webcam-only demo is not blocked.
+
+---
+
 ## 2026-10-28 — BMI160 fix merged, firmware 1.1.1 (Claude Code with Robert)
 
 ### What changed
@@ -34,6 +336,38 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ### Open questions
 - None new.
+
+### Blockers
+- None.
+
+---
+
+## 2026-10-21 — First real MediaPipe run; mediapipe 1.1.1 (Claude Code with Christian)
+
+### What changed
+- Branch `feat/vision-first-run`. The team connected a wired board (chips, no case) to the GitHub
+  Pages BLE viewer; the traces follow motion. Bench checks (|a| ≈ 1 g, GATE on curls) in progress.
+- MediaPipe ran for the first time, on Christian's Mac: `uv sync --extra vision --extra device`,
+  `models/pose_landmarker_lite.task` downloaded. The locked mediapipe 1.0.1 aborted at graph start
+  on Apple Silicon; 1.1.1 runs (221 fps Lite on a still). `pyproject.toml` excludes 1.0.x;
+  `uv.lock` → 1.1.1 (ADR-0027).
+- `tests/test_landmarker.py::test_real_landmarker_starts_on_this_machine` starts the real graph in
+  a subprocess (skips without the extra or the model, so not in CI).
+- Verified on a sample photo: `formcoach pose extract` wrote 60/60 valid `mediapipe33` frames and
+  `joint_angles` gave plausible degrees (seated, arms straight: elbows 143–150°).
+
+### Next
+1. Christian: film ~10 clean curls, ~10 sloppy curls, ~10 squats (front view, whole body) on the
+   Mac; keep the video under `data/team/` (never pushed). Then `pose extract` → replay through the
+   pipeline: reps vs truth, which rules fire clean vs sloppy.
+2. With the board strapped on and powered from USB: `formcoach record --source ble` alongside the
+   video (first hardware run of that command), then the paired replay.
+3. Design doc for the live path (`demo --source webcam|ble`, `Pipeline.on_imu/on_frame`).
+4. Rochelle: read ADR-0027 and `src/formcoach/pose/landmarker.py`; the vision path is now runnable.
+
+### Open questions
+- Does anyone on the team have an Intel Mac? mediapipe ≥ 0.10.30 has no x86_64 macOS wheel.
+- 1.1.1 on WSL2/Linux and Windows not yet installed (verify).
 
 ### Blockers
 - None.

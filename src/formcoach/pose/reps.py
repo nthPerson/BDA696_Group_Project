@@ -70,12 +70,18 @@ class RepSegmenter:
         self._hist_t: list[float] = []
         self._hist_v: list[float] = []
         self.active = False
+        self.armed = not adaptive  # adaptive thresholds ready (range >= min_range)?
         self.i = -1
         self.n_reps = 0
         self._last_rest_i = 0
         self._last_rest_t = 0.0
         self._ext_v = np.inf
         self._ext_t = 0.0
+
+    @property
+    def rep_start_t(self) -> float | None:
+        """Start time (s) of the rep currently in progress, or ``None`` while at rest."""
+        return self._last_rest_t if self.active else None
 
     def _adapt(self, t: float, v: float) -> bool:
         """Update thresholds from the recent window; False while the range is too small."""
@@ -99,10 +105,12 @@ class RepSegmenter:
         if not np.isfinite(angle):
             return None
         v = self.sign * angle  # rep = v drops below enter, ends when v rises above exit
-        if self.adaptive and not self._adapt(t, v):
-            self._last_rest_i, self._last_rest_t = self.i, t
-            self.active = False
-            return None
+        if self.adaptive:
+            self.armed = self._adapt(t, v)
+            if not self.armed:
+                self._last_rest_i, self._last_rest_t = self.i, t
+                self.active = False
+                return None
         if not self.active:
             if v >= self.exit:
                 self._last_rest_i, self._last_rest_t = self.i, t

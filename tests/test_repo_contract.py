@@ -73,5 +73,7 @@ def test_no_video_or_raw_data_is_tracked():
         and ".venv" not in p.parts
         and ".pio" not in p.parts
         and not p.as_posix().startswith((ROOT / "data").as_posix())
+        # runs/ is gitignored scratch (demo --out, live session logs under runs/live/)
+        and not p.as_posix().startswith((ROOT / "runs").as_posix())
     ]
     assert not bad, bad
