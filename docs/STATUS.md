@@ -9,6 +9,60 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-11-12 — First Draft of the paper written (Claude Code with Robert)
+
+### What changed
+- `docs/report/draft.md`: the **First Draft** in full paragraphs, following the approved outline and
+  the Canvas "First Draft" guidelines (title block, abstract + keywords, 12 sections, 11 tables,
+  5 figures). Every number is copied from a file under `reports/` or `reports/logs/`; the active
+  recall and false-open columns of Table 4 are computed from the pooled confusion matrices in the
+  5-fold reports. Measurements that do not exist are marked `[TBD]`, not estimated.
+- `docs/report/figures/architecture.png`, drawn by `docs/report/figures/make_architecture.py`
+  (Figure 4). The other figures are the PNGs already under `reports/figures/`.
+- `docs/report/outline.md`: header table and Working Abstract replaced with the wording of the PDF
+  submitted on Canvas (alternative title, group name, author list, abstract). Sections 1-13 had no
+  content differences from the PDF.
+- `docs/05-roadmap.md`: First Draft row and checkbox.
+
+### What the draft says that the team should know
+- Reported as done: data pipeline, EDA from the profile report, gate comparison (energy / RF / CNN /
+  int8), RF on all three datasets and RecoFit → MM-Fit transfer, rep counting (peaks vs pose), rules
+  under design thresholds, gating on the 30 s fixture, on-device metrics, four kits' self-tests.
+- Marked `[TBD]`: team recordings and transfer, gating on full sessions with the device gate and
+  real pose inference, rule rates under the calibrated thresholds, latency, battery, pose-model
+  ablation, CNN on the exercise task, Optuna tuning and ablations, three planned EDA figures.
+- The draft cites the K2-K4 self-test logs of 2026-10-28, which are still **untracked** in
+  Robert's working tree (`reports/logs/K{2,3,4}_20261028-*`), and `docs/devices.md` has no K2-K4
+  rows. Commit the logs and fill the rows, or the "four kits" sentence in Section 7.6 is not
+  traceable from a clone.
+
+### Next
+1. Robert: fill the `[TODO]`s (SDSU emails, course title, instructor) and decide whether the course
+   needs a statement on AI-assisted development.
+2. **Ruby, Rochelle, Bryce: write your own bullet in Section 10 (Team Contributions)** with what you
+   have completed; Christian and Robert check theirs. Everyone: read the sections the outline
+   assigned to you.
+3. This weekend's measurements, in the order they change the paper: pilot the recording protocol and
+   record (Table 10), `eval rules --rules src/formcoach/rules/rules.mmfit-pose3d.yaml` (Table 7),
+   gating on full sessions (Table 8). Then update the numbers in the draft from the new reports.
+4. Export to PDF for Canvas. `pandoc` is not installed on Robert's WSL machine; the outline went
+   through Word. Figures are linked by relative path and must be inserted by hand in Word.
+
+### Open questions
+- First Draft due date (blank in `docs/05-roadmap.md` §1).
+- The ~Nov 3 go/no-go on the vision path has no recorded decision. The draft treats the vision
+  path as in scope.
+- `formcoach eval rules --rules <file>` writes to the same `reports/rules_validation.md` as the
+  design-default run, so evaluating the calibrated file overwrites the table the draft cites.
+  It needs a per-rules-file output name before both can be reported side by side.
+- `origin/docs/report-outline` (Ruby's copy of the submitted outline, commit `d1fc7a5`) is unmerged
+  and now superseded by the outline update here. Delete the branch or keep it: Robert's call.
+
+### Blockers
+- None.
+
+---
+
 ## 2026-11-05 — Recording protocol written; PR #14 re-checked (Claude Code with Robert)
 
 ### What changed

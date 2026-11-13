@@ -1,43 +1,41 @@
 <!--
-Team notes (not part of the submission; dropped when exported to PDF):
-- Source of requirements: Canvas "Final Project Paper Outline" + the 2026-10-14 lecture. Where they
-  differ we follow the lecture: technical/professional style, one bullet per member in Team
-  Contributions, APA or MLA, public GitHub link in the appendix, section structure is ours to choose.
-- Due Wed 2026-10-28, 11:59 pm PT, one PDF on Canvas, submitted by the group leader (Robert).
-- Fill every [TODO] before export. Numbers in the "Progress to date" box come from reports/ and
-  must be re-checked against the regenerated files on the day of submission.
-- Export: `pandoc docs/report/outline.md -o outline.pdf` (or print from GitHub's rendered view).
+Team notes (not part of the submission):
+- This is the outline AS SUBMITTED on Canvas (PDF "BDA696_outline_submission", due 2026-10-28).
+  The header table and the Working Abstract below are the submitted wording, kept verbatim; do
+  not "fix" them here. Sections 1-13 were read against the PDF on 2026-11-12 and no difference in
+  content was found.
+- The outline is frozen. The paper continues in docs/report/draft.md (First Draft).
 -->
 
 # FormCoach: Wrist-IMU-Gated Pose Estimation for Per-Repetition Exercise Form Feedback
 
-*Final Project Paper Outline — working draft*
+*Final Project Paper Outline (as submitted)*
 
 | | |
 |---|---|
 | **Working title** | FormCoach: Wrist-IMU-Gated Pose Estimation for Per-Repetition Exercise Form Feedback |
-| **Alternative title** | Wake the Camera Only When It Matters: Sensor-Gated Computer Vision for Real-Time Workout Feedback on a Laptop CPU |
-| **Group name** | FormCoach [TODO: confirm the group name used on Canvas] |
-| **Authors** | Robert Ashe (group leader) — [TODO]@sdsu.edu · Ruby Rios Ramirez — [TODO]@sdsu.edu · Rochelle Reyes — [TODO]@sdsu.edu · Christian Byars — [TODO]@sdsu.edu · Bryce Hall — [TODO]@sdsu.edu |
-| **Course** | BDA 696 — [TODO: course title], Big Data Analytics program, San Diego State University, Fall 2026 |
-| **Instructor** | [TODO: instructor name] |
+| **Alternative title** | Form Match : Sensor-Gated Computer Vision for Real-Time Workout Feedback on a Laptop CPU |
+| **Group name** | FormCoach |
+| **Authors** | Robert Ashe (group leader), Ruby R Ramirez, Rochelle Reyes, Christian Byars, Bryce Hall |
 | **Repository** | https://github.com/nthPerson/BDA696_Group_Project (public) |
 
 ---
 
 ## Working Abstract
 
-People who train alone at home get no feedback on their form, and poor form on simple dumbbell
-movements is a common cause of wasted effort and of injury. Camera-based pose estimation can
-judge form, but running it continuously is costly on an ordinary laptop and records video
-nobody needs. FormCoach tests whether a cheap wrist-worn motion sensor can decide *when* to
-look. A wearable that our team assembles (Seeed XIAO ESP32-S3 microcontroller with a Bosch
-BMI160 six-axis inertial measurement unit) runs a small quantized neural network that detects
-"exercise in progress" and streams that signal over Bluetooth Low Energy to a Python
-application. Only while that gate is open does the laptop run MediaPipe pose estimation on the
-webcam. It computes joint angles, segments repetitions, and applies per-exercise
-biomechanical rules to flag faults such as elbow swing on a curl or a shallow squat. Scope is
-fixed to four dumbbell exercises: bicep curl, overhead press, lateral raise and squat.
+People who train alone at home aren’t able to receive consistent feedback on the quality proper
+form when working out. Having a poor form while working out, for example, simple dumbbell
+movements is a common cause of wasted effort and increased risk of injury. Camera-based pose
+estimation models can judge a user’s form, but running it continuously can be costly on an
+ordinary machine. FormCoach tests whether low-cost wrist-worn motion sensors can decide ***when***
+to look and collect visual data too. A wearable that our team assembles (Seed XIAO ESP32-S3
+microcontroller with a Bosch BMI160 six-axis inertial measurement unit) runs a small quantized
+neural network that detects "exercise in progress" and streams that signal over Bluetooth Low
+Energy to a Python application. Only while that gate is open does the laptop run MediaPipe pose
+estimation on the webcam. It computes joint angles, segments repetitions, and applies
+per-exercise bio-mechanical rules to flag faults such as an elbow swing on a curl or a shallow
+squat. The scope is fixed to four dumbbell exercises: bicep curl, overhead press, lateral raise
+and squat.
 
 The learned components are trained and evaluated on three public wearable-exercise datasets:
 RecoFit (94 subjects, about 79 hours of 50 Hz forearm IMU data), MM-Fit (10 subjects,
@@ -53,9 +51,8 @@ leave-one-subject-out, reporting macro-F1 for gate and exercise recognition, mea
 error for repetition counting, and rule pass and detection rates under synthetic faults. For
 the system-level claim we run gated and always-on vision on identical recordings and compare
 frames processed, CPU load, latency, and whether the per-repetition feedback is the same. The
-intended contribution is a reproducible, open-source reference design showing how much vision
-computation a sensor gate can save without changing the feedback. That pattern carries over
-to other battery- and privacy-sensitive edge-AI applications.
+intended goal is to have a reproducible, open-source reference design showing how much vision
+computation and a sensor can effectively collect & save data without changing the feedback.
 
 ---
 

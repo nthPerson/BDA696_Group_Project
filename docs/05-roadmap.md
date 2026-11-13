@@ -8,7 +8,7 @@ Working weeks run late September → early December 2026. Course deliverable due
 |---|---|---|
 | Pitch Presentation | done (late Sep) | `docs/pitch/` (slides + PDF, archived) |
 | Written Report Outline | 2026-10-28 (Canvas PDF, group leader submits) | `reports/` baseline tables + `docs/report/outline.md` |
-| First Draft | ____ | `docs/report/draft.md` + regenerated `reports/` |
+| First Draft | ____ (drafted 2026-11-12; `[TODO]`/`[TBD]` items open) | `docs/report/draft.md` + `reports/` |
 | Final Presentation Slides | ____ | `docs/slides/` |
 | Final Written Report | ____ | `docs/report/final.md` (+ export to .docx/.pdf) |
 | Final Presentation | Dec 2 or 9 | live demo + slides |
@@ -32,7 +32,7 @@ Working weeks run late September → early December 2026. Course deliverable due
 - [~] Keras 1D-CNN gate trained on RecoFit + MM-Fit; LOSO vs RF; int8 export; in the firmware build · [ ] deployed; on-device latency/RAM/flash measured (Checkpoint 5)
 - [x] `rules.yaml` v1 for four exercises; rules unit tests; `eval rules` on MM-Fit
 - [ ] End-to-end demo: wearable → gate → pose → rules → overlay + LED; 30-second demo video
-- [ ] `docs/report/draft.md` → **First Draft**
+- [~] `docs/report/draft.md` written 2026-11-12 from the outline and `reports/`; team fills the `[TODO]`s, `[TBD]` measurements still to run → **First Draft**
 
 ### Phase 3 — Validation, ablations, benchmark, freeze (Oct 28 – Nov 17)
 
