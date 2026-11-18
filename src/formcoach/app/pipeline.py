@@ -373,6 +373,21 @@ class Pipeline:
         self.set_gate(state, t if t is not None else s.t)
         return state
 
+    def set_min_range(self, deg: float) -> None:
+        """Use ``deg`` degrees as the rep counter's minimum range (the angle range the adaptive
+        segmenter must see before anything counts) from the next frame on: the running
+        segmenters take it at once and the ones built after a gate close inherit it.
+
+        Raises:
+            ValueError: ``deg`` is negative or not finite (nothing changes).
+        """
+        deg = float(deg)
+        if not np.isfinite(deg) or deg < 0:
+            raise ValueError(f"min range must be a finite angle >= 0 deg, got {deg!r}")
+        self.cfg["min_range"] = deg  # the tracks share this dict; new segmenters read it
+        for track in self.tracks:
+            track.seg.min_range = deg
+
     def resume_gate(
         self, state: bool, since: float | None, segments: list[tuple[float, float]]
     ) -> None:

@@ -18,7 +18,10 @@ source, so its state can be shown next to the device's.
 Controls (session thread only; other threads wrap them in :meth:`LiveSession.call`):
 :meth:`~LiveSession.set_gate_source`, :meth:`~LiveSession.set_manual_gate`,
 :meth:`~LiveSession.set_energy_gate`, :meth:`~LiveSession.set_exercise`,
-:meth:`~LiveSession.reset_counters` and :meth:`~LiveSession.set_board`. Changing the exercise or
+:meth:`~LiveSession.reset_counters`, :meth:`~LiveSession.set_board`,
+:meth:`~LiveSession.set_param` and :meth:`~LiveSession.reset_params` (tuning: an overrides set
+over the rules, :mod:`formcoach.app.tuning`; a rule change re-judges the reps already counted
+from their stored metrics, without re-running pose). Changing the exercise or
 resetting the counters replaces the pipeline with a fresh one on the same event log, rules engine
 and rep settings, so the log stays one continuous record and an open gate stays open (no second
 ``gate_open``). Exercise ``idle`` has no pipeline: no counting and no rules, but the gate, pose,
@@ -55,10 +58,12 @@ from formcoach.app.pipeline import (
     arm_min_visibility,
     frame_gate_summary,
 )
+from formcoach.app.tuning import Overrides, rejudge
 from formcoach.io import protocol
 from formcoach.io.replay import PoseFrame
 from formcoach.pose import angles as angles_mod
 from formcoach.pose.skeletons import MEDIAPIPE33
+from formcoach.rules.engine import RuleEngine
 
 GATE_SOURCES = ("device", "energy", "always_on", "manual")
 EXERCISES = ("curl", "press", "raise", "squat", "idle")  # idle: no counting, no rules
@@ -67,6 +72,14 @@ REP_PAD_S = 1.0  # metrics window reaches this far back to the rest position (se
 FPS_WINDOW = 30  # frames averaged for the FPS readout
 FAULT_FLASH_S = 0.8  # firmware fault flash (ui.cpp): a newer LED command cancels it, so a good-rep
 # command is held back for this long after a fault one (wall seconds on the injectable clock)
+
+MIN_RANGE_KEY = "seg.min_range_deg"
+# tuning keys that set the energy gate, and the set_energy_gate argument each one sets
+ENERGY_GATE_KEYS = {
+    "gate.energy_threshold": "threshold",
+    "gate.on_windows": "on_windows",
+    "gate.off_windows": "off_windows",
+}
 
 DetectFn = Callable[[np.ndarray, int], "tuple[np.ndarray | None, np.ndarray | None]"]
 
@@ -159,6 +172,7 @@ class LiveSession:
         gate_source: str | None = None,
         report_dropped: bool = True,
         on_event: Callable[[Event], None] | None = None,
+        rules_name: str | None = None,
     ):
         """``exercise``: one of :data:`EXERCISES`. ``detect(frame_bgr, t_ms)``
         returns ``(image_landmarks (33, 4), world_landmarks (33, 3))`` or ``(None, None)``;
@@ -168,7 +182,13 @@ class LiveSession:
         ``rep_config`` overrides the rep segmenter's settings. ``gate_source``: one of
         :data:`GATE_SOURCES`, default ``"device"`` with a board, else ``"always_on"``.
         ``report_dropped``: whether reps the pipeline throws away are published as events.
-        ``on_event`` is subscribed as an event listener.
+        ``on_event`` is subscribed as an event listener. ``rules_name``: the rules file's name,
+        for :attr:`overrides` (``"rules"`` when not given) and ``meta.json``.
+
+        :attr:`overrides` is the session's tuning (:class:`formcoach.app.tuning.Overrides` over
+        ``rules``), ``None`` without rules or when ``rules`` is not a
+        :class:`~formcoach.rules.engine.RuleEngine` (a stand-in with only ``evaluate`` judges
+        reps but cannot be tuned).
 
         Raises:
             ValueError: ``exercise`` is not one of :data:`EXERCISES` or ``gate_source`` not one
@@ -181,6 +201,10 @@ class LiveSession:
         self.exercise = exercise
         self.detect = detect
         self.rules = rules
+        self.rules_name = rules_name
+        self.overrides: Overrides | None = (
+            Overrides(rules, rules_name or "rules") if isinstance(rules, RuleEngine) else None
+        )
         self.board = board
         self.clock = clock
         self.rep_config = rep_config
@@ -214,12 +238,13 @@ class LiveSession:
 
     def _new_pipeline(self, exercise: str) -> Pipeline | None:
         """A fresh per-arm pipeline for ``exercise`` (``None`` for ``idle``) on the session's
-        log, rules and rep settings, continuing the session's gate state and segments."""
+        log, rules (with the tuning overrides) and rep settings, continuing the session's gate
+        state and segments."""
         if exercise == "idle":
             return None
         pipe = Pipeline(
             exercise=exercise,
-            rules=self.rules,
+            rules=self.overrides.engine() if self.overrides is not None else self.rules,
             log=self.log,
             on_event=self._publish_event,
             rep_config=self.rep_config,
@@ -230,6 +255,8 @@ class LiveSession:
             report_dropped=self.report_dropped,
         )
         pipe.resume_gate(self._gate, self._gate_since, self._segments)
+        if self.overrides is not None and MIN_RANGE_KEY in self.overrides.values:
+            pipe.set_min_range(self.overrides.values[MIN_RANGE_KEY])
         return pipe
 
     # ---- listeners and commands --------------------------------------------------------------
@@ -392,6 +419,88 @@ class LiveSession:
             self.emit("link", state="none", name=None)
         else:
             self.emit("link", state=board.state(), name=board.name)
+
+    def set_param(self, key: str, value: float) -> None:
+        """Set one tuning parameter (keys and ranges: :mod:`formcoach.app.tuning`); ``value``
+        is clamped to its range. A ``rule.*`` key swaps the pipeline's rules engine and
+        re-judges every rep the pipeline holds (both arms) from its stored metrics; a
+        ``gate.*`` key retunes the energy gate (:meth:`set_energy_gate`);
+        ``seg.min_range_deg`` sets the rep counter's minimum range. Emits ``params_changed``
+        ``{key, value, values}`` (the value applied and every override now in force), then,
+        for a rule key, ``rejudged`` ``{totals, reps: [{arm, rep_id, faults}]}``.
+
+        Re-judging rewrites ``faults`` on the pipeline's :class:`RepMetrics`, so
+        :meth:`Pipeline.arm_totals` and later snapshots follow; ``rep`` and ``fault`` events
+        already logged are left as they were (``rejudged`` is the record). The overrides also
+        apply to the pipelines that :meth:`set_exercise` and :meth:`reset_counters` build.
+
+        Raises:
+            RuntimeError: the session has no rules (``overrides`` is ``None``).
+            KeyError: ``key`` is not a parameter.
+            ValueError: ``value`` is NaN or not a number. Nothing changes on any error.
+        """
+        overrides = self._require_overrides()
+        value = overrides.set(key, value)
+        if key.startswith("rule."):
+            self._swap_engine()
+        elif key in ENERGY_GATE_KEYS:
+            arg = ENERGY_GATE_KEYS[key]
+            self.set_energy_gate(**{arg: value if arg == "threshold" else int(value)})
+        elif key == MIN_RANGE_KEY and self.pipeline is not None:
+            self.pipeline.set_min_range(value)
+        self.emit("params_changed", key=key, value=value, values=overrides.values)
+        if key.startswith("rule."):
+            self._emit_rejudged()
+
+    def reset_params(self) -> None:
+        """Drop every tuning override: the base rules engine judges again (every rep is
+        re-judged), the energy gate and the rep counter's minimum range go back to the rules
+        file's values. Emits ``params_changed`` ``{key: None, value: None, values: {}}`` and
+        ``rejudged`` (see :meth:`set_param`).
+
+        Raises:
+            RuntimeError: the session has no rules (``overrides`` is ``None``).
+        """
+        overrides = self._require_overrides()
+        overrides.reset()
+        self._swap_engine()
+        self.set_energy_gate(
+            threshold=overrides.default("gate.energy_threshold"),
+            on_windows=int(overrides.default("gate.on_windows")),
+            off_windows=int(overrides.default("gate.off_windows")),
+        )
+        if self.pipeline is not None:
+            self.pipeline.set_min_range(overrides.default(MIN_RANGE_KEY))
+        self.emit("params_changed", key=None, value=None, values=overrides.values)
+        self._emit_rejudged()
+
+    def _require_overrides(self) -> Overrides:
+        if self.overrides is None:
+            raise RuntimeError("this session has no rules, so there is nothing to tune")
+        return self.overrides
+
+    def _session_reps(self) -> list[RepMetrics]:
+        """Every rep the current pipeline holds, all tracks, in order of completion."""
+        if self.pipeline is None:
+            return []
+        return sorted((r for t in self.pipeline.tracks for r in t.reps), key=lambda r: r.t_end)
+
+    def _swap_engine(self) -> None:
+        """Give the pipeline the overrides' engine and re-judge its reps in place."""
+        if self.pipeline is None:
+            return
+        engine = self.overrides.engine()
+        self.pipeline.rules = engine
+        reps = self._session_reps()
+        for rep, faults in zip(reps, rejudge(reps, engine), strict=True):
+            rep.faults = faults
+
+    def _emit_rejudged(self) -> None:
+        reps = [
+            {"arm": r.arm, "rep_id": r.rep_id, "faults": r.faults} for r in self._session_reps()
+        ]
+        totals = self.pipeline.arm_totals() if self.pipeline is not None else {}
+        self.emit("rejudged", totals=totals, reps=reps)
 
     # ---- the loop ----------------------------------------------------------------------------
 
