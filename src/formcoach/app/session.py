@@ -47,9 +47,17 @@ import numpy as np
 
 from formcoach.app.events import Event, EventLog
 from formcoach.app.gate import EnergyGate
-from formcoach.app.pipeline import Pipeline, PipelineResult, RepMetrics, arm_min_visibility
+from formcoach.app.pipeline import (
+    Pipeline,
+    PipelineResult,
+    RepMetrics,
+    _UpEstimator,
+    arm_min_visibility,
+    frame_gate_summary,
+)
 from formcoach.io import protocol
 from formcoach.io.replay import PoseFrame
+from formcoach.pose import angles as angles_mod
 from formcoach.pose.skeletons import MEDIAPIPE33
 
 GATE_SOURCES = ("device", "energy", "always_on", "manual")
@@ -101,7 +109,7 @@ class Snapshot:
     ``{"device": bool, "energy": bool}``, each ``None`` without a board. ``energy`` is the
     latest ``var(|a|)`` window value of the energy gate in (m/s²)², ``None`` before the first
     window or without a board. ``angles`` holds every tracked joint angle of this frame in
-    degrees (``{}`` when pose did not run or found nobody, and always for ``idle``).
+    degrees (``{}`` when pose did not run or found nobody).
     ``counters`` is keyed ``"l"``/``"r"`` (arm exercises) or ``"all"`` (squat):
     ``{"angle": deg | None, "angle_raw": deg | None, "enter": deg, "exit": deg, "armed": bool,
     "visibility": 0-1 | None}``. ``angle`` is the value the rep segmenter compared with
@@ -198,6 +206,7 @@ class LiveSession:
         self._gate = False
         self._gate_since: float | None = None  # start of the open gate segment (s)
         self._segments: list[tuple[float, float]] = []  # closed gate segments (s)
+        self._idle_up = _UpEstimator()  # idle's own vertical estimate (no pipeline to share)
 
         if on_event is not None:
             self.subscribe(on_event=on_event)
@@ -220,9 +229,7 @@ class LiveSession:
             gate_name=self.gate_source,
             report_dropped=self.report_dropped,
         )
-        pipe.gate_state = self._gate
-        pipe.gated_seg_start = self._gate_since if self._gate else None
-        pipe.gated_segments = list(self._segments)
+        pipe.resume_gate(self._gate, self._gate_since, self._segments)
         return pipe
 
     # ---- listeners and commands --------------------------------------------------------------
@@ -465,6 +472,18 @@ class LiveSession:
             }
         return out
 
+    def _idle_angles(self, pf: PoseFrame) -> dict[str, float] | None:
+        """Every tracked joint angle (degrees) of one valid frame for ``idle``, which has no
+        pipeline to compute them; the same computation as the pipeline's, on the session's own
+        vertical estimate. ``None`` when the world landmarks are not all finite."""
+        if not np.isfinite(pf.world).all():
+            return None
+        up = self._idle_up.update(pf.world, pf.skeleton)
+        return {
+            k: float(v[0])
+            for k, v in angles_mod.joint_angles(pf.world[None], pf.skeleton, up).items()
+        }
+
     def step(self, index: int, t: float, frame: np.ndarray | None) -> Snapshot:
         """Process one frame: run queued calls, poll the board (samples go to ``on_imu``
         listeners and the energy gate), choose the gate, run pose and the pipeline when it is
@@ -514,7 +533,9 @@ class LiveSession:
         fps = 0.0
         if len(self._stamps) > 1 and self._stamps[-1] > self._stamps[0]:
             fps = (len(self._stamps) - 1) / (self._stamps[-1] - self._stamps[0])
-        frame_angles = pipe.last_frame_angles if found and pipe is not None else None
+        frame_angles = None
+        if found:
+            frame_angles = pipe.last_frame_angles if pipe is not None else self._idle_angles(pf)
         snap = Snapshot(
             index=index,
             t=t,
@@ -584,14 +605,7 @@ class LiveSession:
             "reps": 0,
             "reps_pose": 0,
             "faults": 0,
-            "frames_total": log.frames_total,
-            "frames_processed": log.frames_processed,
-            "frames_processed_pct": round(
-                100.0 * log.frames_processed / max(log.frames_total, 1), 1
-            ),
-            "frames_bridged": 0,
-            "frames_invalid": 0,
-            "gated_seconds": round(sum(b - a for a, b in segments), 2),
+            **frame_gate_summary(log, segments),
             "arms": {},
         }
         return PipelineResult(log.events, log.frames_total, log.frames_processed, [], summary)

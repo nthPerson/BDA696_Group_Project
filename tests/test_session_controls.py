@@ -108,7 +108,7 @@ def test_set_energy_gate_threshold_changes_the_decision():
     s.set_energy_gate(threshold=20.0)  # var(|a|) = 9 is below it
     snaps = feed(s, seconds=2.0)
     assert not any(sn.gate for sn in snaps)
-    assert s._energy.last_value == pytest.approx(SHAKE_MS2**2, rel=0.01)
+    assert snaps[-1].energy == pytest.approx(SHAKE_MS2**2, rel=0.01)
     s.set_energy_gate(threshold=5.0, on_windows=1, off_windows=4)
     snaps = feed(s, seconds=1.0, start=60)
     assert snaps[-1].gate is True
@@ -139,6 +139,8 @@ def test_set_exercise_resets_counters_and_keeps_one_log():
     assert log.frames_total == 300
     result = s.finish()
     assert result.summary["exercise"] == "squat" and result.summary["frames_total"] == 300
+    # the gate stayed open across the switch: one segment from the first frame to the last
+    assert result.summary["gated_seconds"] == pytest.approx(299 / FPS, abs=0.01)
     with pytest.raises(ValueError):
         s.set_exercise("deadlift")
 
@@ -182,6 +184,56 @@ def test_idle_logs_gate_changes_and_skips_pose_while_closed():
     assert (s.log.frames_total, s.log.frames_processed) == (18, 6)
     s.set_exercise("curl")  # back to counting: a fresh pipeline on the same log
     assert s.pipeline is not None and s.pipeline.log is s.log
+
+
+def test_idle_snapshot_carries_joint_angles_when_landmarks_exist():
+    s = LiveSession(exercise="idle", detect=scripted_detect(lambda t: 90.0), gate_source="manual")
+    assert feed(s, seconds=0.1)[-1].angles == {}  # gate closed: pose did not run
+    s.set_manual_gate(True)
+    snap = feed(s, seconds=0.2, start=3)[-1]
+    assert snap.angles["elbow_l"] == pytest.approx(90.0, abs=0.5)
+    assert snap.angles["elbow_r"] == pytest.approx(90.0, abs=0.5)
+    assert all(math.isfinite(v) for v in snap.angles.values())
+    s.detect = scripted_detect(lambda t: 90.0, hidden=lambda t: True)
+    assert feed(s, seconds=0.1, start=9)[-1].angles == {}  # nobody found
+
+
+def test_curl_idle_curl_carries_the_gate_segments_through_both_switches():
+    s = LiveSession(exercise="curl", detect=synthetic_detect, gate_source="manual")
+    s.set_manual_gate(True)
+    feed(s, seconds=0.2)  # frames 0-5, the gate opens at t = 0
+    s.set_exercise("idle")
+    feed(s, seconds=0.2, start=6)
+    s.set_manual_gate(False)
+    feed(s, seconds=0.2, start=12)  # closes at t = 0.4
+    s.set_manual_gate(True)
+    feed(s, seconds=0.2, start=18)  # opens again at t = 0.6
+    s.set_exercise("curl")
+    feed(s, seconds=0.2, start=24)
+    assert kinds(s) == ["gate_open", "exercise", "gate_close", "gate_open", "exercise"]
+    assert s.pipeline.gate_open is True
+    assert s.pipeline.gated_segments == [(0.0, pytest.approx(12 / FPS))]
+    assert s.pipeline.gated_seg_start == pytest.approx(18 / FPS)
+    result = s.finish()
+    assert (result.frames_total, result.frames_processed) == (30, 24)
+    assert result.summary["gated_seconds"] == pytest.approx(12 / FPS + 11 / FPS, abs=0.01)
+
+
+def test_set_board_none_closes_the_energy_source_and_a_new_board_starts_it_over():
+    s = LiveSession(
+        exercise="curl", detect=synthetic_detect, board=ShakingBoard(still=0), gate_source="energy"
+    )
+    assert feed(s, seconds=1.0)[-1].gate is True
+    s.set_board(None)
+    snap = feed(s, seconds=0.1, start=30)[-1]
+    assert snap.gate is False and snap.gate_source == "energy"
+    assert snap.gates == {"device": None, "energy": None} and snap.energy is None
+    assert kinds(s)[-2:] == ["link", "gate_close"]
+    s.set_board(ShakingBoard(still=0))
+    snaps = feed(s, seconds=1.0, start=33)
+    # the energy gate starts over: closed until two active windows (25 samples apart) are seen
+    assert snaps[0].gate is False and snaps[0].energy is None
+    assert snaps[-1].gate is True and snaps[-1].gates["energy"] is True
 
 
 def test_unknown_gate_source_raises_valueerror():
@@ -242,9 +294,9 @@ def test_rep_dropped_events_for_a_short_rep_and_for_a_tracking_gap():
     short = _dropped(s)
     assert len(short) == 2 and {d["arm"] for d in short} == {"l", "r"}
     for d in short:
+        assert set(d) == {"arm", "t_start", "t_end", "reason"}
         assert d["reason"] == "too_short"
         assert 8.4 <= d["t_start"] < d["t_end"] <= 9.0 and d["t_end"] - d["t_start"] < 0.4
-    assert set(d) == {"arm", "t_start", "t_end", "reason"}
 
     s = LiveSession(exercise="curl", detect=scripted_detect(curl_deg, hidden=_gap_hidden))
     feed(s, seconds=10.0)

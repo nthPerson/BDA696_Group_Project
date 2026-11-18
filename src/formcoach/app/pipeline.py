@@ -373,6 +373,17 @@ class Pipeline:
         self.set_gate(state, t if t is not None else s.t)
         return state
 
+    def resume_gate(
+        self, state: bool, since: float | None, segments: list[tuple[float, float]]
+    ) -> None:
+        """Continue a gate that was already running before this pipeline existed (the live
+        session hands it over when it replaces the pipeline): ``state`` is the gate now,
+        ``since`` the start (s) of its open segment (ignored while closed) and ``segments`` the
+        closed ``(start, end)`` segments in seconds so far. Emits nothing."""
+        self.gate_state = bool(state)
+        self.gated_seg_start = since if self.gate_state else None
+        self.gated_segments = list(segments)
+
     def set_gate(self, open_: bool, t: float) -> None:
         """Force the gate open/closed at time ``t`` (s); emits ``gate_open``/``gate_close`` and
         resets every track's buffers on close. A no-op if the state does not change."""
@@ -666,19 +677,8 @@ class Pipeline:
         if compute_imu:
             summary["reps_imu"] = len(imu_reps)
             summary["reps_fused"] = _fuse(all_reps, imu_reps)
-        summary.update(
-            {
-                "faults": sum(len(r.faults) for r in all_reps),
-                "frames_total": self.log.frames_total,
-                "frames_processed": self.log.frames_processed,
-                "frames_processed_pct": round(
-                    100.0 * self.log.frames_processed / max(self.log.frames_total, 1), 1
-                ),
-                "frames_bridged": bridged,
-                "frames_invalid": invalid,
-                "gated_seconds": round(sum(b - a for a, b in segments), 2),
-            }
-        )
+        summary["faults"] = sum(len(r.faults) for r in all_reps)
+        summary.update(frame_gate_summary(self.log, segments, bridged=bridged, invalid=invalid))
         if compute_imu:
             summary["imu_seconds"] = round((imu_t[-1] - imu_t[0]) if len(imu_t) > 1 else 0.0, 2)
         if self.per_arm:
@@ -686,6 +686,27 @@ class Pipeline:
         return PipelineResult(
             self.log.events, self.log.frames_total, self.log.frames_processed, all_reps, summary
         )
+
+
+def frame_gate_summary(
+    log: EventLog,
+    segments: list[tuple[float, float]],
+    *,
+    bridged: int = 0,
+    invalid: int = 0,
+) -> dict:
+    """The frame and gate part of a run summary, in ``session.json``'s key order:
+    ``frames_total``, ``frames_processed``, ``frames_processed_pct`` (0-100, one decimal),
+    ``frames_bridged`` and ``frames_invalid`` (as given), ``gated_seconds`` (the summed length
+    of the closed ``(start, end)`` gate ``segments`` in seconds, two decimals)."""
+    return {
+        "frames_total": log.frames_total,
+        "frames_processed": log.frames_processed,
+        "frames_processed_pct": round(100.0 * log.frames_processed / max(log.frames_total, 1), 1),
+        "frames_bridged": bridged,
+        "frames_invalid": invalid,
+        "gated_seconds": round(sum(b - a for a, b in segments), 2),
+    }
 
 
 def run_pipeline(
