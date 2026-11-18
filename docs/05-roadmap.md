@@ -8,7 +8,7 @@ Working weeks run late September → early December 2026. Course deliverable due
 |---|---|---|
 | Pitch Presentation | done (late Sep) | `docs/pitch/` (slides + PDF, archived) |
 | Written Report Outline | 2026-10-28 (Canvas PDF, group leader submits) | `reports/` baseline tables + `docs/report/outline.md` |
-| First Draft | ____ (drafted 2026-11-12; `[TODO]`/`[TBD]` items open) | `docs/report/draft.md` + `reports/` |
+| First Draft | ____ (drafted 2026-11-12; `[TODO]`/`[TBD]` items open) | `docs/report/draft-short.md` (submitted version) cut from `docs/report/draft.md` (full) + `reports/` |
 | Final Presentation Slides | ____ | `docs/slides/` |
 | Final Written Report | ____ | `docs/report/final.md` (+ export to .docx/.pdf) |
 | Final Presentation | Dec 2 or 9 | live demo + slides |

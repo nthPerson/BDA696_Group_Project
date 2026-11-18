@@ -8,8 +8,7 @@ First Draft of the written report, generated 2026-11-12 from the approved outlin
   self-test logs under reports/logs/. Recall and false-open rates in Table 4 are computed from the
   pooled confusion matrices in those reports. Do not type in a number that no script produced.
 - [TODO] = information only the team has. [TBD] = a measurement that has not been run yet.
-- Open [TODO]s: SDSU emails, course title, instructor name, the Team Contributions bullets for
-  Ruby, Rochelle and Bryce, and whether the course needs a statement on AI-assisted development
+- Open [TODO]s: SDSU emails, course title, instructor name, and whether the course needs a statement on AI-assisted development
   (most of the code was written with Claude Code, see docs/STATUS.md).
 - Open [TBD]s, in the order they unblock the paper: team validation recordings and transfer
   (Table 10), gating benchmark on full sessions with the on-device gate and real pose inference
@@ -19,6 +18,8 @@ First Draft of the written report, generated 2026-11-12 from the approved outlin
 - Figures: Figure 4 (architecture) is drawn by docs/report/figures/make_architecture.py. The others are the
   generated PNGs under reports/figures/ and are linked by relative path, which renders on GitHub
   and in the VS Code preview. If the text is pasted into Word or Google Docs, insert the PNGs by hand.
+- Section 10: the bullets for Ruby, Rochelle and Bryce were written at Robert's direction on
+  2026-11-18. Each member should read their own bullet and correct it before submission.
 -->
 
 # FormCoach: Wrist-IMU-Gated Pose Estimation for Per-Repetition Exercise Form Feedback
@@ -599,10 +600,13 @@ fault codes by a local language model, and clinical range-of-motion targets for 
 - **Christian Byars:** live webcam application (per-arm counting, overlay, wearable link, session
   logging); first MediaPipe runs and the fix for Apple-silicon laptops; labelled webcam test sets
   and the provisional webcam curl thresholds.
-- **Ruby Rios Ramirez:** revision and submission copy of the report outline. [TODO: add completed
-  contributions]
-- **Rochelle Reyes:** [TODO: completed contributions]
-- **Bryce Hall:** [TODO: completed contributions]
+- **Ruby Rios Ramirez:** form-feedback rules and the exercise and health perspective behind them
+  (which faults matter and how the coaching messages are worded); revision and submission of the
+  report outline.
+- **Rochelle Reyes:** project scoping and the pitch presentation; took part in the wearable build
+  and bench-testing sessions; review of the outline and of the pose and form-feedback sections.
+- **Bryce Hall:** project scoping and the pitch presentation; took part in the wearable build and
+  bench-testing sessions; review and editing of the outline and report draft.
 
 ## 11. References
 
