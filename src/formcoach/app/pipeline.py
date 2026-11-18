@@ -303,6 +303,9 @@ class Pipeline:
         self.cfg = cfg
 
         self.up = _UpEstimator()
+        # every tracked joint angle (degrees) of the last frame on_frame processed; None if that
+        # frame had no person or no usable pose (the live session's snapshot reads it)
+        self.last_frame_angles: dict[str, float] | None = None
         self.gate_state = False
         self.gated_seg_start: float | None = None
         self.gated_segments: list[tuple[float, float]] = []
@@ -394,6 +397,7 @@ class Pipeline:
             self.log.frame(fr.t, False, False)
             return completed
         a_global = self._angles(fr)
+        self.last_frame_angles = a_global
         for track in self.tracks:
             rm = self._push_track(track, fr, a_global)
             if rm is not None:
