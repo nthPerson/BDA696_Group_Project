@@ -402,14 +402,22 @@ all = [
     { name = "optuna" },
     { name = "psutil" },
     { name = "pyserial" },
+    { name = "starlette" },
     { name = "streamlit" },
     { name = "tensorflow" },
     { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "uvicorn" },
+    { name = "websockets" },
 ]
 app = [
     { name = "psutil" },
     { name = "streamlit" },
+]
+bench = [
+    { name = "starlette" },
+    { name = "uvicorn" },
+    { name = "websockets" },
 ]
 device = [
     { name = "bleak" },
@@ -444,7 +452,7 @@ dev = [
 requires-dist = [
     { name = "bleak", marker = "extra == 'device'", specifier = ">=0.22" },
     { name = "duckdb", specifier = ">=1.0" },
-    { name = "formcoach", extras = ["vision", "device", "train", "app"], marker = "extra == 'all'" },
+    { name = "formcoach", extras = ["vision", "device", "train", "app", "bench"], marker = "extra == 'all'" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "mediapipe", marker = "extra == 'vision'", specifier = ">=0.10.14,!=1.0.*" },
     { name = "numpy", specifier = ">=1.26" },
@@ -460,6 +468,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13" },
     { name = "scikit-learn", specifier = ">=1.5" },
     { name = "scipy", specifier = ">=1.13" },
+    { name = "starlette", marker = "extra == 'bench'", specifier = ">=0.37" },
     { name = "streamlit", marker = "extra == 'app'", specifier = ">=1.36" },
     { name = "tensorflow", marker = "extra == 'train'", specifier = ">=2.16" },
     { name = "tensorflow", extras = ["and-cuda"], marker = "sys_platform == 'linux' and extra == 'train-gpu'", specifier = ">=2.16" },
@@ -467,8 +476,10 @@ requires-dist = [
     { name = "torch", marker = "extra == 'train-gpu'", specifier = ">=2.3", index = "https://download.pytorch.org/whl/cpu" },
     { name = "tqdm", specifier = ">=4.66" },
     { name = "typer", specifier = ">=0.12" },
+    { name = "uvicorn", marker = "extra == 'bench'", specifier = ">=0.30" },
+    { name = "websockets", marker = "extra == 'bench'", specifier = ">=12" },
 ]
-provides-extras = ["vision", "device", "train", "train-gpu", "app", "all"]
+provides-extras = ["vision", "device", "train", "train-gpu", "app", "bench", "all"]
 
 [package.metadata.requires-dev]
 dev = [

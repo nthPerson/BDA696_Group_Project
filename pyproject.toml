@@ -40,7 +40,9 @@ train = ["tensorflow>=2.16", "torch>=2.3", "optuna>=3.6"]
 train-gpu = ["tensorflow[and-cuda]>=2.16; sys_platform == 'linux'", "torch>=2.3", "optuna>=3.6"]
 # Session dashboard + CPU counters for the gating benchmark
 app = ["streamlit>=1.36", "psutil>=6"]
-all = ["formcoach[vision,device,train,app]"]  # train-gpu is opt-in
+# FormCoach Bench: local web server for the lab console and coach page (ADR-0035)
+bench = ["starlette>=0.37", "uvicorn>=0.30", "websockets>=12"]
+all = ["formcoach[vision,device,train,app,bench]"]  # train-gpu is opt-in
 
 [project.scripts]
 formcoach = "formcoach.cli:app"
