@@ -54,14 +54,14 @@ from formcoach.app.pipeline import (
     Pipeline,
     PipelineResult,
     RepMetrics,
-    _UpEstimator,
+    UpEstimator,
     arm_min_visibility,
     frame_gate_summary,
+    frame_joint_angles,
 )
 from formcoach.app.tuning import Overrides, rejudge
 from formcoach.io import protocol
 from formcoach.io.replay import PoseFrame
-from formcoach.pose import angles as angles_mod
 from formcoach.pose.skeletons import MEDIAPIPE33
 from formcoach.rules.engine import RuleEngine
 
@@ -230,7 +230,7 @@ class LiveSession:
         self._gate = False
         self._gate_since: float | None = None  # start of the open gate segment (s)
         self._segments: list[tuple[float, float]] = []  # closed gate segments (s)
-        self._idle_up = _UpEstimator()  # idle's own vertical estimate (no pipeline to share)
+        self._idle_up = UpEstimator()  # idle's own vertical estimate (no pipeline to share)
 
         if on_event is not None:
             self.subscribe(on_event=on_event)
@@ -581,18 +581,6 @@ class LiveSession:
             }
         return out
 
-    def _idle_angles(self, pf: PoseFrame) -> dict[str, float] | None:
-        """Every tracked joint angle (degrees) of one valid frame for ``idle``, which has no
-        pipeline to compute them; the same computation as the pipeline's, on the session's own
-        vertical estimate. ``None`` when the world landmarks are not all finite."""
-        if not np.isfinite(pf.world).all():
-            return None
-        up = self._idle_up.update(pf.world, pf.skeleton)
-        return {
-            k: float(v[0])
-            for k, v in angles_mod.joint_angles(pf.world[None], pf.skeleton, up).items()
-        }
-
     def step(self, index: int, t: float, frame: np.ndarray | None) -> Snapshot:
         """Process one frame: run queued calls, poll the board (samples go to ``on_imu``
         listeners and the energy gate), choose the gate, run pose and the pipeline when it is
@@ -643,8 +631,11 @@ class LiveSession:
         if len(self._stamps) > 1 and self._stamps[-1] > self._stamps[0]:
             fps = (len(self._stamps) - 1) / (self._stamps[-1] - self._stamps[0])
         frame_angles = None
-        if found:
-            frame_angles = pipe.last_frame_angles if pipe is not None else self._idle_angles(pf)
+        if found:  # idle has no pipeline: the same angles, on the session's own vertical estimate
+            if pipe is not None:
+                frame_angles = pipe.last_frame_angles
+            else:
+                frame_angles = frame_joint_angles(pf, self._idle_up)
         snap = Snapshot(
             index=index,
             t=t,

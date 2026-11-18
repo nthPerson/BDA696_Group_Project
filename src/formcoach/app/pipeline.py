@@ -75,7 +75,7 @@ class PipelineResult:
     out_dir: Path | None = None
 
 
-class _UpEstimator:
+class UpEstimator:
     """Running estimate of the vertical from hip→shoulder directions (EMA)."""
 
     def __init__(self, alpha: float = 0.02):
@@ -90,6 +90,18 @@ class _UpEstimator:
             self.up = v if self.up is None else (1 - self.alpha) * self.up + self.alpha * v
             self.up = self.up / np.linalg.norm(self.up)
         return self.up if self.up is not None else np.array([0.0, 1.0, 0.0])
+
+
+def frame_joint_angles(fr: PoseFrame, up: UpEstimator) -> dict[str, float] | None:
+    """Every tracked joint angle (degrees; torso lengths for the offset metrics) of one frame,
+    or ``None`` when the frame is invalid or its world landmarks are not all finite. ``up`` is
+    the caller's own vertical estimate; it is updated from this frame."""
+    if not fr.valid or not np.isfinite(fr.world).all():
+        return None
+    u = up.update(fr.world, fr.skeleton)
+    return {
+        k: float(v[0]) for k, v in angles_mod.joint_angles(fr.world[None], fr.skeleton, u).items()
+    }
 
 
 def primary_angle(exercise: str, a: dict[str, float], side: str = "both") -> float:
@@ -313,7 +325,7 @@ class Pipeline:
             cfg.update(rep_config)
         self.cfg = cfg
 
-        self.up = _UpEstimator()
+        self.up = UpEstimator()
         # every tracked joint angle (degrees) of the last frame on_frame processed; None if that
         # frame had no person or no usable pose (the live session's snapshot reads it)
         self.last_frame_angles: dict[str, float] | None = None
@@ -418,13 +430,7 @@ class Pipeline:
 
     def _angles(self, fr: PoseFrame) -> dict[str, float] | None:
         """Joint angles (degrees) for one frame, or ``None`` when invalid/non-finite."""
-        if not fr.valid or not np.isfinite(fr.world).all():
-            return None
-        u = self.up.update(fr.world, fr.skeleton)
-        return {
-            k: float(v[0])
-            for k, v in angles_mod.joint_angles(fr.world[None], fr.skeleton, u).items()
-        }
+        return frame_joint_angles(fr, self.up)
 
     def on_frame(self, fr: PoseFrame) -> list[RepMetrics]:
         """Log the frame; process it (angles → reps → rules, per track) only while the gate is
