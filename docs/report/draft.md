@@ -8,7 +8,7 @@ First Draft of the written report, generated 2026-11-12 from the approved outlin
   self-test logs under reports/logs/. Recall and false-open rates in Table 4 are computed from the
   pooled confusion matrices in those reports. Do not type in a number that no script produced.
 - [TODO] = information only the team has. [TBD] = a measurement that has not been run yet.
-- Open [TODO]s: SDSU emails, course title, instructor name, and whether the course needs a statement on AI-assisted development
+- Open [TODO]s: course title, and whether the course needs a statement on AI-assisted development
   (most of the code was written with Claude Code, see docs/STATUS.md).
 - Open [TBD]s, in the order they unblock the paper: team validation recordings and transfer
   (Table 10), gating benchmark on full sessions with the on-device gate and real pose inference
@@ -28,10 +28,10 @@ First Draft of the written report, generated 2026-11-12 from the approved outlin
 
 | | |
 |---|---|
-| **Authors** | Robert Ashe (group leader), [TODO]@sdsu.edu · Ruby Rios Ramirez, [TODO]@sdsu.edu · Rochelle Reyes, [TODO]@sdsu.edu · Christian Byars, [TODO]@sdsu.edu · Bryce Hall, [TODO]@sdsu.edu |
+| **Authors** | Robert Ashe (group leader), rashe7414@sdsu.edu · Christian Byars, cbyars9785@sdsu.edu · Ruby Rios Ramirez, rriosramirez5574@sdsu.edu · Bryce Hall, bhall4430@sdsu.edu · Rochelle Reyes, rreyes2818@sdsu.edu |
 | **Group name** | FormCoach |
 | **Course** | BDA 696, [TODO: course title], San Diego State University, Fall 2026 |
-| **Instructor** | [TODO: instructor name] |
+| **Instructor** | Professor Ryan Lafler |
 | **Repository** | https://github.com/nthPerson/BDA696_Group_Project (public) |
 
 ## Abstract
@@ -603,10 +603,10 @@ fault codes by a local language model, and clinical range-of-motion targets for 
 - **Ruby Rios Ramirez:** form-feedback rules and the exercise and health perspective behind them
   (which faults matter and how the coaching messages are worded); revision and submission of the
   report outline.
-- **Rochelle Reyes:** project scoping and the pitch presentation; took part in the wearable build
-  and bench-testing sessions; review of the outline and of the pose and form-feedback sections.
 - **Bryce Hall:** project scoping and the pitch presentation; took part in the wearable build and
   bench-testing sessions; review and editing of the outline and report draft.
+- **Rochelle Reyes:** project scoping and the pitch presentation; took part in the wearable build
+  and bench-testing sessions; review of the outline and of the pose and form-feedback sections.
 
 ## 11. References
 

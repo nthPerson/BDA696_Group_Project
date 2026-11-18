@@ -9,7 +9,7 @@ docs/report/draft.md, which stays the full working copy for the final report.
 - What was cut: per-fold spreads, RecGym results, the rep-counting, rules and on-device tables
   (now one sentence each), three figures, the comparison-status table, most quality-issue and
   tooling detail, three references that are no longer cited. All of it is still in draft.md.
-- Open [TODO]s are the same as in draft.md: SDSU emails, course title, instructor name, and whether the course needs a statement on
+- Open [TODO]s are the same as in draft.md: course title, and whether the course needs a statement on
   AI-assisted development.
 - Figures are linked by relative path. If the text is pasted into Word or Google Docs, insert
   docs/report/figures/architecture.png and reports/figures/data_profile_minutes.png by hand.
@@ -23,10 +23,10 @@ docs/report/draft.md, which stays the full working copy for the final report.
 
 | | |
 |---|---|
-| **Authors** | Robert Ashe (group leader), [TODO]@sdsu.edu · Ruby Rios Ramirez, [TODO]@sdsu.edu · Rochelle Reyes, [TODO]@sdsu.edu · Christian Byars, [TODO]@sdsu.edu · Bryce Hall, [TODO]@sdsu.edu |
+| **Authors** | Robert Ashe (group leader), rashe7414@sdsu.edu · Christian Byars, cbyars9785@sdsu.edu · Ruby Rios Ramirez, rriosramirez5574@sdsu.edu · Bryce Hall, bhall4430@sdsu.edu · Rochelle Reyes, rreyes2818@sdsu.edu |
 | **Group name** | FormCoach |
 | **Course** | BDA 696, [TODO: course title], San Diego State University, Fall 2026 |
-| **Instructor** | [TODO: instructor name] |
+| **Instructor** | Professor Ryan Lafler |
 | **Repository** | https://github.com/nthPerson/BDA696_Group_Project (public) |
 
 ## Abstract
@@ -299,10 +299,10 @@ sentences generated from fault codes by a local language model.
 - **Ruby Rios Ramirez:** form-feedback rules and the exercise and health perspective behind them
   (which faults matter and how the coaching messages are worded); revision and submission of the
   report outline.
-- **Rochelle Reyes:** project scoping and the pitch presentation; took part in the wearable build
-  and bench-testing sessions; review of the outline and of the pose and form-feedback sections.
 - **Bryce Hall:** project scoping and the pitch presentation; took part in the wearable build and
   bench-testing sessions; review and editing of the outline and report draft.
+- **Rochelle Reyes:** project scoping and the pitch presentation; took part in the wearable build
+  and bench-testing sessions; review of the outline and of the pose and form-feedback sections.
 
 ## 11. References
 
