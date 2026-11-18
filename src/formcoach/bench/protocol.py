@@ -32,7 +32,11 @@ header length, the UTF-8 JSON header (:func:`frame_header`, ``type`` ``"frame"``
 JPEG bytes, or nothing when ``has_image`` is false. Every frame carries its landmarks.
 
 **Page to server:** text frames ``{"cmd": name, ...fields}``; :data:`COMMANDS` maps each name to
-its required fields. Non-finite floats are sent as ``null`` (JSON has no NaN).
+its required fields. Optional fields: ``save_rules`` takes ``overwrite`` (default false). Its
+``path`` must be relative to the directory the bench was started in, stay inside it and end in
+``.yaml``/``.yml``; an existing file is replaced only with ``overwrite: true``. Success is an
+``event`` of kind ``rules_saved`` ``{path (relative, /-separated), overwritten}``.
+Non-finite floats are sent as ``null`` (JSON has no NaN).
 """
 
 from __future__ import annotations
@@ -76,6 +80,7 @@ STATE_KEYS = (
     "arms",
 )
 
+# command -> required fields (optional ones are listed in the module doc)
 COMMANDS: dict[str, tuple[str, ...]] = {
     "scan": ("kind",),
     "connect": ("kind", "id"),
@@ -87,7 +92,7 @@ COMMANDS: dict[str, tuple[str, ...]] = {
     "set_manual_gate": ("open",),
     "set_param": ("key", "value"),
     "reset_params": (),
-    "save_rules": ("path",),
+    "save_rules": ("path",),  # optional: overwrite
     "reset_counters": (),
     "set_video": ("on",),
     "capture_start": ("labels", "delay_s", "auto_stop"),

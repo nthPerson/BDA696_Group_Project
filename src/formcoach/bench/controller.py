@@ -32,7 +32,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from formcoach.app.capture import ARMS, FORMS, TakeLabels
 from formcoach.app.events import Event
@@ -94,6 +94,7 @@ class Controller:
         jpeg_quality: int,
         video_max_fps: float,
         team_root: Path,
+        rules_dir_base: Path,
         clock: Callable[[], float] = time.monotonic,
     ):
         self.session = session
@@ -103,6 +104,7 @@ class Controller:
         self.jpeg_quality = int(jpeg_quality)
         self.video_max_fps = float(video_max_fps)
         self.team_root = Path(team_root)
+        self.rules_dir_base = Path(rules_dir_base)
         self.clock = clock
 
         self._lock = threading.Lock()  # guards the cached state and the fields state() reads
@@ -418,8 +420,8 @@ class Controller:
         if name == "reset_counters":
             return lambda s: s.reset_counters()
         if name == "save_rules":
-            path = Path(cmd["path"])
-            return lambda s: self._save_rules(s, path)
+            path, overwrite = cmd["path"], _as_bool(cmd.get("overwrite", False), "overwrite")
+            return lambda s: self._save_rules(s, path, overwrite)
         if name == "set_video":
             on = _as_bool(cmd["on"], "on")
 
@@ -459,11 +461,38 @@ class Controller:
             return lambda s: s.discard_capture()
         raise protocol.CommandError(f"unknown command {name!r}")  # pragma: no cover
 
-    def _save_rules(self, s: LiveSession, path: Path) -> None:
+    def _rules_target(self, path: str, overwrite: bool) -> tuple[Path, str]:
+        """Where ``save_rules`` may write ``path``: the resolved file inside
+        :attr:`rules_dir_base` and its path relative to it (``/``-separated).
+
+        Raises:
+            ValueError: ``path`` is not text, is absolute or has a drive, leaves the base
+                directory (``..``, or a symlink pointing out), does not end in ``.yaml`` or
+                ``.yml``, or names an existing file and ``overwrite`` is false.
+        """
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("save_rules needs a file name such as tuned.yaml")
+        if PureWindowsPath(path).anchor or PurePosixPath(path).anchor:
+            raise ValueError(
+                f"{path!r} is not allowed: give a path relative to the start directory"
+            )
+        if Path(path).suffix.lower() not in (".yaml", ".yml"):
+            raise ValueError(f"{path!r} is not allowed: a rules file ends in .yaml or .yml")
+        base = self.rules_dir_base.resolve()
+        target = (base / path).resolve()
+        if base not in target.parents:
+            raise ValueError(f"{path!r} is not allowed: it leaves the start directory {base}")
+        if target.exists() and not overwrite:
+            raise ValueError(f"{path!r} already exists; send overwrite: true to replace it")
+        return target, target.relative_to(base).as_posix()
+
+    def _save_rules(self, s: LiveSession, path: str, overwrite: bool) -> None:
         if s.overrides is None:
             raise RuntimeError("this session has no rules, so there is nothing to save")
-        written = s.overrides.save(path)
-        self.hub.publish(protocol.log("info", f"rules saved to {written.resolve()}", self.clock()))
+        target, rel = self._rules_target(path, overwrite)
+        existed = target.exists()
+        s.overrides.save(target)  # still refuses the packaged rules directory
+        s.emit("rules_saved", path=rel, overwritten=existed)
 
     # ---- the watch link (link worker) -----------------------------------------------------------
 

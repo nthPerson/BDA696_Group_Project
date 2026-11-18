@@ -11,6 +11,7 @@ local port in the CLI's port-in-use check.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import socket
@@ -30,6 +31,9 @@ from formcoach.cli import app as cli_app
 from formcoach.io.protocol import Command
 
 FPS = 30.0
+# the server answers only to local host names (TestClient's default is "testserver"), and
+# websocket_connect ignores base_url, so the socket URL is given whole
+WS_URL = "ws://localhost/ws"
 REP_STEPS = 330  # 11 s of fake scene: it starts curling at 5 s, the watch gate opens at 6 s
 
 
@@ -38,7 +42,7 @@ def _need_starlette():
     pytest.importorskip("httpx2")
     from starlette.testclient import TestClient
 
-    return TestClient
+    return functools.partial(TestClient, base_url="http://localhost")
 
 
 class ManualClock:
@@ -80,7 +84,8 @@ class Rig:
         self.team = tmp_path / "team"
         self.bench = runner.build(
             camera=None, video=None, fake=True, exercise=kw.pop("exercise", "curl"),
-            team_root=self.team, kits_file=tmp_path / "kits.json", clock=self.clock,
+            team_root=self.team, rules_dir_base=tmp_path, kits_file=tmp_path / "kits.json",
+            clock=self.clock,
             sleep=self.clock.sleep, **kw,
         )  # fmt: skip
         self.session = self.bench.session
@@ -186,7 +191,7 @@ def is_state(msg, **want) -> bool:
 def test_ws_sends_hello_with_state_then_frames_imu_and_a_rep_event(rig):
     TestClient = _need_starlette()
     has_cv2 = importlib.util.find_spec("cv2") is not None
-    with TestClient(rig.bench.app) as client, client.websocket_connect("/ws") as ws:
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
         hello = recv(ws)
         assert hello["type"] == "hello" and hello["v"] == protocol.SCHEMA_VERSION
         st = hello["state"]
@@ -236,8 +241,8 @@ def test_two_clients_both_receive_and_a_stalled_client_does_not_slow_the_session
 
     with (
         TestClient(rig.bench.app) as client,
-        client.websocket_connect("/ws") as a,
-        client.websocket_connect("/ws") as b,
+        client.websocket_connect(WS_URL) as a,
+        client.websocket_connect(WS_URL) as b,
     ):
         assert recv(a)["type"] == "hello" and recv(b)["type"] == "hello"
         rig.step(5)
@@ -271,13 +276,13 @@ def test_two_clients_both_receive_and_a_stalled_client_does_not_slow_the_session
 def test_new_client_gets_current_state_at_once(rig):
     TestClient = _need_starlette()
     with TestClient(rig.bench.app) as client:
-        with client.websocket_connect("/ws") as a:
+        with client.websocket_connect(WS_URL) as a:
             recv(a)
             a.send_json({"cmd": "set_exercise", "exercise": "press"})
             rig.step_until(lambda: rig.session.exercise == "press")
             until(a, lambda m: is_state(m, exercise="press"))
             # no step in between: the second page's hello already has it
-            with client.websocket_connect("/ws") as b:
+            with client.websocket_connect(WS_URL) as b:
                 hello = recv(b)
         assert hello["type"] == "hello" and hello["state"]["exercise"] == "press"
         assert all(not p["key"].startswith("rule.curl.") for p in hello["state"]["params"])
@@ -286,7 +291,7 @@ def test_new_client_gets_current_state_at_once(rig):
 def test_commands_change_the_session_and_publish_state(rig):
     TestClient = _need_starlette()
     s = rig.session
-    with TestClient(rig.bench.app) as client, client.websocket_connect("/ws") as ws:
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
         hello = recv(ws)
         key = next(p["key"] for p in hello["state"]["params"] if p["key"].startswith("rule."))
 
@@ -318,10 +323,11 @@ def test_commands_change_the_session_and_publish_state(rig):
         st = until(ws, lambda m: is_state(m, exercise="squat"))
         assert any(p["key"].startswith("rule.squat.") for p in st["state"]["params"])
 
-        saved = rig.team.parent / "tuned.yaml"
-        ws.send_json({"cmd": "save_rules", "path": str(saved)})
+        saved = rig.team.parent / "tuned.yaml"  # the rig's start directory is tmp_path
+        ws.send_json({"cmd": "save_rules", "path": "tuned.yaml"})
         rig.step_until(saved.is_file)
-        until(ws, lambda m: m["type"] == "log" and "tuned.yaml" in m["text"])
+        ev = until(ws, lambda m: m["type"] == "event" and m["kind"] == "rules_saved")
+        assert ev["payload"] == {"path": "tuned.yaml", "overwritten": False}
 
         # the watch: scan, label, identify, disconnect, connect (link worker + session thread)
         links = rig.bench.links
@@ -353,7 +359,7 @@ def test_commands_change_the_session_and_publish_state(rig):
 
 def test_bad_command_gets_an_error_message_and_the_session_keeps_running(rig):
     TestClient = _need_starlette()
-    with TestClient(rig.bench.app) as client, client.websocket_connect("/ws") as ws:
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
         recv(ws)
         ws.send_text("this is not json")
         err = until(ws, lambda m: m["type"] == "error")
@@ -388,7 +394,7 @@ def test_bad_command_gets_an_error_message_and_the_session_keeps_running(rig):
 def test_capture_flow_over_the_socket_writes_a_take(rig):
     TestClient = _need_starlette()
     s = rig.session
-    with TestClient(rig.bench.app) as client, client.websocket_connect("/ws") as ws:
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
         recv(ws)
         labels = {"subject": "S1", "exercise": "curl", "form": "clean", "arm": "both"}
         ws.send_json({"cmd": "capture_start", "labels": labels, "delay_s": 0, "auto_stop": False})
@@ -421,7 +427,7 @@ def test_source_ended_is_reported_and_server_stays_up(rig):
     from formcoach.bench.runner import serve_frames
 
     said: list[str] = []
-    with TestClient(rig.bench.app) as client, client.websocket_connect("/ws") as ws:
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
         recv(ws)
         # queued for the session thread, which never takes another step: the source is empty
         rig.bench.controller.handle({"cmd": "set_exercise", "exercise": "raise"})
@@ -437,7 +443,7 @@ def test_source_ended_is_reported_and_server_stays_up(rig):
         ws.send_json({"cmd": "set_exercise", "exercise": "press"})
         until(ws, lambda m: is_state(m, exercise="press", source="ended"))
         assert client.get("/lab").status_code == 200
-        with client.websocket_connect("/ws") as late:
+        with client.websocket_connect(WS_URL) as late:
             assert recv(late)["state"]["source"] == "ended"
     assert any("ended" in line for line in said)
 
@@ -455,7 +461,7 @@ def test_video_off_sends_frames_without_images(rig):
 
     hub.publish_frame = record
     rig.session.set_gate_source("always_on")  # pose on every frame
-    with TestClient(rig.bench.app) as client, client.websocket_connect("/ws") as ws:
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
         recv(ws)
         rig.step(3)
         frame = until(ws, lambda m: m["type"] == "frame")
@@ -560,3 +566,102 @@ def test_bench_package_is_not_imported_by_the_core():
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "[]"
+
+
+def test_ws_refuses_foreign_origins_and_http_refuses_foreign_hosts(rig):
+    _need_starlette()
+    from starlette.testclient import TestClient, WebSocketDenialResponse
+    from starlette.websockets import WebSocketDisconnect
+
+    from formcoach.bench.server import origin_allowed
+
+    hub = rig.bench.hub
+    with TestClient(rig.bench.app, base_url="http://localhost:8010") as client:
+        for origin in (
+            "http://evil.example",
+            "http://localhost:8011",  # another local port: another program's page
+            "https://localhost:8010",
+            "null",
+        ):
+            ws_kw = {"headers": {"origin": origin}}
+            with (
+                pytest.raises(WebSocketDisconnect) as info,  # closed instead of a hello
+                client.websocket_connect("ws://localhost:8010/ws", **ws_kw),
+            ):
+                pytest.fail(f"{origin} was accepted")
+            assert info.value.code == 1008
+            assert hub.client_count() == 0
+        for headers in ({"origin": "http://localhost:8010"}, {}):  # same port, or no browser
+            with client.websocket_connect("ws://localhost:8010/ws", headers=headers) as ws:
+                assert recv(ws)["type"] == "hello"
+
+        r = client.get("/lab", headers={"host": "evil.example"})
+        assert r.status_code == 400 and "not built yet" not in r.text
+        for host in ("localhost:8010", "127.0.0.1:8010", "[::1]:8010"):
+            assert client.get("/lab", headers={"host": host}).status_code == 200
+        with (
+            pytest.raises(WebSocketDenialResponse) as denied,  # HTTP 400, never upgraded
+            client.websocket_connect("ws://evil.example:8010/ws"),
+        ):
+            pytest.fail("a foreign Host was accepted")
+        assert denied.value.status_code == 400
+        assert hub.client_count() == 0
+
+    assert origin_allowed("http://127.0.0.1:8010", "127.0.0.1:8010")
+    assert origin_allowed("http://[::1]:8010", "[::1]:8010")
+    assert origin_allowed("http://localhost", "localhost:80")
+    assert not origin_allowed("http://localhost:99999", "localhost:8010")  # bad port
+    assert not origin_allowed("http://localhost.evil.example:8010", "localhost:8010")
+
+
+def test_save_rules_is_confined_to_the_start_directory(rig, tmp_path):
+    TestClient = _need_starlette()
+    s = rig.session
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.yaml"
+    existing = tmp_path / "kept.yaml"
+    existing.write_text("# mine\n")
+    (tmp_path / "sub").mkdir()
+    link = tmp_path / "sub" / "out"
+    try:
+        link.symlink_to(tmp_path.parent, target_is_directory=True)
+    except OSError:  # no symlinks (Windows without the privilege)
+        link = None
+
+    def save(ws, **fields) -> dict:
+        n = rig.count("error") + rig.count("event", "rules_saved")
+        ws.send_json({"cmd": "save_rules", **fields})
+        rig.step_until(lambda: rig.count("error") + rig.count("event", "rules_saved") > n)
+        return until(ws, lambda m: m["type"] == "error" or m.get("kind") == "rules_saved")
+
+    with (
+        TestClient(rig.bench.app) as client,
+        client.websocket_connect("ws://localhost:8010/ws") as ws,
+    ):
+        recv(ws)
+        s.set_param(next(iter(s.overrides.params("curl"))).key, 0.01)
+        refused = {
+            f"../{outside.name}": "leaves the start directory",
+            str(tmp_path / "abs.yaml"): "relative",
+            "C:/rules/x.yaml": "relative",
+            "notes.txt": ".yaml",
+            "kept.yaml": "already exists",
+        }
+        if link is not None:
+            refused["sub/out/x.yaml"] = "leaves the start directory"
+        for path, why in refused.items():
+            msg = save(ws, path=path)
+            assert msg["type"] == "error" and msg["cmd"] == "save_rules", path
+            assert why in msg["text"], (path, msg["text"])
+        assert not outside.exists() and not (tmp_path / "abs.yaml").exists()
+        assert not (tmp_path / "notes.txt").exists() and existing.read_text() == "# mine\n"
+        if link is not None:
+            assert not (tmp_path.parent / "x.yaml").exists()
+
+        msg = save(ws, path="sub/tuned.yml")
+        assert msg["payload"] == {"path": "sub/tuned.yml", "overwritten": False}
+        assert "rule" in (tmp_path / "sub" / "tuned.yml").read_text()
+        msg = save(ws, path="kept.yaml", overwrite=True)
+        assert msg["payload"] == {"path": "kept.yaml", "overwritten": True}
+        assert existing.read_text() != "# mine\n"
+        msg = save(ws, path="kept.yaml", overwrite="yes")
+        assert msg["type"] == "error" and "true or false" in msg["text"]

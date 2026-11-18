@@ -8,6 +8,15 @@ is absent (an installed wheel); ``/ws`` is the WebSocket (:mod:`formcoach.bench.
 Files are served with ``Cache-Control: no-store`` (always the files on disk) and explicit MIME
 types for JavaScript and CSS: on Windows the registry can map ``.js`` to ``text/plain`` and
 browsers refuse module scripts served that way (as in :mod:`formcoach.app.viewer`).
+
+**Only local pages.** Binding to 127.0.0.1 keeps other machines out but not other web pages
+open in the same browser: any page may try ``ws://localhost:<port>/ws`` and, through DNS
+rebinding, may even appear under another host name. So every request's ``Host`` must be
+``localhost``, ``127.0.0.1`` or ``[::1]`` (else HTTP 400), and a WebSocket handshake that
+carries an ``Origin`` (browsers always send one) is accepted only from ``http://`` one of those
+hosts on the port the request arrived on (:func:`origin_allowed`); any other is closed before
+it is accepted (code 1008, HTTP 403), so it never sees a message. A handshake without
+``Origin`` (a local script or another UI, not a browser) is accepted.
 """
 
 from __future__ import annotations
@@ -16,8 +25,11 @@ import asyncio
 import contextlib
 import mimetypes
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route, WebSocketRoute
@@ -42,6 +54,8 @@ MIME_TYPES = {
     ".wav": "audio/wav",
     ".mp3": "audio/mpeg",
 }
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]")  # Host header names the server answers to
+POLICY_CLOSE_CODE = 1008  # a WebSocket from a foreign page: refused before it is accepted
 OVERFLOW_CLOSE_CODE = 1013  # "try again later": the page stopped reading; it reconnects
 
 
@@ -60,6 +74,21 @@ def _serve_file(root: Path, rel: str) -> Response:
         MIME_TYPES.get(suffix) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     )
     return FileResponse(path, media_type=media, headers=NO_STORE)
+
+
+def origin_allowed(origin: str | None, host: str | None) -> bool:
+    """Whether a WebSocket handshake's ``Origin`` header may connect: absent (not a browser),
+    or ``http://`` + ``localhost``/``127.0.0.1``/``[::1]`` with the same port as the ``Host``
+    header (80 when a header names none). ``null`` and anything unparsable are refused."""
+    if origin is None:
+        return True
+    try:
+        o = urlsplit(origin)
+        h = urlsplit("//" + (host or ""))
+        same_port = (o.port or 80) == (h.port or 80)
+    except ValueError:  # a malformed port
+        return False
+    return o.scheme == "http" and o.hostname in ("localhost", "127.0.0.1", "::1") and same_port
 
 
 def create_app(
@@ -88,6 +117,9 @@ def create_app(
         return _serve_file(vendor_dir, request.path_params["path"])
 
     async def ws_endpoint(websocket: WebSocket) -> None:
+        if not origin_allowed(websocket.headers.get("origin"), websocket.headers.get("host")):
+            await websocket.close(code=POLICY_CLOSE_CODE)  # before accept: HTTP 403
+            return
         await websocket.accept()
         client = await hub.register()
         try:
@@ -119,7 +151,8 @@ def create_app(
         Route("/vendor/{path:path}", vendor),
         WebSocketRoute("/ws", ws_endpoint),
     ]
-    return Starlette(routes=routes, lifespan=lifespan)
+    hosts = Middleware(TrustedHostMiddleware, allowed_hosts=list(LOCAL_HOSTS), www_redirect=False)
+    return Starlette(routes=routes, middleware=[hosts], lifespan=lifespan)
 
 
 async def _read_commands(websocket: WebSocket, client, controller: Controller) -> None:

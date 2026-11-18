@@ -121,6 +121,7 @@ def build(
     port: str | None = None,
     video_width: int = VIDEO_WIDTH,
     team_root: Path = TEAM_ROOT,
+    rules_dir_base: Path | None = None,
     kits_file: Path = KITS_FILE,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
@@ -133,8 +134,10 @@ def build(
     ``rules.mediapipe-webcam.yaml``; the session records its file name). ``board``
     (``ble``/``serial``/``fake``, default ``fake`` with ``fake``) is connected at once, at
     ``port`` (BLE address or serial port). ``video_width`` in pixels; kept takes go under
-    ``team_root``; kit labels live in ``kits_file``. ``clock`` (s) and ``sleep`` drive the
-    session, the link, the fake scene and the fake watch (tests inject them).
+    ``team_root``; ``save_rules`` writes only inside ``rules_dir_base`` (default: the current
+    directory, where the bench was started); kit labels live in ``kits_file``. ``clock`` (s)
+    and ``sleep`` drive the session, the link, the fake scene and the fake watch (tests
+    inject them).
 
     Raises:
         ValueError: not exactly one source, unknown exercise, model or board, or a rules file
@@ -217,7 +220,9 @@ def build(
         hub = Hub()
         controller = Controller(
             session, links, hub, video_width=video_width, jpeg_quality=JPEG_QUALITY,
-            video_max_fps=VIDEO_MAX_FPS, team_root=team_root, clock=clock,
+            video_max_fps=VIDEO_MAX_FPS, team_root=team_root,
+            rules_dir_base=rules_dir_base if rules_dir_base is not None else Path.cwd(),
+            clock=clock,
         )  # fmt: skip
         app = create_app(hub, controller)
         # the camera goes last: nothing that can fail may run after it is opened
