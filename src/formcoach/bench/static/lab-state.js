@@ -4,15 +4,17 @@
 //
 // Messages: the server's (hello, state, frame header, imu is not stored, event, link, scan,
 // log, error) and page actions: socket_open, socket_close, scan_started {kind},
-// dismiss_error {id}. A `log` message may carry `rx`, the page's receive time (ms since epoch).
+// dismiss_error {id}. A `log` message may carry `rx`, the page's receive time (ms since epoch);
+// a `rejudged` event may carry `rx` (ms, any monotonic page clock) to group a slider gesture.
 
 export const LOG_LINES = 200;
 const MAX_ERRORS = 5;
 const MAX_REPS = 60; // per counter, for the rep dots
 const EPOCH_EVENTS = new Set(["counters_reset", "exercise"]);
-// Re-judgings closer than this (s, frame clock) are one slider gesture: "was" keeps the totals
-// from before the gesture, not from the previous step of the drag.
-const GESTURE_S = 2;
+// Re-judgings received closer than this (ms, page clock `rx`) are one slider gesture: "was"
+// keeps the totals from before the gesture, not from the previous step of the drag. The page
+// clock, not the event's frame time: once the source has ended every event has the same t.
+const GESTURE_MS = 2000;
 
 const counterOf = (arm) => (arm === "l" || arm === "r" ? arm : "all");
 const emptyReps = () => ({ l: [], r: [], all: [] });
@@ -31,7 +33,7 @@ export function initialState() {
     nextErrorId: 1,
     totals: {}, // live totals per counter
     was: null, // {good, flagged}: the totals before the latest re-judging gesture
-    rejudgedT: null, // frame time (s) of the latest re-judging
+    rejudgedRx: null, // page receive time (ms) of the latest re-judging
     reps: emptyReps(), // rep payloads of the current counters, per counter
     lastRep: null, // the newest rep payload
     frame: null, // the newest frame header (without landmarks)
@@ -92,9 +94,10 @@ function onEvent(s, ev) {
         return f ? { ...rp, faults: f } : rp;
       };
       const reps = Object.fromEntries(Object.entries(s.reps).map(([k, list]) => [k, list.map(fix)]));
-      const sameGesture = s.was && s.rejudgedT != null && Math.abs(ev.t - s.rejudgedT) < GESTURE_S;
+      const rx = finite(ev.rx) ? ev.rx : null;
+      const sameGesture = s.was && rx != null && s.rejudgedRx != null && rx - s.rejudgedRx < GESTURE_MS;
       return {
-        ...s, was: sameGesture ? s.was : sumTotals(s.totals), rejudgedT: ev.t, totals: p.totals ?? s.totals, reps,
+        ...s, was: sameGesture ? s.was : sumTotals(s.totals), rejudgedRx: rx, totals: p.totals ?? s.totals, reps,
         lastRep: s.lastRep && fix(s.lastRep),
       };
     }

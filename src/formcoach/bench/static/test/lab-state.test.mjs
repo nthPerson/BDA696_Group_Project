@@ -35,13 +35,21 @@ test("rejudged updates the totals and remembers the previous ones", () => {
   assert.equal(s.totals.l.good, 2);
   assert.deepEqual(rejudgeLine(s), { good: 2, flagged: 1, was: { good: 2, flagged: 1 } });
   // golden totals: l 1 good 1 flagged, r 1 good -> was 2 good 1 flagged; now 2 good + 1 flagged
-  // 3 s later: a new gesture remembers the totals just before it
+  // without a receive time every re-judging starts a gesture: "was" is the totals just before it
   const s2 = reduce(s, ev("rejudged", { totals: { l: { reps: 2, good: 0, flagged: 2 }, r: { reps: 1, good: 0, flagged: 1 } }, reps: [] }, 4));
   assert.deepEqual(rejudgeLine(s2), { good: 0, flagged: 3, was: { good: 2, flagged: 1 } });
-  // within 2 s (the same slider drag, or the same value sent twice): "was" stays before the gesture
-  const s3 = reduce(s2, ev("rejudged", { totals: { l: { reps: 2, good: 2, flagged: 0 }, r: { reps: 1, good: 1, flagged: 0 } }, reps: [] }, 5));
-  assert.deepEqual(rejudgeLine(s3), { good: 3, flagged: 0, was: { good: 2, flagged: 1 } });
   assert.equal(rejudgeLine(reduce(s2, ev("counters_reset"))).was, null);
+});
+
+test("re-judgings are grouped into slider gestures by the page clock, not the frame time", () => {
+  const tot = (good, flagged) => ({ l: { reps: good + flagged, good, flagged }, r: { reps: 0, good: 0, flagged: 0 } });
+  const rj = (totals, rx) => ({ ...ev("rejudged", { totals, reps: [] }, 7.5), rx }); // the source ended: every t is 7.5
+  let s = reduce(reduce(initialState(), hello()), { type: "state", state: { ...golden.state.state, totals: tot(5, 0) } });
+  s = reduce(s, rj(tot(4, 1), 1000)); // first move
+  s = reduce(s, rj(tot(3, 2), 1500)); // same drag, 0.5 s later
+  assert.deepEqual(rejudgeLine(s), { good: 3, flagged: 2, was: { good: 5, flagged: 0 } });
+  s = reduce(s, rj(tot(1, 4), 9000)); // a new move 7.5 s later, same frame time
+  assert.deepEqual(rejudgeLine(s), { good: 1, flagged: 4, was: { good: 3, flagged: 2 } });
 });
 
 test("rejudged rewrites the faults of the reps held for the dots and the last cue", () => {

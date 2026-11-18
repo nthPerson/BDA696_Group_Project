@@ -26,9 +26,12 @@ export function mountTune(root, send, onPick) {
   const saved = h("div", { class: "saved", hidden: true });
   const rules = h("div", { class: "muted small" });
   const untuned = h("p", { class: "untuned", hidden: true });
-  const after = h("div", { class: "after-rules" }, judged, h("div", { class: "btns" }, resetBtn, saveBtn), saved);
+  // a scrolling list (gate source and the sliders) above a footer that is always in view and
+  // never covers a slider: the re-judged totals, Reset and Save
   const more = h("div", { class: "groups" });
-  root.append(h("p", { class: "h" }, "Gate source"), seg, hold, groups, after, more, rules);
+  const list = h("div", { class: "tune-list" }, h("p", { class: "h" }, "Gate source"), seg, hold, groups, more, rules);
+  const footer = h("div", { class: "tune-foot" }, judged, h("div", { class: "btns" }, resetBtn, saveBtn), saved);
+  root.append(list, footer);
   root.after(untuned); // one line under the tuning panel
 
   const last = { s: null, paramsKey: null, exercise: null, savePath: null };

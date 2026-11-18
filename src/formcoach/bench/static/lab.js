@@ -231,7 +231,7 @@ function boot() {
       video.onFrame(header, jpeg, { paused: timeline.paused, videoOn: state.server?.video?.on ?? true });
     },
     onImu: (msg) => data.pushImu(msg),
-    onEvent: (msg) => { data.pushEvent(msg); dispatch(msg); chartsDirty = true; },
+    onEvent: (msg) => { data.pushEvent(msg); dispatch({ ...msg, rx: performance.now() }); chartsDirty = true; },
     onLink: (status) => { data.pushLink(status); dispatch({ type: "link", status }); },
     onScan: (msg) => dispatch(msg),
     onLog: (msg) => dispatch({ ...msg, rx: Date.now() }),
