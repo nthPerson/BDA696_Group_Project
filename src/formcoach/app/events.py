@@ -12,7 +12,9 @@ import pandas as pd
 
 @dataclass
 class Event:
-    kind: str  # gate_open | gate_close | rep | fault | info
+    # pipeline: gate_open | gate_close | rep | fault | rep_dropped (live only, opt-in);
+    # live session: error | gate_source | exercise | counters_reset | link; also info
+    kind: str
     t: float
     payload: dict = field(default_factory=dict)
 

@@ -4,67 +4,12 @@ camera, no model, no cv2, no Bluetooth."""
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from formcoach.app.session import LiveSession
-from formcoach.io import protocol
-from formcoach.io.source import SISample
 from formcoach.rules.engine import WEBCAM_RULES, RuleEngine
 
-from .synthetic_pose import curl_deg, pose_frame
-
-BLANK = np.zeros((48, 64, 3), np.uint8)
-
-
-def synthetic_detect(_frame, t_ms):
-    """Both arms curl (2.5 s period) at frame time ``t_ms``; MediaPipe-shaped output."""
-    t = t_ms / 1000.0
-    pf = pose_frame(0, t, curl_deg(t), curl_deg(t))
-    img = np.zeros((33, 4), np.float32)
-    img[:, 0] = 0.5 + 0.5 * pf.world[:, 0]
-    img[:, 1] = 0.5 - 0.5 * pf.world[:, 1]
-    img[:, 3] = pf.visibility
-    return img, pf.world.astype(np.float32)
-
-
-def must_not_be_called(_frame, _t_ms):
-    raise AssertionError("pose must not run while the gate is closed")
-
-
-def feed(session: LiveSession, *, seconds: float, fps: float = 30.0) -> list:
-    """Step ``session`` through ``seconds`` of blank frames at ``fps``; returns the snapshots."""
-    return [session.step(i, i / fps, BLANK) for i in range(int(seconds * fps))]
-
-
-class FakeBoard:
-    """BoardLink-shaped: always alive, a fixed gate flag, ``samples_per_poll`` samples per poll."""
-
-    name = "FormCoach-TEST"
-
-    def __init__(self, *, gate: bool = True, samples_per_poll: int = 0):
-        self.gate = gate
-        self.samples_per_poll = samples_per_poll
-        self.seq = 0
-        self.sent: list[protocol.Command] = []
-
-    def poll(self):
-        out = []
-        flags = protocol.Flag.GATE_STATE if self.gate else 0
-        for _ in range(self.samples_per_poll):
-            out.append(SISample(self.seq / 50.0, 0.0, 0.0, 9.81, 0.0, 0.0, 0.0, flags, self.seq))
-            self.seq += 1
-        return out
-
-    def alive(self):
-        return True
-
-    def gate_open(self):
-        return self.gate
-
-    def state(self):
-        return "ok"
-
-    def send(self, cmd):
-        self.sent.append(cmd)
+from .session_fakes import BLANK, FakeBoard, feed, must_not_be_called, synthetic_detect
 
 
 def test_step_returns_landmarks_angles_and_counters_when_gate_open():
@@ -135,3 +80,62 @@ def test_call_runs_on_the_next_step_and_stop_ends_run():
     s.subscribe(on_snapshot=lambda snap: s.stop() if snap.index == 4 else None)
     s.run((i, i / 30.0, BLANK) for i in range(1, 30))
     assert s.log.frames_total == 5  # frame 0 above, then frames 1-4 until stop()
+
+
+def test_counter_angle_is_what_the_segmenter_saw_and_angle_raw_is_unsmoothed():
+    s = LiveSession(exercise="curl", detect=synthetic_detect)
+    snaps = feed(s, seconds=2.0)
+    raw = [snap.counters["l"]["angle_raw"] for snap in snaps]
+    for i in range(4, len(snaps)):
+        # the segmenter compares the 5-frame median of the raw primary angle with enter/exit
+        assert snaps[i].counters["l"]["angle"] == pytest.approx(
+            float(np.median(raw[i - 4 : i + 1]))
+        )
+    last = snaps[-1].counters["l"]
+    assert last["angle"] == pytest.approx(s.pipeline.tracks[0].last_p)
+    assert last["angle_raw"] == pytest.approx(s.pipeline.latest_angles()["l"])
+    assert any(abs(sn.counters["l"]["angle"] - sn.counters["l"]["angle_raw"]) > 1.0 for sn in snaps)
+
+
+def test_unsubscribe_removes_every_listener_it_added():
+    s = LiveSession(exercise="curl", detect=synthetic_detect)
+    snaps, events = [], []
+    unsubscribe = s.subscribe(on_snapshot=snaps.append, on_event=events.append)
+    s.step(0, 0.0, BLANK)
+    s.emit("note")
+    assert len(snaps) == 1 and [e.kind for e in events] == ["gate_open", "note"]
+    unsubscribe()
+    s.step(1, 1 / 30, BLANK)
+    s.emit("note")
+    assert len(snaps) == 1 and len(events) == 2
+    unsubscribe()  # a second call is harmless
+
+
+def test_emit_logs_the_event_and_sends_it_to_listeners():
+    s = LiveSession(exercise="curl", detect=synthetic_detect)
+    got = []
+    s.subscribe(on_event=got.append)
+    before = s.emit("note", text="hello")  # before any frame: t = 0.0
+    assert (before.kind, before.t, before.payload) == ("note", 0.0, {"text": "hello"})
+    feed(s, seconds=0.5)
+    latest = s.emit("note")  # defaults to the latest frame's time
+    assert latest.t == pytest.approx(14 / 30)
+    explicit = s.emit("note", t=3.0)
+    assert explicit.t == 3.0
+    notes = [e for e in s.log.events if e.kind == "note"]
+    assert notes == [before, latest, explicit]
+    assert [e for e in got if e.kind == "note"] == notes
+
+
+def test_run_live_prints_a_broken_on_event_listener_through_say():
+    from formcoach.app.live import run_live
+
+    said = []
+
+    def broken(e):
+        raise RuntimeError("printer broke")
+
+    frames = ((i, i / 30.0, BLANK) for i in range(10))
+    run_live(frames, synthetic_detect, exercise="curl", on_event=broken, say=said.append)
+    errors = [line for line in said if line.startswith("error in")]
+    assert errors == ["error in on_event: RuntimeError: printer broke"]

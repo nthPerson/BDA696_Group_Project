@@ -15,6 +15,15 @@ open; ``manual`` is opened and closed by hand (closed until set). ``device`` and
 closed without a board. The energy gate is computed whenever a board is connected, whatever the
 source, so its state can be shown next to the device's.
 
+Controls (session thread only; other threads wrap them in :meth:`LiveSession.call`):
+:meth:`~LiveSession.set_gate_source`, :meth:`~LiveSession.set_manual_gate`,
+:meth:`~LiveSession.set_energy_gate`, :meth:`~LiveSession.set_exercise`,
+:meth:`~LiveSession.reset_counters` and :meth:`~LiveSession.set_board`. Changing the exercise or
+resetting the counters replaces the pipeline with a fresh one on the same event log, rules engine
+and rep settings, so the log stays one continuous record and an open gate stays open (no second
+``gate_open``). Exercise ``idle`` has no pipeline: no counting and no rules, but the gate, pose,
+the frame log and gate events go on (the recording protocol's false-wake measurement).
+
 Threads: the loop (``step``/``run``) and every listener callback run on the session's thread.
 :meth:`LiveSession.call`, :meth:`LiveSession.stop` and :meth:`LiveSession.subscribe` may be
 called from any thread. A listener that raises never stops the loop: its first error is
@@ -38,12 +47,13 @@ import numpy as np
 
 from formcoach.app.events import Event, EventLog
 from formcoach.app.gate import EnergyGate
-from formcoach.app.pipeline import Pipeline, PipelineResult, RepMetrics, _arm_min_visibility
+from formcoach.app.pipeline import Pipeline, PipelineResult, RepMetrics, arm_min_visibility
 from formcoach.io import protocol
 from formcoach.io.replay import PoseFrame
 from formcoach.pose.skeletons import MEDIAPIPE33
 
 GATE_SOURCES = ("device", "energy", "always_on", "manual")
+EXERCISES = ("curl", "press", "raise", "squat", "idle")  # idle: no counting, no rules
 MAX_BUFFER_FRAMES = 3600  # per-arm angle buffer cap (about two minutes at 30 fps)
 REP_PAD_S = 1.0  # metrics window reaches this far back to the rest position (see Pipeline)
 FPS_WINDOW = 30  # frames averaged for the FPS readout
@@ -86,18 +96,23 @@ class Snapshot:
     the session ``clock()`` (s) when :meth:`LiveSession.step` received the frame. ``frame`` is
     the raw BGR image, unmirrored. ``image_landmarks`` ``(33, 4)`` (normalised x, y, z,
     visibility) and ``world_landmarks`` ``(33, 3)`` (metres) are ``None`` when pose did not run
-    or found nobody. ``gate`` is the gate the pipeline used for this frame and ``gate_source``
+    or found nobody. ``gate`` is the gate used for this frame and ``gate_source``
     where it came from (one of :data:`GATE_SOURCES`); ``gates`` holds both wearable lanes,
     ``{"device": bool, "energy": bool}``, each ``None`` without a board. ``energy`` is the
     latest ``var(|a|)`` window value of the energy gate in (m/s²)², ``None`` before the first
     window or without a board. ``angles`` holds every tracked joint angle of this frame in
-    degrees (``{}`` when pose did not run or found nobody). ``counters`` is keyed ``"l"``/``"r"``
-    (arm exercises) or ``"all"`` (squat): ``{"angle": deg | None, "enter": deg, "exit": deg,
-    "armed": bool, "visibility": 0-1 | None}``, where ``angle`` is the counter's primary angle
-    on its latest processed frame and ``visibility`` the arm's lowest landmark visibility
-    (``None`` for ``"all"`` and when there are no landmarks). ``totals`` is
-    :meth:`Pipeline.arm_totals`; ``completed`` the reps finished on this frame; ``fps`` frames/s
-    over the last :data:`FPS_WINDOW` frames; ``link_state`` ``"none"`` (no board),
+    degrees (``{}`` when pose did not run or found nobody, and always for ``idle``).
+    ``counters`` is keyed ``"l"``/``"r"`` (arm exercises) or ``"all"`` (squat):
+    ``{"angle": deg | None, "angle_raw": deg | None, "enter": deg, "exit": deg, "armed": bool,
+    "visibility": 0-1 | None}``. ``angle`` is the value the rep segmenter compared with
+    ``enter``/``exit`` on the counter's latest processed frame (the 5-frame median of the
+    primary angle), so a trace of it crosses the band exactly where reps are counted;
+    ``angle_raw`` is the unsmoothed primary angle on that frame; either is ``None`` when that
+    frame had no usable angle or nothing was processed since the gate last closed.
+    ``visibility`` is the arm's lowest landmark visibility (``None`` for ``"all"`` and when
+    there are no landmarks). ``totals`` is :meth:`Pipeline.arm_totals`. ``counters`` and
+    ``totals`` are ``{}`` for ``idle``. ``completed`` the reps finished on this frame; ``fps``
+    frames/s over the last :data:`FPS_WINDOW` frames; ``link_state`` ``"none"`` (no board),
     ``"waiting"``, ``"ok"`` or ``"silent"``.
     """
 
@@ -137,7 +152,7 @@ class LiveSession:
         report_dropped: bool = True,
         on_event: Callable[[Event], None] | None = None,
     ):
-        """``exercise``: ``curl``/``press``/``raise``/``squat``. ``detect(frame_bgr, t_ms)``
+        """``exercise``: one of :data:`EXERCISES`. ``detect(frame_bgr, t_ms)``
         returns ``(image_landmarks (33, 4), world_landmarks (33, 3))`` or ``(None, None)``;
         ``t_ms`` is strictly increasing. ``rules``: a rules engine (or ``None``). ``board``: a
         :class:`formcoach.app.board.BoardLink` or anything with ``poll``/``gate_open``/``state``/
@@ -148,16 +163,19 @@ class LiveSession:
         ``on_event`` is subscribed as an event listener.
 
         Raises:
-            ValueError: ``gate_source`` is not one of :data:`GATE_SOURCES`.
+            ValueError: ``exercise`` is not one of :data:`EXERCISES` or ``gate_source`` not one
+                of :data:`GATE_SOURCES`.
         """
         if gate_source is None:
             gate_source = "device" if board is not None else "always_on"
-        if gate_source not in GATE_SOURCES:
-            raise ValueError(f"unknown gate source {gate_source!r}; choose from {GATE_SOURCES}")
+        _check_gate_source(gate_source)
+        _check_exercise(exercise)
         self.exercise = exercise
         self.detect = detect
+        self.rules = rules
         self.board = board
         self.clock = clock
+        self.rep_config = rep_config
         self.gate_source = gate_source
         self.report_dropped = report_dropped
         self.log = EventLog()
@@ -175,20 +193,37 @@ class LiveSession:
         self._t_first: float | None = None
         self._t_last: float | None = None
         self._n_frames = 0
+        # the gate as last applied, kept here as well as in the pipeline so it survives a
+        # pipeline swap (and so idle, which has no pipeline, can log gate changes)
+        self._gate = False
+        self._gate_since: float | None = None  # start of the open gate segment (s)
+        self._segments: list[tuple[float, float]] = []  # closed gate segments (s)
 
         if on_event is not None:
             self.subscribe(on_event=on_event)
-        self.pipeline = Pipeline(
+        self.pipeline: Pipeline | None = self._new_pipeline(exercise)
+
+    def _new_pipeline(self, exercise: str) -> Pipeline | None:
+        """A fresh per-arm pipeline for ``exercise`` (``None`` for ``idle``) on the session's
+        log, rules and rep settings, continuing the session's gate state and segments."""
+        if exercise == "idle":
+            return None
+        pipe = Pipeline(
             exercise=exercise,
-            rules=rules,
+            rules=self.rules,
             log=self.log,
             on_event=self._publish_event,
-            rep_config=rep_config,
+            rep_config=self.rep_config,
             per_arm=True,
             max_buffer_frames=MAX_BUFFER_FRAMES,
             pad_rep_start_s=REP_PAD_S,
-            gate_name=gate_source,
+            gate_name=self.gate_source,
+            report_dropped=self.report_dropped,
         )
+        pipe.gate_state = self._gate
+        pipe.gated_seg_start = self._gate_since if self._gate else None
+        pipe.gated_segments = list(self._segments)
+        return pipe
 
     # ---- listeners and commands --------------------------------------------------------------
 
@@ -265,6 +300,92 @@ class LiveSession:
             except Exception as exc:
                 self.emit("error", where="call", error=f"{type(exc).__name__}: {exc}")
 
+    # ---- controls (session thread; other threads use call) -----------------------------------
+
+    def set_gate_source(self, source: str) -> None:
+        """Choose where the gate comes from (one of :data:`GATE_SOURCES`) from the next frame
+        on; emits ``gate_source`` ``{source}``.
+
+        Raises:
+            ValueError: ``source`` is not one of :data:`GATE_SOURCES`.
+        """
+        _check_gate_source(source)
+        self.gate_source = source
+        if self.pipeline is not None:
+            self.pipeline.gate_name = source
+        self.emit("gate_source", source=source)
+
+    def set_manual_gate(self, open_: bool) -> None:
+        """Open or close the ``manual`` source's gate (it starts closed). Used only while
+        ``gate_source`` is ``manual``; the state is kept when switching away and back."""
+        self._manual_gate = bool(open_)
+
+    def set_energy_gate(
+        self,
+        *,
+        threshold: float | None = None,
+        on_windows: int | None = None,
+        off_windows: int | None = None,
+    ) -> None:
+        """Tune the laptop-side energy gate: ``threshold`` on ``var(|a|)`` in (m/s²)²,
+        ``on_windows``/``off_windows`` consecutive active/idle windows (0.5 s apart) to open/
+        close it. ``None`` leaves a setting as it is. Takes effect from the next window.
+
+        Raises:
+            ValueError: a negative ``threshold`` or a window count below 1 (nothing changes).
+        """
+        if threshold is not None and not threshold >= 0:
+            raise ValueError(f"energy threshold must be >= 0 (m/s²)², got {threshold!r}")
+        for name, n in (("on_windows", on_windows), ("off_windows", off_windows)):
+            if n is not None and n < 1:
+                raise ValueError(f"{name} must be >= 1, got {n!r}")
+        if threshold is not None:
+            self._energy.threshold = float(threshold)
+        if on_windows is not None:
+            self._energy.hyst.on_windows = int(on_windows)
+        if off_windows is not None:
+            self._energy.hyst.off_windows = int(off_windows)
+
+    def set_exercise(self, exercise: str) -> None:
+        """Switch to ``exercise`` (one of :data:`EXERCISES`): a fresh pipeline (``None`` for
+        ``idle``) on the same event log, so the counters start again at zero; emits
+        ``exercise`` ``{exercise}``.
+
+        Raises:
+            ValueError: ``exercise`` is not one of :data:`EXERCISES`.
+        """
+        _check_exercise(exercise)
+        self.exercise = exercise
+        self.pipeline = self._new_pipeline(exercise)
+        self.emit("exercise", exercise=exercise)
+
+    def reset_counters(self) -> None:
+        """Start the counters again at zero (a fresh pipeline, same exercise and event log);
+        emits ``counters_reset``."""
+        self.pipeline = self._new_pipeline(self.exercise)
+        self.emit("counters_reset")
+
+    def set_board(self, board) -> None:
+        """Use ``board`` (BoardLink-shaped, see :meth:`__init__`) from the next frame on, or no
+        board with ``None``; the gate source is kept, so ``device`` and ``energy`` stay closed
+        until a board is set. The energy gate starts over (same settings). The session does not
+        close the old board. Emits ``link`` ``{state, name}``: the new board's ``state()`` and
+        ``name``, or ``"none"`` and ``None``."""
+        old = self._energy
+        self._energy = EnergyGate(
+            old.threshold,
+            window=old.window,
+            stride=old.stride,
+            on_windows=old.hyst.on_windows,
+            off_windows=old.hyst.off_windows,
+        )
+        self.board = board
+        self._fault_led_at = None
+        if board is None:
+            self.emit("link", state="none", name=None)
+        else:
+            self.emit("link", state=board.state(), name=board.name)
+
     # ---- the loop ----------------------------------------------------------------------------
 
     def _board_alive(self) -> bool:
@@ -286,6 +407,24 @@ class LiveSession:
             return self._manual_gate
         return bool(gates[self.gate_source])  # device/energy; None (no board) is closed
 
+    def _apply_gate(self, gate: bool, t: float) -> None:
+        """Give the pipeline this frame's gate (it emits ``gate_open``/``gate_close``); without
+        one (``idle``) the session emits them. Keeps the session's own copy of the gate and its
+        segments in step, for the next pipeline and for :meth:`finish`."""
+        if self.pipeline is not None:
+            self.pipeline.set_gate(gate, t)
+        elif gate != self._gate:
+            self.emit("gate_open" if gate else "gate_close", t)
+        if gate == self._gate:
+            return
+        if gate:
+            self._gate_since = t
+        else:
+            start = self._gate_since if self._gate_since is not None else t
+            self._segments.append((start, t))
+            self._gate_since = None
+        self._gate = gate
+
     def _send_led(self, completed: list[RepMetrics]) -> None:
         """ONE command per frame, so arms finishing together cannot overwrite each other's LED
         flash: any fault wins. A good-rep command is skipped while a fault flash is still
@@ -305,18 +444,20 @@ class LiveSession:
             self.board.send(cmd)
 
     def _counters(self, pf: PoseFrame | None) -> dict[str, dict]:
-        latest = self.pipeline.latest_angles()
+        if self.pipeline is None:
+            return {}
+        raw = self.pipeline.latest_angles()
         bands = self.pipeline.thresholds()
         out: dict[str, dict] = {}
         for track in self.pipeline.tracks:
             key = track.arm if track.arm is not None else "all"
-            angle = latest[key]
             enter, exit_ = bands[key]
             visibility = None
             if track.arm is not None and pf is not None and pf.valid:
-                visibility = _arm_min_visibility(pf, track.side)
+                visibility = arm_min_visibility(pf, track.side)
             out[key] = {
-                "angle": None if np.isnan(angle) else float(angle),
+                "angle": _finite_or_none(track.last_p),
+                "angle_raw": _finite_or_none(raw[key]),
                 "enter": float(enter),
                 "exit": float(exit_),
                 "armed": bool(track.seg.armed),
@@ -347,19 +488,25 @@ class LiveSession:
                 self._dispatch("imu", samples)
         gates = self._read_gates()
         gate = self._choose_gate(gates)
-        self.pipeline.set_gate(gate, t)
+        self._apply_gate(gate, t)
 
+        pipe = self.pipeline
         img = world = None
         pf = None
+        completed: list[RepMetrics] = []
         if gate:
             t_ms = max(int(t * 1000), self._last_ms + 1)
             self._last_ms = t_ms
             img, world = self.detect(frame, t_ms)
             pf = pose_frame_from_detection(index, t, img, world)
-            completed = self.pipeline.on_frame(pf)
+            if pipe is not None:
+                completed = pipe.on_frame(pf)
+            else:
+                self.log.frame(t, True, True)
+        elif pipe is not None:
+            pipe.skip_frame(t)
         else:
-            self.pipeline.skip_frame(t)
-            completed = []
+            self.log.frame(t, False, False)
         if completed:
             self._send_led(completed)
 
@@ -367,7 +514,7 @@ class LiveSession:
         fps = 0.0
         if len(self._stamps) > 1 and self._stamps[-1] > self._stamps[0]:
             fps = (len(self._stamps) - 1) / (self._stamps[-1] - self._stamps[0])
-        frame_angles = self.pipeline.last_frame_angles if found else None
+        frame_angles = pipe.last_frame_angles if found and pipe is not None else None
         snap = Snapshot(
             index=index,
             t=t,
@@ -382,7 +529,7 @@ class LiveSession:
             energy=self._energy.last_value if self.board is not None else None,
             angles=dict(frame_angles) if frame_angles is not None else {},
             counters=self._counters(pf),
-            totals=self.pipeline.arm_totals(),
+            totals=pipe.arm_totals() if pipe is not None else {},
             completed=completed,
             fps=fps,
             exercise=self.exercise,
@@ -404,15 +551,61 @@ class LiveSession:
     def finish(self) -> PipelineResult:
         """Close the run: :meth:`Pipeline.finish` (no IMU cross-check) with the summary keys
         ``live`` (True), ``board`` (its name or ``None``), ``fps_mean`` (frames/s over the frame
-        clock) and ``duration_s`` (first to last frame, s) added in that order."""
+        clock) and ``duration_s`` (first to last frame, s) added in that order. The reps and
+        totals are the current pipeline's (since the last exercise change or counter reset); the
+        events and frame counts cover the whole session. For ``idle`` the same summary keys are
+        built from the session's log, with no reps and ``arms`` ``{}``."""
         if self._t_first is not None and self._t_last is not None:
             duration = self._t_last - self._t_first
         else:
             duration = 0.0
-        result = self.pipeline.finish(compute_imu=False, end_t=self._t_last)
+        if self.pipeline is not None:
+            result = self.pipeline.finish(compute_imu=False, end_t=self._t_last)
+        else:
+            result = self._idle_result()
         n = self._n_frames
         result.summary["live"] = True
         result.summary["board"] = self.board.name if self.board is not None else None
         result.summary["fps_mean"] = round((n - 1) / duration, 1) if duration > 0 else 0.0
         result.summary["duration_s"] = round(duration, 2)
         return result
+
+    def _idle_result(self) -> PipelineResult:
+        """The :meth:`Pipeline.finish` summary for a session without a pipeline (``idle``):
+        the same keys, from the session's log and gate segments, with no reps."""
+        segments = list(self._segments)
+        if self._gate and self._gate_since is not None:
+            end = self._t_last if self._t_last is not None else self._gate_since
+            segments.append((self._gate_since, end))
+        log = self.log
+        summary: dict = {
+            "exercise": self.exercise,
+            "gate": self.gate_source,
+            "reps": 0,
+            "reps_pose": 0,
+            "faults": 0,
+            "frames_total": log.frames_total,
+            "frames_processed": log.frames_processed,
+            "frames_processed_pct": round(
+                100.0 * log.frames_processed / max(log.frames_total, 1), 1
+            ),
+            "frames_bridged": 0,
+            "frames_invalid": 0,
+            "gated_seconds": round(sum(b - a for a, b in segments), 2),
+            "arms": {},
+        }
+        return PipelineResult(log.events, log.frames_total, log.frames_processed, [], summary)
+
+
+def _check_gate_source(source: str) -> None:
+    if source not in GATE_SOURCES:
+        raise ValueError(f"unknown gate source {source!r}; choose from {GATE_SOURCES}")
+
+
+def _check_exercise(exercise: str) -> None:
+    if exercise not in EXERCISES:
+        raise ValueError(f"unknown exercise {exercise!r}; choose from {EXERCISES}")
+
+
+def _finite_or_none(x: float) -> float | None:
+    return float(x) if np.isfinite(x) else None

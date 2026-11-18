@@ -107,7 +107,10 @@ def run_live(
     ``Command.LED_GOOD_REP``, and a good-rep command is not sent within :data:`FAULT_FLASH_S`
     of a fault one (it would cancel the device's fault flash). ``send`` errors are ignored.
     ``show`` receives each rendered HUD frame; leave it ``None`` for a headless run (OpenCV is
-    then never touched). ``on_event`` sees every ``rep``/``fault``/``gate_*`` event as it happens.
+    then never touched). ``on_event`` sees every ``rep``/``fault``/``gate_*`` event as it happens,
+    and the session's ``error`` events; an exception it raises does not propagate: the session
+    reports the first one as an ``error`` event and ignores later ones. Every ``error`` event
+    (``where`` and ``error`` text) is printed through ``say``.
 
     The totals are printed through ``say`` and, when ``out_dir`` is given, ``events.parquet``,
     ``frames.parquet`` and ``session.json`` are written (even for zero reps) however the loop
@@ -129,6 +132,8 @@ def run_live(
         report_dropped=False,
         on_event=on_event,
     )
+    # a broken listener is reported as an error event, never raised: print it so it is not silent
+    session.subscribe(on_event=lambda e: _say_error(say, e))
     pipe = session.pipeline
 
     banners: dict[str, hud.Banner] = {}  # one per counter ("l", "r", "all"), each expires alone
@@ -220,6 +225,11 @@ def run_live(
                 # the loop already failed: report the lost log but let that error propagate
                 say(f"could not write the session log to {out_dir}: {exc}")
     return result
+
+
+def _say_error(say: Callable[[str], None], e: Event) -> None:
+    if e.kind == "error":
+        say(f"error in {e.payload.get('where')}: {e.payload.get('error')}")
 
 
 def _paced(

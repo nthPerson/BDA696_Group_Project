@@ -48,6 +48,9 @@ class RepMetrics:
     metrics: dict[str, float]
     faults: list[dict] = field(default_factory=list)
     arm: str | None = None  # "l" | "r" | None (squat, or when per-arm tracking is off)
+    # the requires-tags (frontal_view, two_arm) this rep is judged with; recorded whether or
+    # not a rules engine is attached, so the rep can be re-judged later
+    context: frozenset[str] = field(default_factory=frozenset)
 
     def as_payload(self) -> dict:
         return {
@@ -201,7 +204,7 @@ def _arm_joint_names(side: str) -> tuple[str, str, str]:
     return (f"shoulder_{side}", f"elbow_{side}", f"wrist_{side}")
 
 
-def _arm_min_visibility(fr: PoseFrame, side: str) -> float:
+def arm_min_visibility(fr: PoseFrame, side: str) -> float:
     """Lowest MediaPipe visibility (0-1) of ``side``'s shoulder, elbow and wrist in ``fr``."""
     idx = [fr.skeleton.index(name) for name in _arm_joint_names(side)]
     return float(np.min(fr.visibility[idx]))
@@ -209,7 +212,7 @@ def _arm_min_visibility(fr: PoseFrame, side: str) -> float:
 
 def _arm_visible(fr: PoseFrame, side: str) -> bool:
     """Whether ``side``'s shoulder, elbow and wrist all meet ``MIN_ARM_VISIBILITY`` in ``fr``."""
-    return _arm_min_visibility(fr, side) >= MIN_ARM_VISIBILITY
+    return arm_min_visibility(fr, side) >= MIN_ARM_VISIBILITY
 
 
 class _Track:
@@ -265,6 +268,12 @@ class Pipeline:
     ``finish`` closes the run and returns a :class:`PipelineResult`. ``run_pipeline`` is a thin
     wrapper that merges an :class:`IMUSource` with a pose-frame iterator the way the replay path
     always has; a live loop (no IMU) drives the same object directly.
+
+    With ``report_dropped=True`` an excursion the counter throws away is published as a
+    ``rep_dropped`` event ``{arm, t_start, t_end, reason}`` (times in seconds) at ``t_end``:
+    ``reason`` is ``"too_short"`` (shorter than the segmenter's ``min_duration_s``) or
+    ``"tracking_gap"`` (per-arm mode: the person was lost for more than ``MAX_GAP_FRAMES``
+    frames inside it). The default ``False`` emits nothing extra (replay's golden output).
     """
 
     def __init__(
@@ -282,6 +291,7 @@ class Pipeline:
         per_arm: bool = False,
         max_buffer_frames: int | None = None,
         pad_rep_start_s: float = 0.0,
+        report_dropped: bool = False,
     ):
         self.exercise = exercise
         self.gate = gate
@@ -294,6 +304,7 @@ class Pipeline:
         self.per_arm = per_arm
         self.max_buffer_frames = max_buffer_frames
         self.pad_rep_start_s = pad_rep_start_s
+        self.report_dropped = report_dropped
 
         cfg = {**DEFAULT_REP_CONFIG[exercise], "adaptive": True}
         if rules is not None and hasattr(rules, "rep_config"):
@@ -422,7 +433,7 @@ class Pipeline:
             out[f"exit_{k}"] = track.seg.sign * track.seg.exit
             out[f"armed_{k}"] = 1.0 if track.seg.armed else 0.0
             if track.arm is not None:
-                out[f"vis_{k}"] = _arm_min_visibility(fr, track.side)
+                out[f"vis_{k}"] = arm_min_visibility(fr, track.side)
         return out
 
     def skip_frame(self, t: float) -> None:
@@ -473,6 +484,8 @@ class Pipeline:
         track.last_p = p
         rep = track.seg.push(fr.t, p)
         if rep is None:
+            if self.report_dropped and track.seg.dropped_short is not None:
+                self._emit_dropped(track, *track.seg.dropped_short, "too_short")
             return None
 
         end_abs = rep.i_end
@@ -484,6 +497,8 @@ class Pipeline:
             # live only: a rep with a stretch of lost tracking inside would be judged on
             # interpolated angles (docs/02 4.3: such a segment is invalid), so it is not counted
             track.last_end_abs = end_abs
+            if self.report_dropped:
+                self._emit_dropped(track, rep.t_start, rep.t_end, "tracking_gap")
             return None
         ts = np.asarray(track.buf_t)
         if self.pad_rep_start_s > 0:
@@ -496,8 +511,9 @@ class Pipeline:
             # live numbering follows the counter on screen across gate close/reopen (replay keeps
             # the segmenter's ids, which restart at 0 on every gate-open segment: golden output)
             rm.rep_id = len(track.reps)
+        context = self._context(track, rm)
+        rm.context = frozenset(context)
         if self.rules is not None:
-            context = self._context(track, rm)
             rm.faults = [f.as_dict() for f in self.rules.evaluate(rm, context=context)]
         track.reps.append(rm)
         self._emit_rep(track, rm)
@@ -575,6 +591,12 @@ class Pipeline:
         if self.on_event:
             self.on_event(e)
         return e
+
+    def _emit_dropped(self, track: _Track, t_start: float, t_end: float, reason: str) -> None:
+        self._emit(
+            "rep_dropped", t_end, arm=track.arm, t_start=float(t_start), t_end=float(t_end),
+            reason=reason,
+        )  # fmt: skip
 
     def _emit_rep(self, track: _Track, rm: RepMetrics) -> None:
         payload = rm.as_payload()
