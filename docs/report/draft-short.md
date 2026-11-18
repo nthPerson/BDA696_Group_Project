@@ -9,11 +9,12 @@ docs/report/draft.md, which stays the full working copy for the final report.
 - What was cut: per-fold spreads, RecGym results, the rep-counting, rules and on-device tables
   (now one sentence each), three figures, the comparison-status table, most quality-issue and
   tooling detail, three references that are no longer cited. All of it is still in draft.md.
-- Open [TODO]s are the same as in draft.md: SDSU emails, course title, instructor name, the Team
-  Contributions bullets for Ruby, Rochelle and Bryce, and whether the course needs a statement on
+- Open [TODO]s are the same as in draft.md: SDSU emails, course title, instructor name, and whether the course needs a statement on
   AI-assisted development.
 - Figures are linked by relative path. If the text is pasted into Word or Google Docs, insert
   docs/report/figures/architecture.png and reports/figures/data_profile_minutes.png by hand.
+- Section 10: the bullets for Ruby, Rochelle and Bryce were written at Robert's direction on
+  2026-11-18. Each member should read their own bullet and correct it before submission.
 -->
 
 # FormCoach: Wrist-IMU-Gated Pose Estimation for Per-Repetition Exercise Form Feedback
@@ -295,10 +296,13 @@ sentences generated from fault codes by a local language model.
   outline and draft.
 - **Christian Byars:** live webcam application; first MediaPipe runs; labelled webcam test sets
   and the provisional webcam thresholds.
-- **Ruby Rios Ramirez:** revision and submission copy of the report outline. [TODO: add completed
-  contributions]
-- **Rochelle Reyes:** [TODO: completed contributions]
-- **Bryce Hall:** [TODO: completed contributions]
+- **Ruby Rios Ramirez:** form-feedback rules and the exercise and health perspective behind them
+  (which faults matter and how the coaching messages are worded); revision and submission of the
+  report outline.
+- **Rochelle Reyes:** project scoping and the pitch presentation; took part in the wearable build
+  and bench-testing sessions; review of the outline and of the pose and form-feedback sections.
+- **Bryce Hall:** project scoping and the pitch presentation; took part in the wearable build and
+  bench-testing sessions; review and editing of the outline and report draft.
 
 ## 11. References
 

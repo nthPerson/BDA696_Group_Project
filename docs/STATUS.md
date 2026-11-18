@@ -21,7 +21,7 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 - No new measurements: the numbers are the same ones as in the full draft.
 
 ### Next
-1. Team: fill the `[TODO]`s in **both** files (emails, course title, instructor, Section 10 bullets).
+1. Robert: fill the `[TODO]`s in **both** files (emails, course title, instructor). Ruby, Rochelle, Bryce: read your Section 10 bullet (written at Robert's direction 2026-11-18) and correct it.
 2. When a number changes, change it in `draft.md` first, then in `draft-short.md`.
 3. The measurements listed in the 2026-11-12 entry are still open.
 
