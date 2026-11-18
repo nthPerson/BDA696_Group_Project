@@ -5,7 +5,8 @@ Notifications on the IMU characteristic carry 5-sample batches (``protocol.unpac
 fake packets. :class:`BLESource` runs bleak's asyncio loop in a background thread: it scans for
 the wearable in ``scan_round_s`` second rounds with no backoff (:meth:`BLESource._find`), then
 reconnects with backoff on connection errors, and exposes the same ``iter_samples()`` /
-``send()`` as the serial source.
+``send()`` as the serial source. Its progress lines go to a ``log`` callable (``print`` by default).
+:func:`scan_devices` lists every nearby wearable for a UI to choose from.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import contextlib
 import queue
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from formcoach.io import protocol
 from formcoach.io.serial_source import Stats
@@ -50,8 +51,41 @@ def _bleak():
     return bleak
 
 
+def scan_devices(
+    timeout_s: float = 4.0, name_prefix: str = protocol.DEVICE_NAME_PREFIX
+) -> list[tuple[str, str, int | None]]:
+    """Scan for ``timeout_s`` seconds and return every device whose name (on the device or in
+    its advertisement) starts with ``name_prefix``, as ``(name, identifier, rssi)`` tuples,
+    strongest signal first (``rssi`` in dBm; ``None`` when the platform does not report it,
+    listed last). ``identifier`` is the MAC address on Windows and Linux and a per-laptop
+    CoreBluetooth UUID on macOS; pass it to ``BLESource(address=...)``.
+
+    Blocking: it runs its own asyncio loop, so call it from a worker thread, never from inside a
+    running event loop. Needs the ``device`` extra.
+    """
+    import asyncio
+
+    bleak = _bleak()
+    found = asyncio.run(bleak.BleakScanner.discover(timeout=timeout_s, return_adv=True))
+    out: list[tuple[str, str, int | None]] = []
+    for device, adv in found.values():
+        names = (device.name, getattr(adv, "local_name", None))
+        name = next((n for n in names if n and n.startswith(name_prefix)), None)
+        if name is not None:
+            out.append((name, device.address, getattr(adv, "rssi", None)))
+    out.sort(key=lambda d: (d[2] is None, -(d[2] or 0)))
+    return out
+
+
 class BLESource:
-    """Connect to the first ``FormCoach-XXXX`` device (or ``address``) and stream samples."""
+    """Connect to the first ``FormCoach-XXXX`` device (or ``address``) and stream samples.
+
+    ``log`` receives every progress line (scanning, not found yet, reconnecting); ``print`` by
+    default, so the CLI behaves as before.
+    """
+
+    # the default sink, also for instances built without __init__ (tests/test_ble_find.py)
+    log: Callable[[str], None] = print
 
     def __init__(
         self,
@@ -59,8 +93,12 @@ class BLESource:
         address: str | None = None,
         scan_round_s: float = 2.0,
         queue_size: int = 5000,
+        log: Callable[[str], None] = print,
     ):
+        """``scan_round_s``: seconds per scan round while looking for ``name_prefix``;
+        ``queue_size``: samples buffered before new ones are counted as dropped."""
         self.bleak = _bleak()
+        self.log = log
         self.name_prefix = name_prefix
         self.address = address
         self.scan_round_s = scan_round_s
@@ -101,7 +139,7 @@ class BLESource:
         def _matches(device, _adv) -> bool:
             return bool(device.name and device.name.startswith(self.name_prefix))
 
-        print(f"# ble: scanning for {self.name_prefix}* ({self.scan_round_s:.0f} s rounds)...")
+        self.log(f"# ble: scanning for {self.name_prefix}* ({self.scan_round_s:.0f} s rounds)...")
         rounds = 0
         while not self._stop.is_set():
             device = await bleak.BleakScanner.find_device_by_filter(
@@ -112,7 +150,7 @@ class BLESource:
                 return device
             rounds += 1
             if rounds % 5 == 0:  # every ~10 s with the default rounds; stay quiet in between
-                print(
+                self.log(
                     f"# ble: no {self.name_prefix}* device found yet "
                     f"({rounds * self.scan_round_s:.0f} s); is the wearable switched on?"
                 )
@@ -154,7 +192,7 @@ class BLESource:
                 if self._stop.is_set():
                     break
                 self.q.put(None)  # wake the consumer so it can print a status line
-                print(f"# ble: {exc}; reconnecting in {backoff:.0f} s")
+                self.log(f"# ble: {exc}; reconnecting in {backoff:.0f} s")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
 
