@@ -527,3 +527,25 @@ drift from a variable frame rate. Consequences: an aligner that uses the claps m
 before `eval gating` can run on team sessions; `eval transfer` (a stub) needs a `data/team`
 loader that reads `sets.csv`; threshold ratification and the go/no-go need only `pose.parquet`
 and `sets.csv`. Status stays "proposed" until Robert has run one set end to end on a kit.
+
+## ADR-0035 · FormCoach Bench: a local web server with plain browser pages on a UI-neutral live session · 2026-11-18 · accepted (design awaiting approval)
+
+Context: the live demo is a closed loop behind an OpenCV window. Its text cannot be read from
+2-3 m, nothing can be changed while it runs, the watch connection cannot be managed, and a run
+keeps no IMU samples or landmarks, so it cannot be replayed. Robert wants one tool that produces
+report numbers, records the team dataset and runs the class demo, and wants the core changes
+usable by a different UI if Christian builds one. This is new scope after the feature freeze,
+approved by Robert on 2026-11-18. Options: (a) a local Python server (Starlette, uvicorn, one
+WebSocket) with hand-written pages and no build step, on a `LiveSession` class that owns the
+loop and publishes snapshots, IMU batches and events; (b) NiceGUI on the same class; (c) larger
+OpenCV text plus the planned Streamlit review page. Decision: (a). It is the only option that
+covers connection management, live charts, sliders and a label form, it gives full control of
+the distance-readable coach page, and `starlette`, `uvicorn` and `websockets` are already in
+`uv.lock` through Streamlit, so nothing new is locked. (b) adds a 21 MB dependency two weeks
+into a new major version and still needs custom JavaScript for charts and the skeleton. (c)
+fixes legibility only. Consequences: the UI row of the stack table gains "local web bench";
+`run_live` and `demo --camera` become clients of `LiveSession` and stay as the fallback; the
+replay path and its golden test are not touched; the pages are JavaScript, which Python-only
+teammates cannot easily extend; the WebSocket schema becomes a documented, tested contract;
+the `/review` page supersedes the roadmap's Streamlit dashboard item; no firmware or protocol
+change in the first version. Design: `docs/superpowers/specs/2026-11-18-bench-ui-design.md`.

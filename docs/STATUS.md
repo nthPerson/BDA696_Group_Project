@@ -9,6 +9,41 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-11-18 — First end-to-end run with a watch; FormCoach Bench designed (Claude Code with Robert)
+
+### What changed
+- A kit (MAC `28:84:85:B3:8E:94`, **not yet in `docs/devices.md`**) was flashed with fw 1.1.1 from
+  `main` and passed `formcoach device check` over USB (BMI160 at 0x69, 50.1 Hz, 0 drops,
+  0.987 g, 13.4 ms inference). The log was saved outside the repo because the kit label is unknown.
+- Robert ran `formcoach demo --camera 0 --exercise curl --board ble` on Windows: **the first run
+  of `--board` with real IMU samples. It works end to end.** Findings, not fixed:
+  - the gate closes, and pose stops, when only the arm without the watch exercises (expected;
+    parked);
+  - the OpenCV overlay cannot be read from the 2-3 m the user stands at, and its text has poor
+    contrast over the video.
+- **FormCoach Bench designed** (no code yet): one tool with a coach page (the demo mode), a lab
+  console (watch connection, signals, tuning, capture) and, later, a timeline review page, on a
+  UI-neutral `LiveSession` in the core. Design:
+  `docs/superpowers/specs/2026-11-18-bench-ui-design.md`, with a clickable mockup next to it.
+  ADR-0035. This is new scope after the feature freeze, approved by Robert.
+
+### Next
+1. Robert: approve or correct the design. Then an implementation plan, then build step 0
+   (measure video encoding cost) and step 1 (`LiveSession`).
+2. Robert: say which kit `…8E:94` is, so its `docs/devices.md` row can be written.
+3. The report measurements listed in the 2026-11-12 entry are still open; the Bench's capture
+   step is how the team-recording, full-session gating and latency numbers get produced.
+
+### Open questions
+- Whether the Bench's `/review` page replaces the roadmap's Streamlit dashboard item (ADR-0035
+  says it does; Bryce owns that item).
+- Presentation date (Dec 2 or Dec 9) decides how much of the build order fits.
+
+### Blockers
+- None.
+
+---
+
 ## 2026-11-18 — Abbreviated First Draft for submission (Claude Code with Robert)
 
 ### What changed
