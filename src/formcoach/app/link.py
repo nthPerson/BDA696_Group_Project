@@ -18,9 +18,9 @@ live session owns ``BoardLink.poll``). No hardware is touched in tests: ``factor
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -115,6 +115,8 @@ class LinkManager:
         self.scanner: Scanner = scanner or self._scan_ble
         self._lock = threading.Lock()  # guards the fields below; held only briefly
         self._switch = threading.Lock()  # serialises connect/disconnect (may be slow)
+        self._labels = threading.Lock()  # serialises set_kit_label (memory change + file write)
+        self._log_failed = False  # on_log raised once already (reported to stderr)
         self._kits: dict[str, str] = self._load_kits()
         self._names: dict[str, str] = {}  # identifier -> advertised name, from the last scans
         self._board: BoardLink | None = None
@@ -151,8 +153,18 @@ class LinkManager:
     # ---- logging and kit labels ---------------------------------------------------------------
 
     def _log(self, level: str, text: str) -> None:
-        with contextlib.suppress(Exception):  # a broken UI callback must not break the link
+        """Hand one line to ``on_log``. A broken UI callback must not break the link: its first
+        failure is printed to stderr once, later ones are ignored."""
+        try:
             self.on_log(level, text)
+        except Exception as exc:
+            if not self._log_failed:
+                self._log_failed = True
+                print(
+                    f"formcoach link: on_log failed ({type(exc).__name__}: {exc}); "
+                    "further failures are ignored",
+                    file=sys.stderr,
+                )
 
     def _load_kits(self) -> dict[str, str]:
         try:
@@ -169,17 +181,31 @@ class LinkManager:
 
     def set_kit_label(self, id: str, kit: str | None) -> None:
         """Attach kit label ``kit`` (e.g. ``"K3"``) to identifier ``id``, or remove it with
-        ``None`` or ``""``, and save all labels to ``kits_file`` (its directory is created)."""
-        with self._lock:
-            if kit:
-                self._kits[id] = kit
-            else:
-                self._kits.pop(id, None)
-            kits = dict(self._kits)
-        self.kits_file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.kits_file.with_name(self.kits_file.name + ".tmp")
-        tmp.write_text(json.dumps(kits, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, self.kits_file)
+        ``None`` or ``""``, and save all labels to ``kits_file`` (its directory is created).
+
+        Calls are serialised, so the file always holds what memory holds. If the file cannot be
+        written the label is put back as it was and the ``OSError`` is raised.
+        """
+        with self._labels:
+            with self._lock:
+                previous = self._kits.get(id)
+                if kit:
+                    self._kits[id] = kit
+                else:
+                    self._kits.pop(id, None)
+                kits = dict(self._kits)
+            try:
+                self.kits_file.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self.kits_file.with_name(self.kits_file.name + ".tmp")
+                tmp.write_text(json.dumps(kits, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                os.replace(tmp, self.kits_file)
+            except OSError:
+                with self._lock:
+                    if previous is None:
+                        self._kits.pop(id, None)
+                    else:
+                        self._kits[id] = previous
+                raise
         self._log("info", f"kit label {id} -> {kit or '(none)'}")
 
     # ---- scan / connect / disconnect ----------------------------------------------------------

@@ -6,6 +6,7 @@ port."""
 from __future__ import annotations
 
 import json
+import threading
 import time
 import types
 
@@ -430,3 +431,74 @@ def test_default_ble_factory_routes_ble_lines_to_on_log(tmp_path, monkeypatch):
         assert ("warn", "# ble: adapter off; reconnecting in 1 s") in logs
     finally:
         m.disconnect()
+
+
+def test_a_failed_kit_label_write_rolls_the_label_back(tmp_path):
+    kits = tmp_path / "kits.json"
+    found = [("FormCoach-8428", "AA", -60), ("FormCoach-8428", "BB", -70)]
+    m = LinkManager(kits_file=kits, scanner=lambda t: found)
+    m.set_kit_label("AA", "K3")
+    blocker = tmp_path / "blocked"
+    blocker.write_text("a file where a directory should be")
+    m.kits_file = blocker / "kits.json"  # its parent is a file: the write fails
+
+    with pytest.raises(OSError):
+        m.set_kit_label("AA", "K5")
+    assert [d.kit for d in m.scan("ble")] == ["K3", None]  # rolled back to the old label
+    with pytest.raises(OSError):
+        m.set_kit_label("BB", "K1")
+    assert [d.kit for d in m.scan("ble")] == ["K3", None]  # a new label is removed again
+
+    m.kits_file = kits
+    m.set_kit_label("AA", "K4")
+    assert json.loads(kits.read_text()) == {"AA": "K4"}
+
+
+def test_kit_labels_set_from_many_threads_match_the_file(tmp_path):
+    kits = tmp_path / "kits.json"
+    m = LinkManager(kits_file=kits)
+    threads = [
+        threading.Thread(target=m.set_kit_label, args=(f"ID{i}", f"K{i % 6 + 1}"))
+        for i in range(20)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+    assert json.loads(kits.read_text()) == {f"ID{i}": f"K{i % 6 + 1}" for i in range(20)}
+
+
+def test_a_broken_on_log_is_reported_to_stderr_once(tmp_path, capsys):
+    def on_log(level, text):
+        raise RuntimeError("UI gone")
+
+    m = LinkManager(kits_file=tmp_path / "kits.json", on_log=on_log, factories={"ble": _Source})
+    m.connect("ble", "AA")  # logs a line: the callback fails
+    m.disconnect()  # and fails again
+    err = capsys.readouterr().err
+    assert err.count("on_log failed") == 1 and "UI gone" in err
+    assert m.board is None
+
+
+def test_status_returns_at_once_while_connect_is_blocked(tmp_path):
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_factory(id):
+        entered.set()
+        release.wait(timeout=5)
+        return _Source(id)
+
+    m = LinkManager(kits_file=tmp_path / "kits.json", factories={"ble": slow_factory})
+    worker = threading.Thread(target=m.connect, args=("ble", "AA"))
+    worker.start()
+    try:
+        assert entered.wait(timeout=2)
+        t0 = time.monotonic()
+        st = m.status()
+        assert time.monotonic() - t0 < 0.5
+        assert st["state"] == "none"
+    finally:
+        release.set()
+        worker.join(timeout=5)
+    assert m.status()["state"] == "waiting"
+    m.disconnect()
