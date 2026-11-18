@@ -134,6 +134,7 @@ class Take:
         self._log = EventLog()  # this take's events (rebased) and frame rows
         self._latency: list[dict] = []
         self._totals: dict[str, dict] = {}  # the latest snapshot's per-counter totals
+        self.warnings: list[str] = []  # what :meth:`write` could not do after the folder was in
 
     # ---- collecting --------------------------------------------------------------------------
 
@@ -233,17 +234,20 @@ class Take:
         arm. The files are written to a hidden temporary folder first and renamed into place, so
         a failed write leaves no partial take behind.
 
+        Once the folder is in place the take is written, whatever happens to ``sets.csv``:
+        if its line cannot be added (the file is locked or not writable, or has a header this
+        code does not know) the reason is added to :attr:`warnings` as a sentence and the
+        method still returns the folder.
+
         Raises:
             FileExistsError: the folder already exists (nothing is written).
-            ValueError: ``sets.csv`` exists with a header this code does not know (nothing is
-                written).
+            OSError, ValueError: the folder could not be written or renamed into place (nothing
+                is left).
         """
         subject_dir = Path(root) / self.labels.subject
         final = subject_dir / self.session_id
         if final.exists():
             raise FileExistsError(f"{final} already exists")
-        sets_path = subject_dir / "sets.csv"
-        sets_rows = _read_sets(sets_path)
         tmp = subject_dir / f".{self.session_id}.partial"
         if tmp.exists():  # left by an earlier failed write of this same take
             shutil.rmtree(tmp)
@@ -258,7 +262,12 @@ class Take:
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
-        _append_set(sets_path, sets_rows, self.session_id, self.labels, true_reps)
+        sets_path = subject_dir / "sets.csv"
+        try:
+            rows = _read_sets(sets_path)
+            _append_set(sets_path, rows, self.session_id, self.labels, true_reps)
+        except (OSError, ValueError) as exc:
+            self.warnings.append(f"could not update {sets_path}: {exc}")
         return final
 
     def _write_imu(self, folder: Path):
@@ -399,7 +408,11 @@ def _append_set(
             csv.writer(f, lineterminator="\n").writerow(row)
         return
     body = [r + [""] * (len(SETS_HEADER) - len(r)) for r in rows[1:]]
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("w", newline="", encoding="utf-8") as f:
-        csv.writer(f, lineterminator="\n").writerows([SETS_HEADER, *body, row])
-    os.replace(tmp, path)
+    try:
+        with tmp.open("w", newline="", encoding="utf-8") as f:
+            csv.writer(f, lineterminator="\n").writerows([SETS_HEADER, *body, row])
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)

@@ -224,7 +224,7 @@ def test_keep_writes_and_discard_writes_nothing(tmp_path):
     out = rig.session.keep_capture(true_reps=None, root=tmp_path)
     assert rig.session.capture_state == "idle"
     assert sorted(p.name for p in (tmp_path / "S1").iterdir()) == ["20261118-141500", "sets.csv"]
-    assert isinstance(out["check"], dict)
+    assert isinstance(out["check"], dict) and out["warnings"] == []
     assert rig.capture_events()[-1].payload["state"] == "idle"
     assert rig.capture_events()[-1].payload["dir"] == out["dir"]
 
@@ -445,3 +445,66 @@ def test_frames_without_a_person_are_stored_invalid(tmp_path):
     hidden = (pose.t >= 1.0) & (pose.t < 1.5)
     assert hidden.any() and not pose.valid[hidden].any() and pose.valid[~hidden].all()
     assert np.isnan(pose.world[hidden]).all()
+
+
+def test_a_written_take_is_kept_when_sets_csv_cannot_be_updated(tmp_path):
+    (tmp_path / "S1" / "sets.csv").mkdir(parents=True)  # opening it fails on every OS
+    rig = Rig()
+    rig.session.start_capture(labels())
+    rig.run(1.0)
+    rig.session.stop_capture()
+    out = rig.session.keep_capture(true_reps=3, root=tmp_path)
+    folder = tmp_path / "S1" / "20261118-141500"
+    assert out["dir"] == str(folder) and (folder / "meta.json").is_file()
+    assert rig.session.capture_state == "idle"
+    assert len(out["warnings"]) == 1 and "sets.csv" in out["warnings"][0]
+    assert rig.capture_events()[-1].payload["warnings"] == out["warnings"]
+    assert not list((tmp_path / "S1").glob(".*"))  # no partial folder or temp file left
+    with pytest.raises(RuntimeError):
+        rig.session.discard_capture()  # the take is no longer held
+
+    # the next take is recorded and kept as usual (another second on the wall clock)
+    rig.session.now = lambda: datetime(2026, 11, 18, 14, 16, 0)
+    rig.session.start_capture(labels())
+    rig.run(1.0)
+    rig.session.stop_capture()
+    out = rig.session.keep_capture(true_reps=3, root=tmp_path)
+    assert (tmp_path / "S1" / "20261118-141600" / "meta.json").is_file()
+    assert rig.session.capture_state == "idle"
+    assert "sets.csv" in out["warnings"][0]
+
+
+def test_a_written_take_is_kept_when_the_session_check_fails(tmp_path, monkeypatch):
+    def broken(_folder):
+        raise KeyError("flags")
+
+    monkeypatch.setattr("formcoach.app.session.session_check.check", broken)
+    rig = Rig()
+    rig.session.start_capture(labels())
+    rig.run(1.0)
+    rig.session.stop_capture()
+    out = rig.session.keep_capture(true_reps=3, root=tmp_path)
+    assert (tmp_path / "S1" / "20261118-141500" / "meta.json").is_file()
+    assert (tmp_path / "S1" / "sets.csv").is_file()
+    assert rig.session.capture_state == "idle"
+    assert out["warnings"] == ["session check failed: KeyError: 'flags'"]
+    assert out["check"] == {"problems": out["warnings"]}
+    assert rig.capture_events()[-1].payload["warnings"] == out["warnings"]
+
+
+def test_a_failed_folder_write_keeps_the_take_in_review(tmp_path, monkeypatch):
+    def broken(*_a, **_k):
+        raise OSError("disk full")
+
+    rig = Rig()
+    rig.session.start_capture(labels())
+    rig.run(1.0)
+    rig.session.stop_capture()
+    monkeypatch.setattr("formcoach.app.capture.write_pose", broken)
+    with pytest.raises(OSError, match="disk full"):
+        rig.session.keep_capture(true_reps=3, root=tmp_path)
+    assert rig.session.capture_state == "review"
+    assert not any((tmp_path / "S1").iterdir())  # nothing left on disk
+    monkeypatch.undo()
+    out = rig.session.keep_capture(true_reps=3, root=tmp_path)  # Keep again works
+    assert out["warnings"] == [] and rig.session.capture_state == "idle"

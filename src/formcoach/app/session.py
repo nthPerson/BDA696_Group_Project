@@ -637,21 +637,37 @@ class LiveSession:
         """Write the take in review to ``<root>/<subject>/<YYYYMMDD-HHMMSS>/``
         (:meth:`Take.write`; ``true_reps`` is the operator's count per arm, or ``None``), run
         ``session check`` on it and go back to ``idle``. Returns and emits (``capture``
-        ``{state: "idle", dir, check}``) ``{"dir": str, "check": dict}``.
+        ``{state: "idle", dir, check, warnings}``) ``{"dir": str, "check": dict, "warnings":
+        list[str]}``.
+
+        Once the take's folder has been renamed into place the take is kept: the session goes
+        to ``idle`` and releases it even if appending to ``sets.csv`` or the session check
+        fails. Each such failure is a plain sentence in ``warnings`` (empty when all went
+        well), e.g. ``"could not update .../sets.csv: <reason>"`` or ``"session check failed:
+        <reason>"``; in the second case ``check`` is ``{"problems": ["session check failed:
+        <reason>"]}``.
 
         Raises:
             RuntimeError: ``capture_state`` is not ``review``.
-            OSError, ValueError: the take could not be written (see :meth:`Take.write`); the
-                take stays in ``review`` and nothing was written.
+            OSError, ValueError: the folder could not be written or renamed into place (see
+                :meth:`Take.write`); the take stays in ``review`` and nothing is left on disk.
         """
         if self.capture_state != "review":
             raise RuntimeError(f"no take to keep (capture is {self.capture_state!r})")
-        folder = self._take.write(Path(root), true_reps=true_reps)
-        report = session_check.check(folder)
+        take = self._take
+        folder = take.write(Path(root), true_reps=true_reps)
+        # from here on the take is kept: failures become warnings, never an exception
+        warnings = list(take.warnings)
+        try:
+            report = session_check.check(folder)
+        except Exception as exc:
+            reason = f"session check failed: {type(exc).__name__}: {exc}"
+            warnings.append(reason)
+            report = {"problems": [reason]}
         self._take = None
         self.capture_state = "idle"
-        self.emit("capture", state="idle", dir=str(folder), check=report)
-        return {"dir": str(folder), "check": report}
+        self.emit("capture", state="idle", dir=str(folder), check=report, warnings=warnings)
+        return {"dir": str(folder), "check": report, "warnings": warnings}
 
     def discard_capture(self) -> None:
         """Drop the take in review (nothing was written) and go back to ``idle``; emits
