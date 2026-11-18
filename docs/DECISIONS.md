@@ -528,7 +528,7 @@ before `eval gating` can run on team sessions; `eval transfer` (a stub) needs a 
 loader that reads `sets.csv`; threshold ratification and the go/no-go need only `pose.parquet`
 and `sets.csv`. Status stays "proposed" until Robert has run one set end to end on a kit.
 
-## ADR-0035 · FormCoach Bench: a local web server with plain browser pages on a UI-neutral live session · 2026-11-18 · accepted (design awaiting approval)
+## ADR-0035 · FormCoach Bench: a local web server with plain browser pages on a UI-neutral live session · 2026-11-18 · accepted
 
 Context: the live demo is a closed loop behind an OpenCV window. Its text cannot be read from
 2-3 m, nothing can be changed while it runs, the watch connection cannot be managed, and a run
@@ -549,3 +549,64 @@ replay path and its golden test are not touched; the pages are JavaScript, which
 teammates cannot easily extend; the WebSocket schema becomes a documented, tested contract;
 the `/review` page supersedes the roadmap's Streamlit dashboard item; no firmware or protocol
 change in the first version. Design: `docs/superpowers/specs/2026-11-18-bench-ui-design.md`.
+
+## ADR-0036 · FormCoach Bench build decisions: replay as recorded, capture pose, clock fit, wire format, security · 2026-11-19 · accepted
+
+Context: building ADR-0035 (`docs/superpowers/plans/2026-11-18-bench.md`, branch `feat/bench`)
+needed eight choices the design left open or got wrong. All are verified only with synthetic
+sources and automated tests (503 pytest, 4 skipped; 98 Node tests), not on a real webcam or watch.
+
+(1) **Replay "as recorded" is a separate module** (`app/replay_recorded.py`), chosen when a take's
+`meta.json` has a `bench` marker (`demo --as-recorded/--no-as-recorded` forces it). The
+alternative, teaching `run_pipeline` per-arm tracks, overrides and a per-frame gate, would have
+touched the replay path the fixture uses. Consequence: `demo --source replay --headless` and
+`tests/golden/replay_mmfit_w00_curls.json` are unchanged, at the cost of a second replay loop to
+keep in step with `LiveSession`.
+
+(2) **Pose runs on every frame during a capture**, while counting still follows the selected gate.
+The alternative, pose only while the gate is open as outside a capture, would leave a take with
+landmarks only where the gate was open. Consequence: every take holds an always-on baseline, so
+`eval gating` and a later review page can re-gate it; a capture costs full pose CPU.
+
+(3) **The device clock is mapped to the laptop clock by a lower-envelope fit** (`io/clock.py`): the
+smallest `t_arrival - t_device` in each 1 s bin of device time, then a straight line (offset and
+drift) through those minima, because batching (five samples per notification) and radio delay
+only ever add. A least-squares fit through every sample would be biased late by the batching.
+Consequence: `t` in `imu.parquet` and `pose.parquet` is one laptop time base, raw times stay in
+`t_device`/`t_arrival`, and `meta.json` `clock` keeps the fit and its `residual_ms`; it is
+untested on a real kit and on Windows timer resolution. The claps of ADR-0034 become an optional
+cross-check.
+
+(4) **Wire format:** one WebSocket, JSON messages built only in `bench/protocol.py`, video as one
+binary message (4-byte big-endian header length, JSON header with the frame's landmarks and
+counters, then an optional JPEG), schema version 1 pinned by `tests/golden/bench_messages.json`
+and read by both the Python and the Node tests. Alternatives were separate sockets for video and
+data, or landmarks in their own message; both let the skeleton drift from its picture.
+Consequence: another client (Christian's, or a script) has one documented contract
+(`docs/howto/bench.md` §8); video can be switched off and the landmarks still arrive. Encoding a
+1280×720 frame measured 0.31 ms at 640 px wide and 1.13 ms at 1280 (quality 70, Robert's WSL2 box,
+OpenCV 5.0.0), so `--video-width` defaults to 640, with 1280 for a projector.
+
+(5) **Security.** The server binds 127.0.0.1, checks the `Host` header on every route (only
+`localhost`, `127.0.0.1`, `[::1]`; else HTTP 400) and the `Origin` header on the WebSocket (a
+browser page from any other origin is refused before it is accepted); `save_rules` writes only
+`.yaml`/`.yml` files inside the directory the bench was started in, and replaces a file only with
+`overwrite: true`, which the lab page sends after asking. An automated security review of the first
+server commit found both holes (no Origin/Host check; `save_rules` writing any path) and they were
+fixed in the next commit. The alternative, binding to localhost alone, still lets any web page
+open in the same browser reach the socket. Consequence: a rules file meant for elsewhere is saved
+here and copied by hand.
+
+(6) **`httpx2` in the dev dependency group.** Starlette 1.7's `TestClient` imports `httpx2`, so the
+server tests cannot run without it; the plan had said no new packages. It is test-only and adds
+`httpx2`, `httpcore2` and `truststore` to `uv.lock`; the `bench` extra itself adds nothing new.
+The alternative was skipping the server tests.
+
+(7) **Rule slider ranges are `[min(0, 2.5 × default), max(2.5 × default, default + 1)]`**, so a
+negative default (`SQUAT_KNEE_VALGUS`, −0.10) sits inside its range. The plan's flat minimum of 0
+would have put it outside. Consequence: none for non-negative defaults.
+
+(8) **Cue latency counts only cues that were on screen when their rep completed.** When both arms
+finish together the coach page shows one cue; the other is shown later, when the first expires,
+and is not counted. The alternative, confirming every cue when drawn, recorded false multi-second
+latencies. Consequence: the per-take median covers about one arm per simultaneous pair.

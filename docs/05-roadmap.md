@@ -31,18 +31,18 @@ Working weeks run late September → early December 2026. Course deliverable due
 - [~] Firmware v1.1 written, compiles in CI, not yet flashed; `record --source serial|ble` written, untested on hardware; `demo --source ble` not wired (see `docs/assembly-day.md`)
 - [~] Keras 1D-CNN gate trained on RecoFit + MM-Fit; LOSO vs RF; int8 export; in the firmware build · [ ] deployed; on-device latency/RAM/flash measured (Checkpoint 5)
 - [x] `rules.yaml` v1 for four exercises; rules unit tests; `eval rules` on MM-Fit
-- [ ] End-to-end demo: wearable → gate → pose → rules → overlay + LED; 30-second demo video
+- [~] End-to-end demo: wearable → gate → pose → rules → overlay + LED (first run with a real kit, `demo --camera 0 --board ble` on Windows, 2026-11-18); the FormCoach Bench coach page (`docs/howto/bench.md`) is built but not yet hardware-verified · [ ] 30-second demo video
 - [~] `docs/report/draft.md` written 2026-11-12 from the outline and `reports/`; team fills the `[TODO]`s, `[TBD]` measurements still to run → **First Draft**
 
 ### Phase 3 — Validation, ablations, benchmark, freeze (Oct 28 – Nov 17)
 
-- [ ] Team validation recordings (~1 h) per `docs/04-datasets.md` §6; `eval transfer`
+- [ ] Team validation recordings (~1 h) per `docs/04-datasets.md` §6; `eval transfer` (recording tool built: Bench capture, `docs/recording-protocol.md` rewritten for it; not yet piloted on a kit; `eval transfer` still a stub)
 - [~] `eval gating` (always-on / energy / laptop done on the replay fixture) · [ ] device gate on recorded sessions
 - [ ] `eval pose-ablation` (Lite / Full / Heavy; YOLO11n-pose optional)
-- [ ] `eval latency`, `eval device`, battery test
+- [ ] `eval latency`, `eval device`, battery test (Bench takes record the cue latency per rep; no `eval latency` table yet)
 - [ ] **Go/no-go on the vision path (~Nov 3)**: if rep segmentation agreement or rule validity is unacceptable, switch to the fallback in `docs/02-system-design.md` §9
 - [ ] Feature freeze ~Nov 10; `make eval` regenerates every table and figure
-- [ ] Streamlit session dashboard v1; Dockerfile for the replay path
+- [ ] ~~Streamlit session dashboard v1~~ superseded by the Bench's timeline review page (ADR-0035; its own plan, not built); Dockerfile for the replay path
 - [ ] `docs/slides/` → **Final Presentation Slides**
 
 ### Phase 4 — Report, video, presentation (Nov 18 – Dec 9)

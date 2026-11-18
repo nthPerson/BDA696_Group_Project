@@ -150,7 +150,18 @@ Config-driven (`rules.yaml`), multi-label per rep, every rule outputs `{code, se
   thresholds, deg), `armed_k` (1.0 once the last `window_s` of angle spans `min_range`; before that nothing can
   count as a rep), and `vis_l`/`vis_r` (lowest landmark visibility of that arm, 0-1). Replay writes none, so its
   `frames.parquet` is still `t, processed, gate_state`.
-- v1: Streamlit page to open a session folder and show rep timeline, fault distribution, angle curves, gating timeline.
+- v1: FormCoach Bench (`formcoach bench`, ADR-0035, ADR-0036, `docs/howto/bench.md`): a local web server with a lab
+  console and a coach page on `app/session.py`'s `LiveSession`; the OpenCV window stays as the fallback. The
+  Streamlit page planned here is superseded by the Bench's timeline review page (`/review`, not built yet).
+- Bench take (one set): `data/team/<S#>/<YYYYMMDD-HHMMSS>/` plus one line in `data/team/<S#>/sets.csv`
+  (`session_id, exercise, form, reps, notes, arm`; `reps` is the true count per arm). `t` in every file is seconds
+  from the start of the take on the laptop's monotonic clock. `imu.parquet`: IMUStream plus `flags`, `seq`,
+  `t_arrival` (laptop clock, s) and `t_device` (device clock, s), `t` being device time mapped onto the laptop clock
+  (`io/clock.py`). `pose.parquet`: every frame (pose runs on every frame while recording), image and world landmarks,
+  `valid=False` where nobody was found. `events.parquet`, and `frames.parquet` with the live columns above plus
+  `t_source` (the frame source's own time, s). `meta.json`: the `SessionRecorder` keys plus `bench`, `labels`, `arm`,
+  `expected_reps`, `clock` (`offset_s`, `drift`, `residual_ms`, `n`, `method`, `t0_mono`), `rules`, `overrides`,
+  `gate_source`, `model`, `kit`, `summary` (with the median cue latency `latency_ms_median`). No video is written.
 
 ## 5. Data schema (common across datasets)
 
