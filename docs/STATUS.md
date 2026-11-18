@@ -9,6 +9,30 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 
 ---
 
+## 2026-11-18 — Abbreviated First Draft for submission (Claude Code with Robert)
+
+### What changed
+- `docs/report/draft-short.md`: a cut-down First Draft (about 3,200 words with references and tables, against
+  6,800) that still covers all required components. Robert chose: this is the version to submit on
+  Canvas, about 2,500 words, a core set of tables and figures (datasets, one combined results
+  table, gating; class-minutes and architecture figures), and one "not yet measured" paragraph in
+  place of inline `[TBD]` markers.
+- `docs/report/draft.md` is unchanged and stays the full working copy for the final report.
+- No new measurements: the numbers are the same ones as in the full draft.
+
+### Next
+1. Team: fill the `[TODO]`s in **both** files (emails, course title, instructor, Section 10 bullets).
+2. When a number changes, change it in `draft.md` first, then in `draft-short.md`.
+3. The measurements listed in the 2026-11-12 entry are still open.
+
+### Open questions
+- Unchanged from the 2026-11-12 entry.
+
+### Blockers
+- None.
+
+---
+
 ## 2026-11-12 — First Draft of the paper written (Claude Code with Robert)
 
 ### What changed
