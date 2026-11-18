@@ -4,6 +4,9 @@
 //
 // Messages: the server's (hello, state, frame header, event) and page actions:
 // socket_open, socket_close, tick {now} (page clock, s), tone_played.
+//
+// Cue latency is measured only for cues that were drawn when their rep completed: a cue hidden
+// behind another one and shown later (`fresh` false in the view) is displayed but never confirmed.
 import { cueText, repDots } from "./format.js";
 
 export const CUE_TTL_S = 8; // an arm's cue stays until its next rep or this long
@@ -68,11 +71,23 @@ function onRep(s, p) {
   const k = counterOf(p.arm);
   const seq = s.seq + 1;
   const tone = p.faults?.length ? "fault" : "good";
+  const cue = cueText(p);
+  const rank = RANK[cue.kind];
+  const cues = {};
+  let top = true; // is the new cue the one the band shows?
+  for (const [key, c] of Object.entries(s.cues)) {
+    if (key === k) continue; // replaced by the new cue
+    const r = RANK[c.cue.kind];
+    // A cue that arrived in this same frame and is now outranked was never drawn.
+    cues[key] = r <= rank && c.at === s.now ? { ...c, fresh: false } : c;
+    if (r > rank) top = false;
+  }
+  cues[k] = { payload: p, cue, at: s.now, seq, fresh: top };
   return {
     ...s,
     seq,
     reps: { ...s.reps, [k]: [...s.reps[k], p].slice(-MAX_DOTS) },
-    cues: { ...s.cues, [k]: { payload: p, cue: cueText(p), at: s.now, seq } },
+    cues,
     pendingTone: s.pendingTone === "fault" ? "fault" : tone, // a fault tone wins within a frame
   };
 }
@@ -159,14 +174,14 @@ function bandOf(s) {
     const p = top.payload;
     return {
       kind: top.cue.kind, icon: ICON[top.cue.kind], who: top.cue.who, text: top.cue.text,
-      key: `${p.arm ?? "all"}:${p.rep_id}:${top.seq}`, arm: p.arm ?? null, rep_id: p.rep_id,
+      key: `${p.arm ?? "all"}:${p.rep_id}:${top.seq}`, fresh: top.fresh, arm: p.arm ?? null, rep_id: p.rep_id,
     };
   }
   const n = countdownSeconds(s);
   const counting = s.capture.state === "countdown";
   return {
     kind: "neutral", icon: "", who: "", text: counting && n != null ? `Get ready ${n}` : counting ? "Get ready" : "Ready",
-    key: null, arm: null, rep_id: null,
+    key: null, fresh: false, arm: null, rep_id: null,
   };
 }
 

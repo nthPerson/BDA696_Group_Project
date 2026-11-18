@@ -154,7 +154,9 @@ function boot() {
       txt.textContent = band.text;
       fitCueText(txt);
     }
-    if (band.key && band.key !== shownKey && !sentCues.has(band.key)) {
+    // Only a cue drawn when its rep completed is confirmed (see coach-state.js). `sentCues` keeps
+    // the send to once per rep: a cue that is hidden and shown again keeps the same key.
+    if (band.key && band.fresh && band.key !== shownKey && !sentCues.has(band.key)) {
       sentCues.add(band.key);
       const { arm, rep_id } = band;
       requestAnimationFrame(() => sock?.send("cue_shown", { arm, rep_id })); // after the DOM update

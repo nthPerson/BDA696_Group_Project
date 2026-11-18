@@ -209,3 +209,34 @@ test("two-digit counts are plain numbers", () => {
   const s = run([hello(), withTotals({ l: { reps: 12, good: 12, flagged: 0 }, r: { reps: 11, good: 11, flagged: 0 } })]);
   assert.deepEqual(v(s).counts.map((c) => c.count), [12, 11]);
 });
+
+test("a cue hidden behind the other arm's fault is not fresh when promoted after the fault expires", () => {
+  let s = run([hello(), tick(100), rep("l", 0, [warn]), tick(101), rep("r", 0)]);
+  assert.equal(v(s).band.who, "LEFT ARM · REP 1");
+  assert.equal(v(s).band.fresh, true);
+  s = reduce(s, tick(100 + CUE_TTL_S));
+  assert.equal(v(s).band.who, "RIGHT ARM · REP 1"); // promoted: still displayed
+  assert.equal(v(s).band.fresh, false); // but never confirmed
+});
+
+test("a rep whose cue is on top at once is fresh, on every view until replaced", () => {
+  let s = run([hello(), tick(1), rep("l", 0)]);
+  assert.equal(v(s).band.fresh, true);
+  s = reduce(s, tick(2));
+  assert.equal(v(s).band.fresh, true); // the DOM code dedupes the send by key
+  assert.equal(v(s).band.key, v(reduce(s, tick(3))).band.key);
+  s = reduce(s, rep("l", 1, [warn]));
+  assert.equal(v(s).band.fresh, true);
+  assert.equal(v(s).band.rep_id, 1);
+});
+
+test("two arms finishing on one frame with equal severity: only the newer is fresh", () => {
+  let s = run([hello(), tick(1), rep("l", 0), rep("r", 0)]);
+  assert.equal(v(s).band.who, "RIGHT ARM · REP 1");
+  assert.equal(v(s).band.fresh, true);
+  assert.equal(s.cues.l.fresh, false);
+  s = reduce(s, rep("r", 1, [warn])); // later frames: the newer fault replaces r; l stays unconfirmed
+  s = run([tick(2), rep("r", 2)], s);
+  s = reduce(s, tick(1 + CUE_TTL_S - 0.5));
+  assert.equal(s.cues.l.fresh, false);
+});
