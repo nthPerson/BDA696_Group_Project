@@ -56,7 +56,19 @@ button, select, input { font: inherit; color: inherit; }
 .dot.w { background: var(--warn); }
 .dot > span { font-size: 0.62em; color: #111; line-height: 1; }
 
-/* strip charts (strips.js) */
-.strip-lane { border-top: 1px solid var(--grid); }
+/* strip charts (strips.js): a grid of lanes, each a label column and a plot; one time axis */
+.strip-lane { display: grid; grid-template-columns: 118px minmax(0, 1fr); min-height: 0; border-top: 1px solid var(--grid); }
 .strip-lane:first-child { border-top: 0; }
-.strip-lane .u-legend { font-size: 11px; }
+.strip-axis { border-top: 0; }
+.strip-label {
+  padding: 4px 8px; color: var(--muted); font-size: 11px; display: flex; flex-direction: column;
+  justify-content: center; gap: 1px; min-height: 0; overflow: hidden;
+}
+.strip-label b { color: var(--fg); font-weight: 600; font-size: 12px; }
+.strip-label i { font-style: normal; }
+.strip-label .sub { font-size: 10.5px; }
+.k-cx { color: var(--cx); } .k-cy { color: var(--cy); } .k-cz { color: var(--cz); }
+.k-ok { color: var(--ok); } .k-accent { color: var(--accent); }
+.strip-plot { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #141418; }
+.strip-axis .strip-plot { background: transparent; }
+.strip-plot .uplot { position: absolute; top: 0; left: 0; }

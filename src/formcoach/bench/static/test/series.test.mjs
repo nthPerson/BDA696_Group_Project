@@ -58,3 +58,33 @@ test("a frozen window is pushed forward when its history ages out", () => {
   s.push(250, [0]);
   assert.equal(tl.tEnd, 150);
 });
+
+test("window finds its rows by binary search in a wrapped ring, ties included", () => {
+  const s = new Series(["v"], 8);
+  // 13 rows: the ring has wrapped, oldest kept row is t = 5; two rows share t = 9
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 10, 11].forEach((t, k) => s.push(t, [k]));
+  assert.deepEqual(s.window(11, 100), [[5, 6, 7, 8, 9, 9, 10, 11], [5, 6, 7, 8, 9, 10, 11, 12]]);
+  assert.deepEqual(s.window(9, 1), [[8, 9, 9], [8, 9, 10]]);
+  assert.deepEqual(s.window(9.5, 0.4), [[], []]);
+  assert.deepEqual(s.window(4, 10), [[], []]); // all before the oldest kept row
+  assert.deepEqual(s.window(50, 10), [[], []]); // all after the newest
+  assert.deepEqual(new Series(["v"], 4).window(1, 1), [[], []]);
+});
+
+test("window touches only the rows it returns (no copy of the whole ring)", () => {
+  const s = new Series(["v"], 20000);
+  for (let i = 0; i < 20000; i++) s.push(i / 50, [i]);
+  let reads = 0;
+  const t = s._t;
+  s._t = new Proxy(t, { get: (o, k) => { if (typeof k === "string" && /^\d+$/.test(k)) reads++; const v = o[k]; return typeof v === "function" ? v.bind(o) : v; } });
+  const [ts] = s.window(399.98, 1);
+  assert.equal(ts.length, 51);
+  assert.ok(reads < 200, `read ${reads} times`);
+});
+
+test("oldestT is the first kept row's time", () => {
+  const s = new Series(["v"], 3);
+  assert.equal(s.oldestT, Infinity);
+  [1, 2, 3, 4].forEach((t) => s.push(t, [0]));
+  assert.equal(s.oldestT, 2);
+});

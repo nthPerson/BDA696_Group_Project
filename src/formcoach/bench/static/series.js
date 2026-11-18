@@ -64,6 +64,8 @@ export class Series {
 
   get latestT() { return this._n ? this._t[(this._start + this._n - 1) % this.capacity] : -Infinity; }
 
+  get oldestT() { return this._n ? this._t[this._start] : Infinity; }
+
   /** Add a row; `values[i]` belongs to `names[i]` (null/NaN is kept as NaN: a gap). */
   push(t, values) {
     const i = (this._start + this._n) % this.capacity;
@@ -74,15 +76,28 @@ export class Series {
     this.timeline?.note(t);
   }
 
-  /** Rows with `tEnd - spanS <= t <= tEnd`, oldest first, as `[t[], col0[], ...]` (NaN gaps become null). */
+  /**
+   * Rows with `tEnd - spanS <= t <= tEnd`, oldest first, as `[t[], col0[], ...]` (NaN gaps
+   * become null). Rows must have been pushed in time order (equal times are fine): the first
+   * row is found by binary search, so a render reads only the rows it returns.
+   */
   window(tEnd, spanS) {
     const t = [];
     const cols = this._cols.map(() => []);
     const lo = tEnd - spanS;
-    for (let k = 0; k < this._n; k++) {
-      const i = (this._start + k) % this.capacity;
+    const cap = this.capacity;
+    // first logical index k with t >= lo
+    let a = 0;
+    let b = this._n;
+    while (a < b) {
+      const m = (a + b) >> 1;
+      if (this._t[(this._start + m) % cap] < lo) a = m + 1;
+      else b = m;
+    }
+    for (let k = a; k < this._n; k++) {
+      const i = (this._start + k) % cap;
       const ti = this._t[i];
-      if (ti < lo || ti > tEnd) continue;
+      if (ti > tEnd) break;
       t.push(ti);
       this._cols.forEach((c, j) => cols[j].push(Number.isNaN(c[i]) ? null : c[i]));
     }

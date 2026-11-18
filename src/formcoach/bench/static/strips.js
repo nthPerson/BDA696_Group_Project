@@ -1,208 +1,282 @@
-// Stacked strip charts on one shared Timeline (uPlot, vendored; loaded as a page global).
-// The push* methods only store data; the page calls render() from requestAnimationFrame.
-// The enter/exit band, rep marks and metric bars are drawn with uPlot hooks on the lane's canvas.
+// Stacked strip charts on one shared time axis (uPlot, vendored; loaded as a page global before
+// this module runs). The data lives in a StripData (strip-model.js, no DOM); this module only
+// draws it. Each lane is a grid row: an HTML label on the left, a uPlot chart on the right
+// without its own x axis; one axis strip under the lanes shows the time for all of them.
+// The page calls render() from requestAnimationFrame.
 /* global uPlot */
-import { Series } from "./series.js";
-
-const LANE_HEIGHT = 120;
-const IMU_CAPACITY = 16000; // 300 s at 50 Hz
-const FRAME_CAPACITY = 10000; // 300 s at ~30 fps
-const MAX_REPS = 500;
 
 export const ALL_LANES = ["accel", "gyro", "gates", "angle", "metrics"];
 
+const Y_AXIS_PX = 46; // every lane's y axis is this wide, so the plots line up with the time axis
+const AXIS_STRIP_PX = 22;
+const ROW = { accel: "1.1fr", gyro: "1fr", gates: "0.8fr", angle: "1.4fr", metrics: "0.9fr" };
+// The gates lane stacks its traces in one plot: watch bit (top), energy gate bit, model p (bottom).
+const BASE = { device: 2.1, energy: 1.1, p: 0.1 };
+const lift = (base) => (v) => (v == null ? null : base + 0.8 * v);
+const MARK_GLYPH = { good: "✓", warn: "!", drop: "×" };
+const OP_WORD = { gt: "above", ge: "above", lt: "below", le: "below" };
+
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const atLeast = (minAbs) => (_u, min, max) => [Math.min(-minAbs, min ?? 0), Math.max(minAbs, max ?? 0)];
-const fmt = (_u, v) => (v == null ? "–" : v.toFixed(2));
-// The gates lane stacks three traces in one plot: device bit high band, energy bit middle, p_active 0-1.
-const DEVICE_BASE = 2.1;
-const ENERGY_BASE = 1.1;
-const lift = (base) => (v) => (v == null ? null : base + 0.8 * v);
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+
+/** Seconds relative to now as axis text: "now", "-5 s". */
+function agoText(v) {
+  const r = Math.round(v * 10) / 10;
+  return Math.abs(r) < 0.05 ? "now" : `${r} s`;
+}
 
 /**
- * @param {HTMLElement} container one div per lane is appended to it
- * @param {import("./series.js").Timeline} timeline
+ * @param {HTMLElement} container the lanes and the time axis are appended to it (a CSS grid)
+ * @param {import("./strip-model.js").StripData} data
  * @param {string[]} lanes subset of ALL_LANES to show (always in the order of ALL_LANES)
  */
 export class StripCharts {
-  constructor(container, timeline, lanes = ALL_LANES) {
-    this.timeline = timeline;
-    this.imu = new Series(["ax", "ay", "az", "gx", "gy", "gz"], IMU_CAPACITY, timeline);
-    this.frames = new Series(["device", "energy", "p_active", "angle_l", "angle_r"], FRAME_CAPACITY, timeline);
-    this.reps = []; // {t (t_mono clock, s), mark: "good"|"warn"|"drop", ratio, sev}
-    this.band = { l: null, r: null }; // latest [enter, exit] (deg) per counter
-    this._clockOffset = 0; // t_mono - t of the latest frame: puts event times on the chart clock
-    this._pActive = NaN;
-    this._tEnd = 0;
-    this.lanes = ALL_LANES.filter((n) => lanes.includes(n)).map((name) => this._makeLane(container, name));
-    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.resize()).observe(container);
-  }
-
-  /** An `imu` message (parallel arrays; `t` the arrival time, s). Samples without a time are skipped. */
-  pushImu(msg) {
-    for (let i = 0; i < msg.t.length; i++) {
-      if (msg.t[i] == null) continue;
-      this.imu.push(msg.t[i], [msg.ax[i], msg.ay[i], msg.az[i], msg.gx[i], msg.gy[i], msg.gz[i]]);
-    }
-  }
-
-  /** A frame header: gate bits, primary angle per counter (a squat's single counter `all` shows as left). */
-  pushFrame(h) {
-    const c = h.counters ?? {};
-    this.frames.push(h.t_mono, [
-      h.gates?.device ? 1 : 0,
-      h.gates?.energy ? 1 : 0,
-      this._pActive,
-      (c.l ?? c.all)?.angle ?? null,
-      c.r?.angle ?? null,
-    ]);
-    for (const k of ["l", "r"]) {
-      const s = c[k] ?? (k === "l" ? c.all : null);
-      this.band[k] = s && s.enter != null && s.exit != null ? [s.enter, s.exit] : null;
-    }
-    this._clockOffset = h.t_mono - h.t;
-  }
-
-  /** A server `event` message: `rep` and `rep_dropped` become marks; flagged reps also get a metric bar. */
-  pushEvent(ev) {
-    const t = ev.t + this._clockOffset;
-    if (ev.kind === "rep_dropped") this.reps.push({ t, mark: "drop", ratio: null, sev: null });
-    else if (ev.kind === "rep") {
-      const faults = ev.payload?.faults ?? [];
-      const top = faults.find((f) => f.severity === "warn") ?? faults[0];
-      const ratio = top && top.threshold ? top.value / top.threshold : null;
-      this.reps.push({ t, mark: faults.length ? "warn" : "good", ratio, sev: top?.severity ?? null });
-    } else return;
-    if (this.reps.length > MAX_REPS) this.reps.shift();
-  }
-
-  /** The `link` message's `status`: remembers p_active (0-1) for the gates lane. */
-  pushLink(status) {
-    this._pActive = status?.p_active ?? NaN;
-  }
-
-  /** Redraw every lane for the timeline's current window. Call from requestAnimationFrame. */
-  render() {
-    const { spanS } = this.timeline;
-    const tEnd = this.timeline.tEnd;
-    const rel = (d) => [d[0].map((t) => t - tEnd), ...d.slice(1)]; // x = seconds ago (<= 0)
-    const imu = rel(this.imu.window(tEnd, spanS));
-    const fr = rel(this.frames.window(tEnd, spanS));
-    const data = {
-      accel: imu.slice(0, 4),
-      gyro: [imu[0], imu[4], imu[5], imu[6]],
-      gates: [fr[0], fr[1].map(lift(DEVICE_BASE)), fr[2].map(lift(ENERGY_BASE)), fr[3]],
-      angle: [fr[0], fr[4], fr[5]],
-      metrics: [[-spanS, 0]],
+  constructor(container, data, lanes = ALL_LANES) {
+    this.data = data;
+    this.container = container;
+    this.colours = {
+      muted: cssVar("--muted"), grid: cssVar("--grid"), ok: cssVar("--ok"), warn: cssVar("--warn"),
+      err: cssVar("--err"), accent: cssVar("--accent"), cx: cssVar("--cx"), cy: cssVar("--cy"),
+      cz: cssVar("--cz"), off: cssVar("--off"),
     };
-    this._tEnd = tEnd;
-    for (const lane of this.lanes) lane.u.setData(data[lane.name]);
+    this.view = null; // the StripData view drawn last
+    this._hasModel = false;
+    this.lanes = ALL_LANES.filter((n) => lanes.includes(n)).map((name) => this._makeLane(name));
+    this.axis = this._makeAxis();
+    container.style.gridTemplateRows = [...this.lanes.map((l) => ROW[l.name]), `${AXIS_STRIP_PX}px`].join(" ");
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.resize()).observe(container);
+    this.resize();
+  }
+
+  /** A lane's label element (title `b` and a key line `span`), for the page to adjust. */
+  labelOf(name) {
+    return this.lanes.find((l) => l.name === name)?.label ?? null;
+  }
+
+  /** Redraw every lane for the timeline's current window. */
+  render() {
+    const v = this.data.view();
+    this.view = v;
+    const hasModel = v.gates[3].some((x) => x != null);
+    if (hasModel !== this._hasModel) {
+      this._hasModel = hasModel;
+      const key = this.labelOf("gates")?.querySelector(".model");
+      if (key) key.hidden = !hasModel;
+    }
+    const xs = v.gates[0];
+    const series = {
+      accel: v.accel,
+      gyro: v.gyro,
+      gates: [xs, v.gates[1].map(lift(BASE.device)), v.gates[2].map(lift(BASE.energy)), v.gates[3].map(lift(BASE.p))],
+      angle: v.angle,
+      metrics: [[-v.spanS, 0], [null, null]],
+    };
+    for (const lane of this.lanes) lane.u.setData(series[lane.name]);
+    // the axis strip's x is seconds relative to now (the lanes' is relative to the window's
+    // right edge): its range moves when scrolled back, so uPlot recomputes the tick labels
+    this.axis.u.setData([[-v.spanS - v.behindS, -v.behindS], [null, null]]);
   }
 
   resize() {
-    for (const lane of this.lanes) lane.u.setSize({ width: lane.el.clientWidth || 600, height: LANE_HEIGHT });
+    for (const lane of [...this.lanes, this.axis]) {
+      const w = Math.max(50, Math.floor(lane.cell.clientWidth));
+      const h = Math.max(lane === this.axis ? AXIS_STRIP_PX : 20, Math.floor(lane.cell.clientHeight));
+      if (w !== lane.w || h !== lane.h) {
+        lane.w = w;
+        lane.h = h;
+        lane.u.setSize({ width: w, height: h });
+      }
+    }
   }
 
-  _makeLane(container, name) {
-    const el = document.createElement("div");
-    el.className = "strip-lane";
-    container.appendChild(el);
-    const axis = { stroke: cssVar("--muted"), grid: { stroke: cssVar("--grid"), width: 1 }, ticks: { show: false } };
-    const line = (label, color, extra = {}) => ({ label, stroke: cssVar(color), width: 1.5, value: fmt, ...extra });
-    const stepped = uPlot.paths.stepped({ align: 1 });
-    const spec = {
-      accel: { unit: "m/s²", y: atLeast(12), series: [line("ax", "--cx"), line("ay", "--cy"), line("az", "--cz")] },
-      gyro: { unit: "rad/s", y: atLeast(3), series: [line("gx", "--cx"), line("gy", "--cy"), line("gz", "--cz")] },
-      gates: {
-        unit: "gates",
-        y: [-0.1, 3.1],
-        series: [
-          line("device gate", "--accent", { paths: stepped }),
-          line("energy gate", "--warn", { paths: stepped }),
-          line("p_active", "--ok"),
-        ],
+  _yAxis(extra = {}) {
+    const c = this.colours;
+    return { size: Y_AXIS_PX, stroke: c.muted, grid: { stroke: c.grid, width: 1 }, ticks: { show: false }, font: "10px system-ui, sans-serif", gap: 3, ...extra };
+  }
+
+  _plot(cell, series, y, extra = {}) {
+    const span = () => [-this.data.timeline.spanS, 0];
+    return new uPlot(
+      {
+        width: 300,
+        height: 60,
+        legend: { show: false },
+        padding: [6, 8, 4, 0],
+        scales: { x: { time: false, range: span }, y: { range: y } },
+        axes: [{ show: false }, this._yAxis(extra.yAxis)],
+        series: [{}, ...series],
+        cursor: { sync: { key: "bench-strips" }, drag: { x: false, y: false }, points: { show: false } },
+        ...(extra.opts ?? {}),
       },
-      angle: { unit: "deg", y: [0, 180], series: [line("left angle", "--cx"), line("right angle", "--cz")] },
-      metrics: { unit: "× limit", y: [0, 2], series: [] },
-    }[name];
-    const hooks = {
-      angle: { drawClear: [(u) => this._drawBand(u)], draw: [(u) => this._drawMarks(u)] },
-      metrics: { draw: [(u) => this._drawMetricBars(u)] },
-    }[name] ?? {};
+      [[], ...series.map(() => [])],
+      cell,
+    );
+  }
+
+  _makeLane(name) {
+    const c = this.colours;
+    const row = el("div", "strip-lane");
+    const label = el("div", "strip-label");
+    const cell = el("div", "strip-plot");
+    row.append(label, cell);
+    this.container.appendChild(row);
+    const line = (stroke, extra = {}) => ({ stroke, width: 1.5, ...extra });
+    const stepped = uPlot.paths.stepped({ align: 1 });
+    const bandLine = { stroke: "rgba(155,155,168,0.55)", width: 1, paths: stepped };
+    let u;
+    if (name === "accel" || name === "gyro") {
+      const accel = name === "accel";
+      label.innerHTML = `<b>${accel ? "Accel" : "Gyro"}</b><span><i class="k-cx">x</i> <i class="k-cy">y</i> <i class="k-cz">z</i> · ${accel ? "m/s²" : "rad/s"}</span>`;
+      u = this._plot(cell, [line(c.cx), line(c.cy), line(c.cz)], atLeast(accel ? 12 : 3));
+    } else if (name === "gates") {
+      label.innerHTML = '<b>Gate</b><span><i class="k-ok">watch bit</i> · <i class="k-accent">laptop energy</i><i class="model" hidden> · <i class="k-cx">model p</i></i></span><span class="sub">high = open</span>';
+      u = this._plot(cell, [line(c.ok, { paths: stepped, width: 2 }), line(c.accent, { paths: stepped, width: 2 }), line(c.cx)], [0, 3.05], {
+        yAxis: {
+          splits: () => [BASE.p + 0.4, BASE.energy + 0.4, BASE.device + 0.4],
+          values: () => [this._hasModel ? "model" : "", "energy", "watch"],
+          grid: { show: false },
+        },
+      });
+    } else if (name === "angle") {
+      label.innerHTML = '<b>Angle</b><span><i class="k-cx">L</i> <i class="k-cz">R</i> · enter/exit band · reps</span>';
+      const fill = "rgba(122,167,255,0.08)";
+      u = this._plot(cell, [line(c.cx, { width: 1.8 }), line(c.cz, { width: 1.8 }), bandLine, bandLine, bandLine, bandLine], [0, 200], {
+        opts: { bands: [{ series: [3, 4], fill }, { series: [5, 6], fill }], hooks: { draw: [(p) => this._drawMarks(p)] } },
+      });
+    } else {
+      label.innerHTML = "<b>Per-rep metric</b><span>vs limit</span>";
+      u = this._plot(cell, [{ stroke: "transparent" }], () => this.view?.metric?.range ?? [0, 1], {
+        opts: { hooks: { draw: [(p) => this._drawMetric(p)] } },
+      });
+    }
+    return { name, row, label, cell, u, w: 0, h: 0 };
+  }
+
+  _makeAxis() {
+    const row = el("div", "strip-lane strip-axis");
+    const label = el("div", "strip-label", "<span>seconds</span>");
+    const cell = el("div", "strip-plot");
+    row.append(label, cell);
+    this.container.appendChild(row);
+    const c = this.colours;
     const u = new uPlot(
       {
-        width: el.clientWidth || 600,
-        height: LANE_HEIGHT,
-        legend: { show: spec.series.length > 0 },
-        scales: { x: { time: false, range: () => [-this.timeline.spanS, 0] }, y: { range: spec.y } },
-        axes: [{ ...axis, label: "seconds ago" }, { ...axis, label: spec.unit, size: 60 }],
-        series: [{ label: "seconds ago", value: fmt }, ...spec.series],
-        cursor: { drag: { x: false, y: false } },
-        hooks,
+        width: 300,
+        height: AXIS_STRIP_PX,
+        legend: { show: false },
+        padding: [0, 8, 0, 0],
+        cursor: { show: false },
+        scales: { x: { time: false, range: (_u, min, max) => [min, max] }, y: { range: [0, 1] } },
+        axes: [
+          {
+            size: AXIS_STRIP_PX, stroke: c.muted, grid: { show: false }, ticks: { show: true, stroke: c.grid, size: 4 },
+            font: "10px system-ui, sans-serif", gap: 2, values: (_u, splits) => splits.map(agoText),
+          },
+          { size: Y_AXIS_PX, values: () => [], grid: { show: false }, ticks: { show: false }, stroke: "transparent" },
+        ],
+        series: [{}, { stroke: "transparent" }],
       },
-      [[], ...spec.series.map(() => [])],
-      el,
+      [[], []],
+      cell,
     );
-    return { name, el, u };
+    return { name: "axis", row, label, cell, u, w: 0, h: 0 };
   }
 
-  // Shaded enter/exit band of each counter, drawn under the angle lines.
-  _drawBand(u) {
-    const { ctx, bbox } = u;
-    ctx.save();
-    ctx.fillStyle = "rgba(122,167,255,0.12)";
-    for (const b of Object.values(this.band)) {
-      if (!b) continue;
-      const y1 = u.valToPos(Math.max(...b), "y", true);
-      const y2 = u.valToPos(Math.min(...b), "y", true);
-      ctx.fillRect(bbox.left, y1, bbox.width, y2 - y1);
-    }
-    ctx.restore();
-  }
-
-  // Rep marks: a faint vertical line and a dot (green good, amber flagged, grey dropped).
+  // Rep marks along the top of the angle lane: one row per arm (left above right), a bar over
+  // the rep's span with a glyph: ✓ good (green), ! flagged (amber), × dropped (grey).
   _drawMarks(u) {
+    const v = this.view;
+    if (!v) return;
     const { ctx, bbox } = u;
-    const colour = { good: cssVar("--ok"), warn: cssVar("--warn"), drop: cssVar("--muted") };
+    const px = devicePixelRatio || 1;
+    const c = this.colours;
+    const fill = { good: c.ok, warn: c.warn, drop: c.off };
+    const rowH = 10 * px;
     ctx.save();
-    for (const r of this.reps) {
-      const x = u.valToPos(r.t - this._tEnd, "x", true);
-      if (x < bbox.left || x > bbox.left + bbox.width) continue;
-      ctx.fillStyle = colour[r.mark];
-      ctx.strokeStyle = colour[r.mark];
-      ctx.globalAlpha = 0.5;
-      ctx.beginPath();
-      ctx.moveTo(x, bbox.top);
-      ctx.lineTo(x, bbox.top + bbox.height);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.beginPath();
-      ctx.arc(x, bbox.top + 7, 5, 0, 2 * Math.PI);
-      ctx.fill();
+    ctx.font = `bold ${8 * px}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const m of v.marks) {
+      const x0 = Math.max(bbox.left, u.valToPos(m.x0, "x", true));
+      const x1 = Math.min(bbox.left + bbox.width, u.valToPos(m.x1, "x", true));
+      if (x1 - x0 < 1) continue;
+      const y = bbox.top + (m.arm === "r" ? rowH + 1 * px : 0);
+      ctx.fillStyle = fill[m.mark];
+      ctx.fillRect(x0 + px, y, x1 - x0 - 2 * px, rowH - px);
+      if (x1 - x0 > 12 * px) {
+        ctx.fillStyle = m.mark === "drop" ? "#ececf1" : "#111";
+        ctx.fillText(`${m.arm === "all" ? "" : m.arm.toUpperCase()}${MARK_GLYPH[m.mark]}`, (x0 + x1) / 2, y + rowH / 2);
+      }
     }
     ctx.restore();
   }
 
-  // One bar per flagged rep: value / limit of its most severe fault, against a dashed limit line at 1.
-  _drawMetricBars(u) {
+  // The chosen rule metric per rep against its limit: a bar from zero to the rep's value
+  // (left arm in the left half of the rep's span, right arm in the right half), amber with "!"
+  // when the server flagged the rep for that rule, green with "✓" when not; the limit as a
+  // dashed line, and the side of the limit that gets flagged shaded and named, once a fault of
+  // this rule has shown which side that is.
+  _drawMetric(u) {
+    const m = this.view?.metric;
+    if (!m) return;
     const { ctx, bbox } = u;
-    const yLimit = u.valToPos(1, "y", true);
+    const px = devicePixelRatio || 1;
+    const c = this.colours;
+    const yLimit = u.valToPos(m.limit, "y", true);
+    const y0 = u.valToPos(Math.min(Math.max(0, m.range[0]), m.range[1]), "y", true);
     ctx.save();
-    ctx.strokeStyle = cssVar("--err");
-    ctx.setLineDash([6, 4]);
+    const side = OP_WORD[m.op];
+    if (side) {
+      ctx.fillStyle = "rgba(248,113,113,0.07)";
+      if (side === "above") ctx.fillRect(bbox.left, bbox.top, bbox.width, yLimit - bbox.top);
+      else ctx.fillRect(bbox.left, yLimit, bbox.width, bbox.top + bbox.height - yLimit);
+    }
+    ctx.font = `bold ${9 * px}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    for (const b of m.bars) {
+      let x0 = u.valToPos(b.x0, "x", true);
+      let x1 = u.valToPos(b.x1, "x", true);
+      const w = x1 - x0;
+      if (b.arm === "l") x1 = x0 + w / 2;
+      if (b.arm === "r") x0 += w / 2;
+      x0 = Math.max(bbox.left, x0 + w * 0.06);
+      x1 = Math.min(bbox.left + bbox.width, x1 - w * 0.06);
+      if (x1 - x0 < 1) continue;
+      const yv = u.valToPos(b.value, "y", true);
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = b.flagged ? c.warn : c.ok;
+      ctx.fillRect(x0, Math.min(yv, y0), x1 - x0, Math.max(1, Math.abs(y0 - yv)));
+      ctx.globalAlpha = 1;
+      if (x1 - x0 >= 8 * px) {
+        const up = yv <= y0;
+        const inside = Math.abs(y0 - yv) >= 13 * px;
+        ctx.fillStyle = inside ? "#111" : b.flagged ? c.warn : c.ok;
+        ctx.textBaseline = up === inside ? "top" : "bottom";
+        const ty = inside ? yv + (up ? 2 : -2) * px : yv + (up ? -2 : 2) * px;
+        ctx.fillText(b.flagged ? "!" : "✓", (x0 + x1) / 2, ty);
+      }
+    }
+    ctx.strokeStyle = c.err;
+    ctx.lineWidth = px;
+    ctx.setLineDash([6 * px, 4 * px]);
     ctx.beginPath();
     ctx.moveTo(bbox.left, yLimit);
     ctx.lineTo(bbox.left + bbox.width, yLimit);
     ctx.stroke();
-    ctx.setLineDash([]);
-    for (const r of this.reps) {
-      if (r.ratio == null) continue;
-      const x = u.valToPos(r.t - this._tEnd, "x", true);
-      if (x < bbox.left || x > bbox.left + bbox.width) continue;
-      const top = u.valToPos(Math.min(2, Math.max(0, r.ratio)), "y", true);
-      ctx.fillStyle = r.sev === "warn" ? cssVar("--warn") : cssVar("--accent");
-      ctx.fillRect(x - 5, top, 10, bbox.top + bbox.height - top);
-    }
     ctx.restore();
   }
+}
+
+/** The metric lane's key line: "<metric> per rep · flagged above limit 35°". */
+export function metricKeyText(metric, limitText) {
+  if (!metric) return "no rule metric for this exercise";
+  const side = OP_WORD[metric.op];
+  return side ? `flagged ${side} the limit (${limitText}, dashed)` : `limit ${limitText} (dashed)`;
 }
