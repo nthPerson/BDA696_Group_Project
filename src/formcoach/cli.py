@@ -19,6 +19,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from formcoach import __version__
+from formcoach.bench import DEFAULT_HTTP_PORT, VIDEO_WIDTH
 
 console = Console(soft_wrap=True)  # no hard wrapping: output is parsed by tests and logs
 app = typer.Typer(
@@ -873,6 +874,78 @@ def viewer(
         console.print("viewer stopped")
     finally:
         server.server_close()
+
+
+class BenchBoard(StrEnum):
+    ble = "ble"
+    serial = "serial"
+    fake = "fake"
+
+
+@app.command("bench")
+def bench(
+    camera: Annotated[int | None, typer.Option(help="Webcam index (try 0, then 1, 2 ...).")] = None,
+    video: Annotated[Path | None, typer.Option(help="A video file instead of a webcam.")] = None,
+    fake: Annotated[
+        bool, typer.Option("--fake", help="A synthetic person and a fake watch (no hardware).")
+    ] = False,
+    exercise: Annotated[
+        str, typer.Option(help="curl | press | raise | squat | idle (changeable in the console)")
+    ] = "curl",
+    model: Annotated[str, typer.Option(help="Pose model: lite | full | heavy.")] = "lite",
+    rules: Annotated[
+        Path | None,
+        typer.Option(help="Rules file (default: the packaged rules.mediapipe-webcam.yaml)."),
+    ] = None,
+    board: Annotated[
+        BenchBoard | None,
+        typer.Option(help="Connect this watch at start (ble | serial | fake); or use the console."),
+    ] = None,
+    port: Annotated[
+        str | None, typer.Option(help="With --board: BLE address or serial port (COM5, ...).")
+    ] = None,
+    http_port: Annotated[int, typer.Option(help="Local port to serve the pages on.")] = (
+        DEFAULT_HTTP_PORT
+    ),
+    video_width: Annotated[
+        int, typer.Option(help="Width (px) of the video sent to the pages.")
+    ] = VIDEO_WIDTH,
+    open_browser: Annotated[
+        bool, typer.Option("--open/--no-open", help="Open the lab console in the browser.")
+    ] = True,
+) -> None:
+    """FormCoach Bench: the lab console and the coach page in the browser (Chrome, Edge,
+    Firefox, Safari), served on http://localhost only.
+
+    Pick exactly one source: `--camera N`, `--video FILE` or `--fake` (a synthetic person and a
+    fake watch, for trying the pages without hardware). The watch can be scanned for and
+    connected from the console, or at start with `--board`. Ctrl+C stops it and releases the
+    camera. Needs the bench extra: `uv sync --extra bench` (`make setup-live`).
+    """
+    chosen = (("--camera", camera is not None), ("--video", video is not None), ("--fake", fake))
+    sources = [flag for flag, used in chosen if used]
+    if len(sources) != 1:
+        given = f" (got {' and '.join(sources)})" if sources else ""
+        console.print(f"[bold red]pass exactly one of --camera N, --video PATH or --fake{given}[/]")
+        raise typer.Exit(2)
+    if port is not None and board is None:
+        console.print("[bold red]--port needs --board ble|serial (it names the watch)[/]")
+        raise typer.Exit(2)
+    if video_width < 16:
+        console.print("[bold red]--video-width must be at least 16 pixels[/]")
+        raise typer.Exit(2)
+    from formcoach.bench.runner import run_bench
+
+    try:
+        run_bench(
+            camera=camera, video=video, fake=fake, exercise=exercise, model=model, rules=rules,
+            board=board.value if board is not None else None, port=port, http_port=http_port,
+            open_browser=open_browser, video_width=video_width,
+            say=lambda line: console.print(escape(line), highlight=False),
+        )  # fmt: skip
+    except (FileNotFoundError, ImportError, OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[bold red]{escape(str(exc))}[/]")
+        raise typer.Exit(2) from exc
 
 
 @app.command("record")
