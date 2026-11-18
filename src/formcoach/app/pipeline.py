@@ -798,7 +798,7 @@ def _fuse(pose_reps: list[RepMetrics], imu_reps: list) -> int:
 def run_replay(
     session: Path | str = FIXTURE_SESSION,
     *,
-    gate: str = "always_on",
+    gate: str | None = None,
     exercise: str | None = None,
     headless: bool = True,
     out_dir: Path | None = None,
@@ -808,10 +808,33 @@ def run_replay(
     gate_kwargs: dict | None = None,
     side: str = "both",
     view: str = "frontal",
+    as_recorded: bool | None = None,
 ) -> PipelineResult:
     """Replay a session directory through the pipeline; writes events/frames/session.json to
-    ``out_dir`` when given. ``side``/``view`` default to the session's ``meta.json`` values."""
+    ``out_dir`` when given. ``side``/``view`` default to the session's ``meta.json`` values.
+
+    ``as_recorded`` (``None``: whether ``session`` is a Bench take) hands the session to
+    :func:`formcoach.app.replay_recorded.replay_as_recorded` with ``gate`` (default
+    ``"recorded"``), ``rules``, ``gate_kwargs``, ``out_dir`` and ``on_event``; ``exercise``,
+    ``headless``, ``speed``, ``side`` and ``view`` do not apply there. Otherwise ``gate``
+    defaults to ``"always_on"``.
+
+    Raises:
+        ValueError: ``gate="recorded"`` for a session that is not replayed as recorded.
+    """
     session = Path(session)
+    from formcoach.app import replay_recorded  # lazy: it builds on this module
+
+    if as_recorded is None:
+        as_recorded = replay_recorded.is_bench_session(session)
+    if as_recorded:
+        return replay_recorded.replay_as_recorded(
+            session, gate=gate or replay_recorded.RECORDED, rules=rules,
+            gate_kwargs=gate_kwargs, out_dir=out_dir, on_event=on_event,
+        )  # fmt: skip
+    if gate == replay_recorded.RECORDED:
+        raise ValueError(f"gate 'recorded' needs a Bench take replayed as recorded: {session}")
+    gate = gate or "always_on"
     src = ReplaySource(session, speed=speed)
     exercise = exercise or src.meta.get("exercise", "curl")
     pose_path = session / "pose.parquet"

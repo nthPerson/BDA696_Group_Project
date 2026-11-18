@@ -48,11 +48,9 @@ snapshot, IMU batch and event goes into the take; nothing is written before Keep
 from __future__ import annotations
 
 import contextlib
-import math
 import queue
 import threading
 import time
-import warnings
 from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
@@ -649,14 +647,7 @@ class LiveSession:
         if self.capture_state != "review":
             raise RuntimeError(f"no take to keep (capture is {self.capture_state!r})")
         folder = self._take.write(Path(root), true_reps=true_reps)
-        with warnings.catch_warnings():
-            # a take without watch samples: today's check takes the mean of nothing (NaN)
-            warnings.simplefilter("ignore", RuntimeWarning)
-            report = session_check.check(folder)
-        report = {  # NaN is not JSON a browser can read
-            k: None if isinstance(v, float) and not math.isfinite(v) else v
-            for k, v in report.items()
-        }
+        report = session_check.check(folder)
         self._take = None
         self.capture_state = "idle"
         self.emit("capture", state="idle", dir=str(folder), check=report)

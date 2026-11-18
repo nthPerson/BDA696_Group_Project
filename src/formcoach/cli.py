@@ -75,6 +75,17 @@ class Gate(StrEnum):
     device = "device"
 
 
+class ReplayGate(StrEnum):
+    """``demo``'s gates: the four of :class:`Gate`, plus ``recorded`` (a Bench take's own gate,
+    frame by frame)."""
+
+    always_on = "always_on"
+    energy = "energy"
+    laptop = "laptop"
+    device = "device"
+    recorded = "recorded"
+
+
 def _version(value: bool) -> None:
     if value:
         console.print(f"formcoach {__version__}")
@@ -536,7 +547,20 @@ def demo(
     session: Annotated[
         Path | None, typer.Option(help="Replay session dir (default: the 30 s MM-Fit fixture).")
     ] = None,
-    gate: Annotated[Gate, typer.Option(help="Gate implementation to use.")] = Gate.always_on,
+    gate: Annotated[
+        ReplayGate | None,
+        typer.Option(
+            help="Gate implementation to use (default: recorded for a Bench take, else always_on)."
+        ),
+    ] = None,
+    as_recorded: Annotated[
+        bool | None,
+        typer.Option(
+            "--as-recorded/--no-as-recorded",
+            help="Replay a Bench take the way the live run judged it (default: when the "
+            "session's meta.json says Bench).",
+        ),
+    ] = None,
     exercise: Annotated[
         str | None, typer.Option(help="curl | press | raise | squat (default: session meta)")
     ] = None,
@@ -570,7 +594,10 @@ def demo(
 ) -> None:
     """Run the full pipeline: IMU source -> gate -> pose -> reps -> rules -> overlay.
 
-    `--source replay` needs no hardware and must always work; it is the demo of record.
+    `--source replay` needs no hardware and must always work; it is the demo of record. A Bench
+    take (`--session data/team/S1/<id>`) is replayed as recorded: per arm, with the take's own
+    rules, overrides and gate, and its per-arm totals are printed (`--no-as-recorded` replays it
+    the old way).
 
     `--camera N` (or `--video FILE`) is the live demo: one window with your skeleton, a rep
     counter per arm, elbow angles and a coaching banner after every rep. Both arms, alternating
@@ -594,7 +621,8 @@ def demo(
             flag
             for flag, used in (
                 ("--session", session is not None),
-                ("--gate", gate is not Gate.always_on),
+                ("--gate", gate not in (None, ReplayGate.always_on)),
+                ("--as-recorded", as_recorded is not None),
                 ("--speed", speed != 0.0),
             )
             if used
@@ -620,20 +648,23 @@ def demo(
         stub(
             f"demo --source {source.value}",
             4,
-            f"stream from {source.value}{f' on {port}' if port else ''} through gate={gate.value}"
+            f"stream from {source.value}{f' on {port}' if port else ''} through "
+            f"gate={(gate or ReplayGate.always_on).value}"
             " (Checkpoint 4 wires the serial/BLE sources)."
             " For live webcam coaching use: formcoach demo --camera N --board ble.",
         )
         return
     from formcoach.app import pipeline
+    from formcoach.app.replay_recorded import RECORDED, is_bench_session
     from formcoach.io.replay import FIXTURE_SESSION
 
     def show(e):
         if e.kind == "rep":
             m = e.payload["metrics"]
+            arm = e.payload.get("arm")  # Bench takes count each arm
             console.print(
-                f"[green]rep[/] {e.payload['rep_id'] + 1:>3}  t={e.t:8.2f}s  "
-                f"dur={e.payload['duration_s']:.2f}s  "
+                f"[green]rep[/]{f' {arm.upper()}' if arm else ''} {e.payload['rep_id'] + 1:>3}"
+                f"  t={e.t:8.2f}s  dur={e.payload['duration_s']:.2f}s  "
                 f"elbow {m['elbow_min']:.0f}-{m['elbow_max']:.0f} deg"
             )
         elif e.kind == "fault":
@@ -644,25 +675,60 @@ def demo(
     from formcoach.rules.engine import RuleEngine
 
     session_dir = session or FIXTURE_SESSION
-    console.print(f"replaying {session_dir} (gate={gate.value}, exercise={exercise or 'meta'})")
+    recorded = as_recorded if as_recorded is not None else is_bench_session(session_dir)
+    gate_name = gate.value if gate is not None else (RECORDED if recorded else "always_on")
+    if recorded:
+        unused = [f for f, used in (("--exercise", exercise), ("--speed", speed)) if used]
+        if unused:
+            console.print(
+                f"[bold red]{', '.join(unused)} do not apply to an as-recorded replay (it uses "
+                "the take's own exercise and frame times); add --no-as-recorded[/]"
+            )
+            raise typer.Exit(2)
+        window = "" if headless else "; no window in this mode, events are printed"
+        console.print(f"replaying {session_dir} as recorded (gate={gate_name}){window}")
+    else:
+        console.print(f"replaying {session_dir} (gate={gate_name}, exercise={exercise or 'meta'})")
+    # as recorded, the take's own rules file and overrides judge it unless --rules is given
+    engine = RuleEngine.from_yaml(rules) if rules is not None or not recorded else None
     try:
         result = pipeline.run_replay(
-            session_dir, gate=gate.value, exercise=exercise, headless=headless, out_dir=out,
-            on_event=show, speed=speed, rules=RuleEngine.from_yaml(rules),
+            session_dir, gate=gate_name, exercise=exercise, headless=headless, out_dir=out,
+            on_event=show, speed=speed, rules=engine, as_recorded=recorded,
         )  # fmt: skip
-    except (FileNotFoundError, ImportError) as exc:
-        console.print(f"[bold red]{exc}[/]")
+    except (FileNotFoundError, ImportError, ValueError) as exc:
+        console.print(f"[bold red]{escape(str(exc))}[/]")
         raise typer.Exit(2) from exc
     s = result.summary
     expected = result.summary.get("meta", {}).get("expected_reps")
-    console.print(
-        f"reps {s['reps']} (pose) / {s['reps_imu']} (imu) / {s['reps_fused']} (fused)"
-        + (f", expected {expected}" if expected is not None else "")
-        + f" · faults {s['faults']} · frames processed {s['frames_processed']}/{s['frames_total']}"
-        f" ({s['frames_processed_pct']}%) · gated {s['gated_seconds']}s of {s['imu_seconds']}s"
-    )
+    if recorded:
+        _print_as_recorded(s, expected)
+    else:
+        console.print(
+            f"reps {s['reps']} (pose) / {s['reps_imu']} (imu) / {s['reps_fused']} (fused)"
+            + (f", expected {expected}" if expected is not None else "")
+            + f" · faults {s['faults']} · frames processed {s['frames_processed']}/"
+            f"{s['frames_total']} ({s['frames_processed_pct']}%) · gated {s['gated_seconds']}s "
+            f"of {s['imu_seconds']}s"
+        )
     if out:
         console.print(f"wrote {out}/events.parquet frames.parquet session.json")
+
+
+def _print_as_recorded(s: dict, expected: int | None) -> None:
+    """The closing lines of an as-recorded replay: one line per counter (per arm), then faults,
+    frames and gate, then any notes (rules substituted, overrides not applied)."""
+    from formcoach.app.live import totals_lines
+
+    for line in totals_lines(s["exercise"], s["arms"]) or ["no counting (idle take)"]:
+        console.print(escape(line), highlight=False)
+    console.print(
+        (f"expected {expected} per arm · " if expected is not None else "")
+        + f"faults {s['faults']} · frames processed {s['frames_processed']}/{s['frames_total']}"
+        f" ({s['frames_processed_pct']}%) · gated {s['gated_seconds']}s of {s['imu_seconds']}s"
+    )
+    for note in s["notes"]:
+        console.print(f"[yellow]note[/] {escape(note)}")
 
 
 def _live_metric_text(exercise: str, metrics: dict) -> str:
