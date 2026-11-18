@@ -498,7 +498,7 @@ def test_static_pages_and_vendor_are_served_with_js_mime_and_no_store(rig, tmp_p
             r = client.get(f"/{page}")
             assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
             assert r.headers["cache-control"] == "no-store"
-            assert page == "lab" or "not built yet" in r.text  # the lab console is built (Task 10)
+            assert page in ("lab", "coach") or "not built yet" in r.text  # lab, coach are built
         r = client.get("/static/coach.html")
         assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
         if (VENDOR_DIR / "uPlot.iife.min.js").exists():

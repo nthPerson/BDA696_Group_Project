@@ -4,8 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FormCoach Bench: Coach</title>
+<link rel="stylesheet" href="/static/common.css">
+<link rel="stylesheet" href="/static/coach.css">
+<script type="module" src="/static/coach.js"></script>
 </head>
-<body>
-<p>FormCoach Bench: the coach page is not built yet.</p>
+<body class="coach">
+<main class="coach-page">
+  <div class="top">
+    <div class="video" id="video"><canvas class="vid" hidden></canvas><canvas class="skel"></canvas></div>
+    <section class="side">
+      <div class="ex" id="ex"></div>
+      <div class="counts" id="counts"></div>
+    </section>
+  </div>
+  <section class="cue neutral" id="cue" aria-live="polite">
+    <div class="ico" id="cue-ico" aria-hidden="true"></div>
+    <div class="body"><div class="who" id="cue-who"></div><div class="txt" id="cue-txt"></div></div>
+  </section>
+  <div class="state">
+    <div id="st-gate"></div><div id="st-watch"></div><div id="st-rec"></div>
+  </div>
+  <div class="offline" id="offline" role="status">&nbsp;</div>
+</main>
+<button class="chip" id="sound-chip" type="button">Click to enable sound</button>
 </body>
 </html>
