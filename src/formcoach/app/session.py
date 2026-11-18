@@ -33,21 +33,35 @@ called from any thread. A listener that raises never stops the loop: its first e
 published as an ``error`` event and later ones are ignored.
 
 Timing: ``t`` is seconds on the frame source's clock; ``t_mono``, the FPS readout and the LED
-fault-flash guard use the injectable ``clock`` (wall seconds).
+fault-flash guard use the injectable ``clock`` (wall seconds). ``clock`` is the one laptop clock:
+the wearable's ``SISample.t_arrival`` stamps must come from it too.
+
+Capture (Bench design §7; :mod:`formcoach.app.capture`): :meth:`~LiveSession.start_capture`,
+:meth:`~LiveSession.stop_capture`, :meth:`~LiveSession.keep_capture`,
+:meth:`~LiveSession.discard_capture` and :meth:`~LiveSession.note_cue_shown` record one set as a
+:class:`~formcoach.app.capture.Take`. ``capture_state`` goes ``idle`` → (``countdown`` →)
+``recording`` → ``review`` → ``idle``; each change emits a ``capture`` event ``{state, ...}``.
+While recording, pose runs on **every** frame (counting still follows the gate) and every
+snapshot, IMU batch and event goes into the take; nothing is written before Keep.
 """
 
 from __future__ import annotations
 
 import contextlib
+import math
 import queue
 import threading
 import time
+import warnings
 from collections import deque
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 
+from formcoach.app.capture import Take, TakeLabels
 from formcoach.app.events import Event, EventLog
 from formcoach.app.gate import EnergyGate
 from formcoach.app.pipeline import (
@@ -60,12 +74,15 @@ from formcoach.app.pipeline import (
     frame_joint_angles,
 )
 from formcoach.app.tuning import Overrides, rejudge
-from formcoach.io import protocol
+from formcoach.io import protocol, session_check
+from formcoach.io.recorder import TEAM_ROOT
 from formcoach.io.replay import PoseFrame
 from formcoach.pose.skeletons import MEDIAPIPE33
 from formcoach.rules.engine import RuleEngine
 
 GATE_SOURCES = ("device", "energy", "always_on", "manual")
+CAPTURE_STATES = ("idle", "countdown", "recording", "review")
+AUTO_STOP_S = 5.0  # with auto-stop on, a take ends this long (clock seconds) after the gate closes
 EXERCISES = ("curl", "press", "raise", "squat", "idle")  # idle: no counting, no rules
 MAX_BUFFER_FRAMES = 3600  # per-arm angle buffer cap (about two minutes at 30 fps)
 REP_PAD_S = 1.0  # metrics window reaches this far back to the rest position (see Pipeline)
@@ -117,7 +134,9 @@ class Snapshot:
     the session ``clock()`` (s) when :meth:`LiveSession.step` received the frame. ``frame`` is
     the raw BGR image, unmirrored. ``image_landmarks`` ``(33, 4)`` (normalised x, y, z,
     visibility) and ``world_landmarks`` ``(33, 3)`` (metres) are ``None`` when pose did not run
-    or found nobody. ``gate`` is the gate used for this frame and ``gate_source``
+    or found nobody. ``pose_ran``: whether pose ran on this frame: while the gate is open, and
+    on every frame during a capture's recording. ``gate`` is the gate used for this frame (the
+    pipeline processed the frame exactly when it is open) and ``gate_source``
     where it came from (one of :data:`GATE_SOURCES`); ``gates`` holds both wearable lanes,
     ``{"device": bool, "energy": bool}``, each ``None`` without a board. ``energy`` is the
     latest ``var(|a|)`` window value of the energy gate in (m/s²)², ``None`` before the first
@@ -173,6 +192,7 @@ class LiveSession:
         report_dropped: bool = True,
         on_event: Callable[[Event], None] | None = None,
         rules_name: str | None = None,
+        now: Callable[[], datetime] = datetime.now,
     ):
         """``exercise``: one of :data:`EXERCISES`. ``detect(frame_bgr, t_ms)``
         returns ``(image_landmarks (33, 4), world_landmarks (33, 3))`` or ``(None, None)``;
@@ -183,7 +203,12 @@ class LiveSession:
         :data:`GATE_SOURCES`, default ``"device"`` with a board, else ``"always_on"``.
         ``report_dropped``: whether reps the pipeline throws away are published as events.
         ``on_event`` is subscribed as an event listener. ``rules_name``: the rules file's name,
-        for :attr:`overrides` (``"rules"`` when not given) and ``meta.json``.
+        for :attr:`overrides` (``"rules"`` when not given) and ``meta.json``. ``now``: the local
+        wall clock, which names a capture's folder.
+
+        :attr:`capture_context` is what front ends know about the setup and a kept take records
+        in ``meta.json``: ``model``, ``camera``, ``firmware``, ``device``, ``kit``, ``source``
+        (empty to start; ``device`` defaults to the board's name).
 
         :attr:`overrides` is the session's tuning (:class:`formcoach.app.tuning.Overrides` over
         ``rules``), ``None`` without rules or when ``rules`` is not a
@@ -230,7 +255,21 @@ class LiveSession:
         self._gate = False
         self._gate_since: float | None = None  # start of the open gate segment (s)
         self._segments: list[tuple[float, float]] = []  # closed gate segments (s)
-        self._idle_up = UpEstimator()  # idle's own vertical estimate (no pipeline to share)
+        # the session's own vertical estimate, for the angles of frames the pipeline did not
+        # process (idle has no pipeline; a capture runs pose while the gate is closed)
+        self._own_up = UpEstimator()
+
+        self.now = now
+        self.capture_state = "idle"
+        self.capture_context: dict = {}
+        self._take: Take | None = None
+        self._pending: TakeLabels | None = None  # the labels of a take in its countdown
+        self._countdown_until: float | None = None  # clock seconds
+        self._auto_stop = False
+        self._gate_seen_open = False  # in this take (auto-stop waits for the set to start)
+        self._closed_since: float | None = None  # clock seconds the gate has been closed since
+        self._mono_offset = 0.0  # clock minus frame time of the latest frame (s)
+        self._rep_mono: dict[tuple[str | None, int], float] = {}  # (arm, rep_id) -> frame clock
 
         if on_event is not None:
             self.subscribe(on_event=on_event)
@@ -240,6 +279,7 @@ class LiveSession:
         """A fresh per-arm pipeline for ``exercise`` (``None`` for ``idle``) on the session's
         log, rules (with the tuning overrides) and rep settings, continuing the session's gate
         state and segments."""
+        self._rep_mono.clear()  # rep ids start again at 0
         if exercise == "idle":
             return None
         pipe = Pipeline(
@@ -305,10 +345,14 @@ class LiveSession:
         if t is None:
             t = self._t_last if self._t_last is not None else 0.0
         e = self.log.event(kind, t, **payload)
-        self._dispatch("event", e)
+        self._publish_event(e)
         return e
 
     def _publish_event(self, e: Event) -> None:
+        """Send a logged event to the listeners, and into the take while recording (at its time
+        on the session clock, through the latest frame's clock-minus-frame-time offset)."""
+        if self.capture_state == "recording":
+            self._take.add_event(e, e.t + self._mono_offset)
         self._dispatch("event", e)
 
     def _dispatch(self, kind: str, arg) -> None:
@@ -387,7 +431,9 @@ class LiveSession:
 
         Raises:
             ValueError: ``exercise`` is not one of :data:`EXERCISES`.
+            RuntimeError: a capture is under way (``capture_state`` is not ``idle``).
         """
+        self._refuse_during_capture("change the exercise")
         _check_exercise(exercise)
         self.exercise = exercise
         self.pipeline = self._new_pipeline(exercise)
@@ -395,9 +441,18 @@ class LiveSession:
 
     def reset_counters(self) -> None:
         """Start the counters again at zero (a fresh pipeline, same exercise and event log);
-        emits ``counters_reset``."""
+        emits ``counters_reset``.
+
+        Raises:
+            RuntimeError: a capture is under way (``capture_state`` is not ``idle``).
+        """
+        self._refuse_during_capture("reset the counters")
         self.pipeline = self._new_pipeline(self.exercise)
         self.emit("counters_reset")
+
+    def _refuse_during_capture(self, what: str) -> None:
+        if self.capture_state != "idle":
+            raise RuntimeError(f"cannot {what} while a capture is in {self.capture_state!r}")
 
     def set_board(self, board) -> None:
         """Use ``board`` (BoardLink-shaped, see :meth:`__init__`) from the next frame on, or no
@@ -502,6 +557,149 @@ class LiveSession:
         totals = self.pipeline.arm_totals() if self.pipeline is not None else {}
         self.emit("rejudged", totals=totals, reps=reps)
 
+    # ---- capture (session thread; other threads use call) ------------------------------------
+
+    def start_capture(
+        self, labels: TakeLabels, *, delay_s: float = 0.0, auto_stop: bool = False
+    ) -> None:
+        """Start recording one take labelled ``labels``: after ``delay_s`` seconds on the
+        session clock (``countdown``, emits ``capture`` ``{state: "countdown", delay_s}``), or
+        at once. When recording starts the counters are reset (rep ids start at 0) and
+        ``capture`` ``{state: "recording", t_mono, labels}`` is emitted. With ``auto_stop`` the
+        take moves to ``review`` by itself once the gate, having been open, has stayed closed
+        for :data:`AUTO_STOP_S` seconds; ignored while ``gate_source`` is ``always_on``.
+
+        Raises:
+            RuntimeError: ``capture_state`` is not ``idle``.
+            ValueError: ``labels.exercise`` is not the session's exercise, or ``delay_s`` is
+                negative.
+        """
+        if self.capture_state != "idle":
+            raise RuntimeError(f"a capture is already in {self.capture_state!r}")
+        if labels.exercise != self.exercise:
+            raise ValueError(
+                f"take labelled {labels.exercise!r} but the session runs {self.exercise!r}"
+            )
+        if not delay_s >= 0:
+            raise ValueError(f"delay_s must be >= 0 s, got {delay_s!r}")
+        self._pending = labels
+        self._auto_stop = bool(auto_stop)
+        if delay_s > 0:
+            self._countdown_until = self.clock() + float(delay_s)
+            self.capture_state = "countdown"
+            self.emit("capture", state="countdown", delay_s=float(delay_s))
+        else:
+            self._begin_recording(self.clock())
+
+    def _begin_recording(self, t0_mono: float) -> None:
+        labels = self._pending
+        self._pending = self._countdown_until = None
+        self.pipeline = self._new_pipeline(self.exercise)  # counters start at zero
+        self._gate_seen_open = False
+        self._closed_since = None
+        self._take = Take(labels, t0_mono=t0_mono, context=self._capture_ctx(), started=self.now())
+        self.capture_state = "recording"
+        self.emit(
+            "capture", t0_mono - self._mono_offset, state="recording", t_mono=t0_mono,
+            labels=asdict(labels),
+        )  # fmt: skip
+
+    def _capture_ctx(self) -> dict:
+        ctx = {
+            "rules": self.rules_name,
+            "overrides": dict(self.overrides.values) if self.overrides is not None else {},
+            "gate_source": self.gate_source,
+            "device": self.board.name if self.board is not None else None,
+        }
+        ctx.update(self.capture_context)
+        return ctx
+
+    def stop_capture(self) -> dict:
+        """Stop the take. From ``recording``: to ``review``, emits ``capture`` ``{state:
+        "review", summary}`` and returns :meth:`Take.summary`. From ``countdown``: straight back
+        to ``idle`` with nothing recorded (emits ``capture`` ``{state: "idle"}``), returns
+        ``{}``.
+
+        Raises:
+            RuntimeError: ``capture_state`` is neither ``countdown`` nor ``recording``.
+        """
+        if self.capture_state == "countdown":
+            self._pending = self._countdown_until = None
+            self.capture_state = "idle"
+            self.emit("capture", state="idle")
+            return {}
+        if self.capture_state != "recording":
+            raise RuntimeError(f"no take is recording (capture is {self.capture_state!r})")
+        self.capture_state = "review"
+        summary = self._take.summary()
+        self.emit("capture", state="review", summary=summary)
+        return summary
+
+    def keep_capture(self, *, true_reps: int | None, root: Path = TEAM_ROOT) -> dict:
+        """Write the take in review to ``<root>/<subject>/<YYYYMMDD-HHMMSS>/``
+        (:meth:`Take.write`; ``true_reps`` is the operator's count per arm, or ``None``), run
+        ``session check`` on it and go back to ``idle``. Returns and emits (``capture``
+        ``{state: "idle", dir, check}``) ``{"dir": str, "check": dict}``.
+
+        Raises:
+            RuntimeError: ``capture_state`` is not ``review``.
+            OSError, ValueError: the take could not be written (see :meth:`Take.write`); the
+                take stays in ``review`` and nothing was written.
+        """
+        if self.capture_state != "review":
+            raise RuntimeError(f"no take to keep (capture is {self.capture_state!r})")
+        folder = self._take.write(Path(root), true_reps=true_reps)
+        with warnings.catch_warnings():
+            # a take without watch samples: today's check takes the mean of nothing (NaN)
+            warnings.simplefilter("ignore", RuntimeWarning)
+            report = session_check.check(folder)
+        report = {  # NaN is not JSON a browser can read
+            k: None if isinstance(v, float) and not math.isfinite(v) else v
+            for k, v in report.items()
+        }
+        self._take = None
+        self.capture_state = "idle"
+        self.emit("capture", state="idle", dir=str(folder), check=report)
+        return {"dir": str(folder), "check": report}
+
+    def discard_capture(self) -> None:
+        """Drop the take in review (nothing was written) and go back to ``idle``; emits
+        ``capture`` ``{state: "idle", discarded: True}``.
+
+        Raises:
+            RuntimeError: ``capture_state`` is not ``review``.
+        """
+        if self.capture_state != "review":
+            raise RuntimeError(f"no take to discard (capture is {self.capture_state!r})")
+        self._take = None
+        self.capture_state = "idle"
+        self.emit("capture", state="idle", discarded=True)
+
+    def note_cue_shown(self, arm: str | None, rep_id: int, t_mono: float) -> None:
+        """A front end drew the cue of rep ``rep_id`` of ``arm`` (``"l"``/``"r"``, ``None`` for
+        squat) at ``t_mono`` (session clock, s). Emits ``cue_shown`` ``{arm, rep_id,
+        latency_ms}``, the latency from the frame that completed the rep, and stores it in the
+        take (recording or review). A rep the current counters do not know is ignored."""
+        t_frame = self._rep_mono.get((arm, int(rep_id)))
+        if t_frame is None:
+            return
+        latency_ms = (float(t_mono) - t_frame) * 1000.0
+        self.emit("cue_shown", arm=arm, rep_id=int(rep_id), latency_ms=latency_ms)
+        if self._take is not None:
+            self._take.note_latency(arm, int(rep_id), latency_ms)
+
+    def _check_auto_stop(self, gate: bool, t_mono: float) -> None:
+        if not self._auto_stop or self.gate_source == "always_on":
+            return
+        if gate:
+            self._gate_seen_open = True
+            self._closed_since = None
+        elif self._gate_seen_open:
+            if self._closed_since is None:
+                self._closed_since = t_mono
+            elif t_mono - self._closed_since >= AUTO_STOP_S:
+                self.stop_capture()
+
     # ---- the loop ----------------------------------------------------------------------------
 
     def _board_alive(self) -> bool:
@@ -586,21 +784,31 @@ class LiveSession:
         listeners and the energy gate), choose the gate, run pose and the pipeline when it is
         open, send the LED command for reps finished here, then publish and return the
         :class:`Snapshot`. ``index`` is the source's frame index, ``t`` seconds on its clock,
-        ``frame`` BGR. Exceptions from ``detect`` propagate; the frame is still counted."""
+        ``frame`` BGR. Exceptions from ``detect`` propagate; the frame is still counted.
+
+        During a capture: a countdown that has run out starts recording on this frame; while
+        recording, pose runs whatever the gate, and the samples, the snapshot and the events
+        go into the take; auto-stop is checked after the snapshot is taken."""
         t_mono = self.clock()
         self._stamps.append(t_mono)
         if self._t_first is None:
             self._t_first = t
         self._t_last = t
+        self._mono_offset = t_mono - t
         self._n_frames += 1
 
         self._run_calls()
+        if self.capture_state == "countdown" and t_mono >= self._countdown_until:
+            self._begin_recording(t_mono)
+        recording = self.capture_state == "recording"
 
         if self.board is not None:
             samples = self.board.poll()
             if samples:
                 for s in samples:
                     self._energy.update(s)
+                if recording:
+                    self._take.add_imu(samples)
                 self._dispatch("imu", samples)
         gates = self._read_gates()
         gate = self._choose_gate(gates)
@@ -610,11 +818,12 @@ class LiveSession:
         img = world = None
         pf = None
         completed: list[RepMetrics] = []
-        if gate:
+        if gate or recording:
             t_ms = max(int(t * 1000), self._last_ms + 1)
             self._last_ms = t_ms
             img, world = self.detect(frame, t_ms)
             pf = pose_frame_from_detection(index, t, img, world)
+        if gate:
             if pipe is not None:
                 completed = pipe.on_frame(pf)
             else:
@@ -623,6 +832,8 @@ class LiveSession:
             pipe.skip_frame(t)
         else:
             self.log.frame(t, False, False)
+        for rep in completed:
+            self._rep_mono[(rep.arm, rep.rep_id)] = t_mono
         if completed:
             self._send_led(completed)
 
@@ -631,11 +842,11 @@ class LiveSession:
         if len(self._stamps) > 1 and self._stamps[-1] > self._stamps[0]:
             fps = (len(self._stamps) - 1) / (self._stamps[-1] - self._stamps[0])
         frame_angles = None
-        if found:  # idle has no pipeline: the same angles, on the session's own vertical estimate
-            if pipe is not None:
+        if found:  # a frame the pipeline did not process: on the session's own vertical estimate
+            if pipe is not None and gate:
                 frame_angles = pipe.last_frame_angles
             else:
-                frame_angles = frame_joint_angles(pf, self._idle_up)
+                frame_angles = frame_joint_angles(pf, self._own_up)
         snap = Snapshot(
             index=index,
             t=t,
@@ -643,7 +854,7 @@ class LiveSession:
             frame=frame,
             image_landmarks=np.asarray(img) if found else None,
             world_landmarks=np.asarray(world) if found else None,
-            pose_ran=gate,
+            pose_ran=gate or recording,
             gate=gate,
             gate_source=self.gate_source,
             gates=gates,
@@ -656,6 +867,9 @@ class LiveSession:
             exercise=self.exercise,
             link_state=self.board.state() if self.board is not None else "none",
         )
+        if recording:
+            self._take.add_frame(snap)
+            self._check_auto_stop(gate, t_mono)
         self._dispatch("snapshot", snap)
         return snap
 

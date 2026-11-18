@@ -46,6 +46,17 @@ class EventLog:
         return sum(p for _, p, _ in self.frames)
 
     def write(self, out_dir: Path, summary: dict) -> None:
+        """Write ``events.parquet``, ``frames.parquet`` (:meth:`write_tables`) and
+        ``session.json`` (``summary``) into ``out_dir``, creating it."""
+        self.write_tables(out_dir)
+        (out_dir / "session.json").write_text(
+            json.dumps(summary, indent=2, default=_json_default), encoding="utf-8"
+        )
+
+    def write_tables(self, out_dir: Path) -> None:
+        """Write ``events.parquet`` (``kind, t, payload`` as JSON) and ``frames.parquet``
+        (``t, processed, gate_state`` plus one column per frame diagnostic) into ``out_dir``,
+        creating it. ``t`` is seconds, as logged."""
         out_dir.mkdir(parents=True, exist_ok=True)
         ev = pd.DataFrame(
             {
@@ -61,9 +72,6 @@ class EventLog:
         for key in sorted({k for e in self._extras for k in e}):
             fr[key] = pd.Series([e.get(key, float("nan")) for e in self._extras], dtype="float64")
         fr.to_parquet(out_dir / "frames.parquet", index=False)
-        (out_dir / "session.json").write_text(
-            json.dumps(summary, indent=2, default=_json_default), encoding="utf-8"
-        )
 
 
 def _json_default(o):
