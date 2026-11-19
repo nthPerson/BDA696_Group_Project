@@ -34,13 +34,30 @@ Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-STAR
 - `httpx2` added to the dev group (Starlette 1.7's test client needs it; test-only; ADR-0036 (6)).
 
 ### Verified, and how
-- Automated: `make lint test` green (503 passed, 4 skipped; 98 Node tests), with fakes for the
+- Automated: `make lint test` green (523 passed, 4 skipped; 109 Node tests), with fakes for the
   camera, the watch and the clock. The lab and coach pages were exercised in headless Chromium
   against `formcoach bench --fake` (the synthetic person and fake watch).
 - `formcoach demo --source replay --headless` prints the same line as before, and the golden replay
   file is unchanged.
 - JPEG encoding of a 1280×720 frame: 0.31 ms at 640 px wide, 1.13 ms at 1280 (quality 70, Robert's
   16-core WSL2 box, OpenCV 5.0.0); `--video-width` defaults to 640.
+- Reviewed: each of the twelve tasks by a separate reviewer, then the whole branch in two halves
+  (core Python; server and pages). The whole-branch review found one take-losing bug (a watch clock
+  restart mid-take made the take unkeepable) and five more issues that would have given wrong
+  numbers or a misleading demo screen; all are fixed with tests (ADR-0036 (9)). An automated
+  security review of the first server commit found the missing Origin check and the unconfined
+  `save_rules` path; both are fixed (ADR-0036 (5)).
+
+### Known issues (found in the last review, not fixed)
+- If a take starts recording while a Bluetooth connect is still in progress, the new link is
+  refused by the session and stays unused: that take has no IMU and its `meta.json` names the
+  watch anyway. Disconnect and reconnect after the take. (`bench/controller.py`, `_connect`.)
+- A forward jump or one corrupt value in the watch's clock is not split into its own segment, so
+  one clock fit compresses the IMU times of that take without a warning. A reboot (a backward
+  jump) is handled. Look at the rate in the session check. (`app/capture.py`, `_imu_table`.)
+- One out-of-order IMU sample produces a "device clock restarted" warning although nothing
+  restarted.
+- A take's warnings are shown at Keep but not saved in its `meta.json`.
 
 ### Not verified
 - **Nothing has run with a real webcam, a real watch, on Windows or on macOS.** BLE scan and connect,
