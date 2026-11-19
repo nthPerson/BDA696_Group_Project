@@ -12,7 +12,9 @@ import re
 
 import pytest
 
-from formcoach.bench.server import STATIC_DIR, VENDOR_DIR
+# the server module imports Starlette (the `bench` extra): skip this module on a base install
+server = pytest.importorskip("formcoach.bench.server")
+STATIC_DIR, VENDOR_DIR = server.STATIC_DIR, server.VENDOR_DIR
 
 REF = re.compile(r'(?:src|href)="([^"]+)"')
 IMPORT = re.compile(r'(?:from|import)\s*\(?\s*"(\./[^"]+)"')
