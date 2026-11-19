@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from formcoach.app.capture import TakeLabels
+from formcoach.app.capture import SETS_HEADER, TakeLabels
 from formcoach.app.session import LiveSession
 from formcoach.io import protocol
 from formcoach.io.source import SISample
@@ -508,3 +508,200 @@ def test_a_failed_folder_write_keeps_the_take_in_review(tmp_path, monkeypatch):
     monkeypatch.undo()
     out = rig.session.keep_capture(true_reps=3, root=tmp_path)  # Keep again works
     assert out["warnings"] == [] and rig.session.capture_state == "idle"
+
+
+# ---- final review fixes (C1-C4, I3, I4) --------------------------------------------------------
+
+
+class RestartingWatch(Watch):
+    """A :class:`Watch` whose device clock restarts (the kit reboots, or another kit takes over
+    in the same link) when the laptop clock passes ``T0 + restart_at``: device time goes back to
+    0.5 s and ``seq`` to 25, and keeps counting from there."""
+
+    def __init__(self, clock, *, restart_at: float, **kw):
+        super().__init__(clock, **kw)
+        self.restart_at = restart_at
+        self.restarted = False
+
+    def poll(self):
+        if not self.restarted and self.clock() - T0 >= self.restart_at:
+            self.restarted = True
+            self.boot = self.clock() - 0.5  # the device clock reads 0.5 s now
+            self.seq = 25
+        return super().poll()
+
+
+def test_a_device_clock_restart_mid_take_keeps_the_take(tmp_path):
+    from formcoach.app import pipeline
+
+    engine = RuleEngine.from_yaml(WEBCAM_RULES)
+    rig = Rig(board=lambda c: RestartingWatch(c, restart_at=5.0), rules=engine)
+    rig.session.start_capture(labels())
+    rig.run(10.0)
+    totals = rig.session.pipeline.arm_totals()
+    summary = rig.session.stop_capture()
+    out = rig.session.keep_capture(true_reps=None, root=tmp_path)
+
+    folder = tmp_path / "S1" / "20261118-141500"
+    imu = pd.read_parquet(folder / "imu.parquet")
+    assert len(imu) >= 490  # both stretches, 10 s at 50 Hz
+    assert (np.diff(imu["t"].to_numpy()) > 0).all()
+    assert imu["t_device"].iloc[0] > 9.9 and imu["t_device"].iloc[-1] < 6.0
+    np.testing.assert_allclose(imu["t"].iloc[-1], 10.0 - 1 / FPS, atol=0.05)
+    restarted = [w for w in out["warnings"] if "device clock restarted" in w]
+    assert len(restarted) == 1 and "t=5.0" in restarted[0]
+    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    segments = meta["clock"]["segments"]
+    assert len(segments) == 2 and [s["method"] for s in segments] == ["envelope"] * 2
+    assert abs(segments[0]["offset_s"] - BOOT) < 0.04
+    assert abs(segments[1]["offset_s"] - (T0 + 4.5)) < 0.04
+    assert meta["clock"]["offset_s"] in (segments[0]["offset_s"], segments[1]["offset_s"])
+    assert summary["dropped"] == 0 and 49.0 < summary["rate_hz"] < 51.0
+
+    again = pipeline.run_replay(folder)  # as recorded
+    assert again.summary["as_recorded"] is True and again.summary["arms"] == totals
+    assert pipeline.run_replay(folder, gate="energy").summary["gate"] == "energy"
+
+
+def test_imu_that_fails_validation_is_left_out_with_a_warning(tmp_path, monkeypatch):
+    from formcoach.data import schema
+
+    real = schema.validate_imu_stream
+
+    def refuse_samples(df):
+        if len(df):
+            raise schema.SchemaError("t must be strictly monotonic increasing within a stream")
+        real(df)
+
+    monkeypatch.setattr(schema, "validate_imu_stream", refuse_samples)
+    rig = Rig(board=Watch)
+    rig.session.start_capture(labels())
+    rig.run(2.0)
+    rig.session.stop_capture()
+    out = rig.session.keep_capture(true_reps=None, root=tmp_path)
+
+    folder = tmp_path / "S1" / "20261118-141500"
+    assert rig.session.capture_state == "idle" and out["dir"] == str(folder)
+    imu = pd.read_parquet(folder / "imu.parquet")
+    assert len(imu) == 0 and {"t", "flags", "seq", "t_device"} <= set(imu.columns)
+    assert len(read_pose(folder / "pose.parquet").t) == 60
+    assert len(pd.read_parquet(folder / "frames.parquet")) == 60
+    assert any("IMU samples" in w and "monotonic" in w for w in out["warnings"])
+    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    assert meta["n_samples"] == 0
+
+
+def test_the_watch_cannot_change_while_a_take_is_recording(tmp_path):
+    rig = Rig(board=Watch)
+    s = rig.session
+    first = s.board
+    s.start_capture(labels(), delay_s=1.0)
+    s.set_board(first)  # a countdown records nothing yet: allowed
+    rig.run(1.5)
+    assert s.capture_state == "recording"
+    for board in (None, FakeBoard()):
+        with pytest.raises(RuntimeError, match="recording"):
+            s.set_board(board)
+    assert s.board is first
+    s.stop_capture()
+    s.set_board(None)  # in review: allowed again
+    assert s.board is None
+
+
+def test_subject_labels_are_safe_folder_names_on_every_os():
+    for bad in ("S1?", "S1|", "C:x", "S 1", "CON", "con", "Lpt1", "COM9", "nul", "aux", "prn",
+                "s" * 33, ".hidden", "S1."):  # fmt: skip
+        with pytest.raises(ValueError, match="subject"):
+            TakeLabels(subject=bad, exercise="curl")
+    for good in ("S1", "S10", "test_a-b", "COM10", "CONSOLE"):
+        assert TakeLabels(subject=good, exercise="curl").subject == good
+
+
+def test_a_bad_subject_is_refused_before_anything_records(tmp_path):
+    rig = Rig()
+    with pytest.raises(ValueError, match="subject"):
+        rig.session.start_capture(TakeLabels(subject="CON", exercise="curl"))
+    assert rig.session.capture_state == "idle"
+
+
+def test_a_cue_confirmed_twice_counts_once_and_every_latency_is_kept(tmp_path):
+    rig = Rig()
+    rig.session.start_capture(labels())
+    done: list = []
+    while len(done) < 2:
+        rig.run(1.0 / FPS)
+        snap = rig.snaps[-1]
+        done += [(r.arm, r.rep_id, snap.t_mono) for r in snap.completed]
+    (arm0, id0, t0), (arm1, id1, t1) = done[:2]
+    rig.session.note_cue_shown(arm0, id0, t0 + 0.100)
+    rig.session.note_cue_shown(arm0, id0, t0 + 0.900)  # a second coach page: ignored
+    rig.session.note_cue_shown(arm1, id1, t1 + 0.200)
+    cues = [e.payload for e in rig.events if e.kind == "cue_shown"]
+    assert [(c["arm"], c["rep_id"]) for c in cues] == [(arm0, id0), (arm1, id1)]
+    summary = rig.session.stop_capture()
+    assert summary["latency_ms_median"] == pytest.approx(150.0)
+    rig.session.keep_capture(true_reps=None, root=tmp_path)
+    meta = json.loads((tmp_path / "S1" / "20261118-141500" / "meta.json").read_text("utf-8"))
+    assert meta["latency"] == [
+        {"arm": arm0, "rep_id": id0, "latency_ms": pytest.approx(100.0)},
+        {"arm": arm1, "rep_id": id1, "latency_ms": pytest.approx(200.0)},
+    ]
+
+
+def test_a_take_without_cue_latencies_records_an_empty_list(tmp_path):
+    rig = Rig()
+    rig.session.start_capture(labels())
+    rig.run(1.0)
+    rig.session.stop_capture()
+    rig.session.keep_capture(true_reps=None, root=tmp_path)
+    meta = json.loads((tmp_path / "S1" / "20261118-141500" / "meta.json").read_text("utf-8"))
+    assert meta["latency"] == []
+
+
+def test_a_sets_csv_the_csv_module_cannot_read_becomes_a_warning(tmp_path):
+    sets = tmp_path / "S1" / "sets.csv"
+    sets.parent.mkdir()
+    # a field over csv.field_size_limit() raises csv.Error, which is neither OSError nor
+    # ValueError (a NUL byte no longer does on Python 3.11)
+    sets.write_text(",".join(SETS_HEADER) + "\n" + "x" * 200_000 + "\n", encoding="utf-8")
+    rig = Rig()
+    rig.session.start_capture(labels())
+    rig.run(1.0)
+    rig.session.stop_capture()
+    out = rig.session.keep_capture(true_reps=3, root=tmp_path)
+    assert rig.session.capture_state == "idle"
+    assert (tmp_path / "S1" / "20261118-141500" / "meta.json").is_file()
+    assert len(out["warnings"]) == 1 and "sets.csv" in out["warnings"][0]
+
+
+def test_without_keep_log_the_session_log_stays_bounded():
+    from .session_fakes import must_not_be_called
+
+    s = LiveSession(
+        exercise="curl", detect=must_not_be_called, gate_source="manual", keep_log=False
+    )
+    for i in range(20_000):
+        s.step(i, i / FPS, BLANK)
+    assert s.log.frames_total == 20_000 and s.log.frames_processed == 0
+    assert len(s.log.frames) <= 1_000
+    for _ in range(20_000):
+        s.emit("info", text="x")
+    assert len(s.log.events) == 10_000
+    assert s.finish().summary["frames_total"] == 20_000
+
+    kept = LiveSession(exercise="curl", detect=must_not_be_called, gate_source="manual")
+    for i in range(30):
+        kept.step(i, i / FPS, BLANK)
+    assert len(kept.log.frames) == 30  # run_live's default keeps every row
+
+
+def test_a_take_recorded_without_keep_log_writes_every_frame(tmp_path):
+    rig = Rig(keep_log=False)
+    rig.session.start_capture(labels())
+    rig.run(3.0)
+    rig.session.stop_capture()
+    rig.session.keep_capture(true_reps=None, root=tmp_path)
+    folder = tmp_path / "S1" / "20261118-141500"
+    assert len(pd.read_parquet(folder / "frames.parquet")) == 90
+    assert len(read_pose(folder / "pose.parquet").t) == 90
+    assert (read_events(folder)["kind"] == "rep").any()

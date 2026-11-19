@@ -492,7 +492,12 @@ def eval_gating(
         list[Path] | None,
         typer.Option(help="Session dirs (default: the replay fixture + data/team/*/*)."),
     ] = None,
-    rules: Annotated[Path | None, typer.Option(help="rules.yaml override")] = None,
+    rules: Annotated[
+        Path | None,
+        typer.Option(
+            help="Rules for every session (default: a Bench take's own rules, else rules.yaml)."
+        ),
+    ] = None,
 ) -> None:
     """Gated vs always-on: frames processed, CPU %, wall time, identical events check."""
     from formcoach.eval import gating

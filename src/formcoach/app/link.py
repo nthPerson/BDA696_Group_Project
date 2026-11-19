@@ -123,6 +123,7 @@ class LinkManager:
         self._kind: str | None = None
         self._id: str | None = None
         self._state: str | None = None  # last BoardLink.state() seen by status()
+        self._error_seen: BoardLink | None = None  # the link whose last_error was logged
         self._counts: deque[tuple[float, int]] = deque()  # (clock, stats.samples) readings
 
     # ---- default sources (need the ``device`` extra for BLE and serial) -----------------------
@@ -326,15 +327,21 @@ class LinkManager:
         and ``rate_hz`` (samples per second over the last :data:`RATE_WINDOW_S` seconds of
         ``clock``). From the latest serial ``# infer`` line: ``p_active`` (0..1),
         ``infer_class`` and ``infer_ms`` (model time, ms). Cheap; never blocks on the radio and
-        never polls the board. A change of ``state`` is logged.
+        never polls the board. A change of ``state`` is logged, and so is, once per link, the
+        exception that stopped the source (``BoardLink.last_error``), at level ``"error"``.
         """
         out: dict = dict.fromkeys(STATUS_KEYS)
         changed: str | None = None
+        died: BaseException | None = None
         with self._lock:
             board = self._board
             if board is None:
                 out["state"] = "none"
                 return out
+            error = getattr(board, "last_error", None)
+            if error is not None and self._error_seen is not board:
+                self._error_seen = board  # each link's failure is logged once
+                died = error
             source = board.source
             name = getattr(source, "device_name", None) or self._names.get(self._id or "")
             out.update(
@@ -358,6 +365,8 @@ class LinkManager:
         infer = getattr(getattr(source, "decoder", None), "last_infer", None)
         if infer is not None:
             out.update(p_active=infer.p_active, infer_class=infer.cls, infer_ms=infer.us / 1000)
+        if died is not None:
+            self._log("error", f"the watch link stopped: {type(died).__name__}: {died}")
         if changed is not None:
             self._log("warn" if changed == "silent" else "info", f"link {changed}")
         return out

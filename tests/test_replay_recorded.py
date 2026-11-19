@@ -137,6 +137,7 @@ def record_take(
     watch_schedule=busy,
     watch: bool = True,
     rules_name: str = WEBCAM,
+    rules_file: Path = WEBCAM_RULES,
     arm: str = "both",
     true_reps: int | None = None,
     actions: dict | None = None,
@@ -144,14 +145,15 @@ def record_take(
 ) -> Live:
     """Run a live session on a FakeScene (and a FakeWatch unless ``watch`` is false, which
     leaves the gate always on), record from ``start_at`` s to the end and keep the take under
-    ``root``. ``actions`` maps run seconds to ``fn(session)`` called just before that frame."""
+    ``root``. ``actions`` maps run seconds to ``fn(session)`` called just before that frame.
+    The session judges with ``rules_file`` and records it as ``rules_name``."""
     clock = Clock()
     scene = FakeScene(
         exercise="curl" if exercise == "idle" else exercise, schedule=scene_schedule,
         clock=clock, sleep=clock.sleep, duration_s=seconds,
     )  # fmt: skip
     session = LiveSession(
-        exercise=exercise, detect=scene.detect, rules=RuleEngine.from_yaml(WEBCAM_RULES),
+        exercise=exercise, detect=scene.detect, rules=RuleEngine.from_yaml(rules_file),
         rules_name=rules_name, board=WatchBoard(clock, watch_schedule) if watch else None,
         clock=clock, now=lambda: now,
     )  # fmt: skip
@@ -247,6 +249,9 @@ def test_overrides_stored_in_the_take_are_applied_on_replay(tmp_path):
 
 def test_unknown_rules_file_falls_back_to_the_webcam_rules_with_a_note(tmp_path):
     live = record_take(tmp_path, seconds=12.0, rules_name="my-tuned-rules.yaml")
+    meta = json.loads((live.dir / "meta.json").read_text(encoding="utf-8"))
+    assert isinstance(meta.pop("rules_doc"), dict)  # a take from before rules_doc was stored:
+    (live.dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")  # found by name
     again = replay_as_recorded(live.dir)
     assert again.summary["arms"] == live.summary_arms  # the session judged with webcam rules
     assert len(again.summary["notes"]) == 1
@@ -355,6 +360,81 @@ def test_eval_gating_accepts_a_bench_take(take, tmp_path):
     assert 0 < rows.loc["device", "frames_processed_pct"] < 100.0
     assert rows.loc["always_on", "reps"] >= rows.loc["device", "reps"] > 0
     assert out.is_file() and take.dir.name in out.read_text(encoding="utf-8")
+
+
+# ---- final review fixes: a take's own rules (I1, I2) ------------------------------------------
+
+
+def _custom_rules(path: Path) -> Path:
+    """The webcam rules with CURL_PARTIAL_ROM's elbow_min limit at 40 deg (synthetic curls
+    bottom out at 50, so every rep is flagged), written to ``path``."""
+    import yaml
+
+    doc = yaml.safe_load(WEBCAM_RULES.read_text(encoding="utf-8"))
+    rule = next(r for r in doc["exercises"]["curl"]["rules"] if r["code"] == "CURL_PARTIAL_ROM")
+    next(c for c in rule["when"] if c["metric"] == "elbow_min")["threshold"] = 40.0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    return path
+
+
+def test_a_take_recorded_with_a_custom_rules_file_replays_with_its_live_faults(tmp_path):
+    custom = _custom_rules(tmp_path / "rules" / "my-curl-rules.yaml")
+    # a new name, and a copy that shares a packaged name: neither is looked up by name
+    for name in ("my-curl-rules.yaml", WEBCAM):
+        live = record_take(tmp_path / name, seconds=15.0, rules_file=custom, rules_name=name)
+        assert live.faults and all("CURL_PARTIAL_ROM" in cs for _, _, cs in live.faults)
+        again = replay_as_recorded(live.dir)
+        assert again.summary["notes"] == []
+        assert again.summary["arms"] == live.summary_arms
+        assert fault_codes(again) == fault_codes_live(live)
+
+
+def test_eval_gating_skips_imu_gates_for_a_take_without_imu(tmp_path):
+    live = record_take(tmp_path, seconds=15.0, watch=False)
+    table = gating.evaluate([live.dir], out=tmp_path / "gating.md")  # default gates
+    rows = table.set_index("gate")
+    assert list(table["gate"]) == ["always_on", "energy"]
+    assert rows.loc["always_on", "reps"] > 0
+    assert "no IMU samples" in rows.loc["energy", "error"]
+    every = gating.evaluate(
+        [live.dir], gates=("always_on", "energy", "laptop", "device"), out=tmp_path / "g2.md"
+    )
+    assert every["error"].notna().sum() == 3
+
+    # a take the replay refuses (pose and frames disagree) is an error row per gate, not a crash
+    broken = tmp_path / "broken"
+    shutil.copytree(live.dir, broken)
+    frames = pd.read_parquet(broken / "frames.parquet")
+    frames.iloc[:-1].to_parquet(broken / "frames.parquet", index=False)
+    table = gating.evaluate([broken], gates=("always_on",), out=tmp_path / "g3.md")
+    assert "frames" in table.loc[0, "error"]
+
+
+def test_eval_gating_judges_a_take_with_its_own_rules_unless_rules_are_given(tmp_path, monkeypatch):
+    from formcoach.rules.engine import DEFAULT_RULES
+
+    live = record_take(
+        tmp_path, seconds=15.0, rules_file=_custom_rules(tmp_path / "custom.yaml"),
+        rules_name="custom.yaml",
+    )  # fmt: skip
+    codes: list[list[str]] = []
+    real = gating.run_session
+
+    def spy(session, gate, rules):
+        row = real(session, gate, rules)
+        codes.append(row["_faults"])
+        return row
+
+    monkeypatch.setattr(gating, "run_session", spy)
+    own = gating.evaluate([live.dir], gates=("device",), out=tmp_path / "own.md")
+    given = gating.evaluate(
+        [live.dir], gates=("device",), out=tmp_path / "given.md", rules_path=DEFAULT_RULES
+    )
+    reps = int(own.loc[0, "reps"])
+    assert reps > 0 and codes[0].count("CURL_PARTIAL_ROM") == reps  # the take's rules
+    assert "CURL_PARTIAL_ROM" not in codes[1]  # rules.yaml, as --rules asked
+    assert int(given.loc[0, "reps"]) == reps
 
 
 # ---- session check -----------------------------------------------------------------------------

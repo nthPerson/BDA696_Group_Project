@@ -43,6 +43,15 @@ Capture (Bench design §7; :mod:`formcoach.app.capture`): :meth:`~LiveSession.st
 ``recording`` → ``review`` → ``idle``; each change emits a ``capture`` event ``{state, ...}``.
 While recording, pose runs on **every** frame (counting still follows the gate) and every
 snapshot, IMU batch and event goes into the take; nothing is written before Keep.
+
+**Controls during a capture** (the one rule; each control's ``Raises`` follows it): changing the
+exercise and resetting the counters are refused (``RuntimeError``) from the countdown until the
+take is kept or discarded, since a take is one set of one exercise with counts from zero;
+changing the watch (:meth:`~LiveSession.set_board`) is refused while recording, since a take
+holds one watch's samples on one clock fit. The gate source, the manual gate and the tuning
+parameters may change at any time; while recording each change goes into the take as an event
+(``gate_source``, ``gate_open``/``gate_close``, ``params_changed``, ``rejudged``), so the take
+replays as it ran.
 """
 
 from __future__ import annotations
@@ -87,6 +96,8 @@ REP_PAD_S = 1.0  # metrics window reaches this far back to the rest position (se
 FPS_WINDOW = 30  # frames averaged for the FPS readout
 FAULT_FLASH_S = 0.8  # firmware fault flash (ui.cpp): a newer LED command cancels it, so a good-rep
 # command is held back for this long after a fault one (wall seconds on the injectable clock)
+
+LOG_MAX_EVENTS = 10_000  # events the log holds with keep_log=False (the newest)
 
 MIN_RANGE_KEY = "seg.min_range_deg"
 # tuning keys that set the energy gate, and the set_energy_gate argument each one sets
@@ -191,6 +202,7 @@ class LiveSession:
         on_event: Callable[[Event], None] | None = None,
         rules_name: str | None = None,
         now: Callable[[], datetime] = datetime.now,
+        keep_log: bool = True,
     ):
         """``exercise``: one of :data:`EXERCISES`. ``detect(frame_bgr, t_ms)``
         returns ``(image_landmarks (33, 4), world_landmarks (33, 3))`` or ``(None, None)``;
@@ -202,11 +214,17 @@ class LiveSession:
         ``report_dropped``: whether reps the pipeline throws away are published as events.
         ``on_event`` is subscribed as an event listener. ``rules_name``: the rules file's name,
         for :attr:`overrides` (``"rules"`` when not given) and ``meta.json``. ``now``: the local
-        wall clock, which names a capture's folder.
+        wall clock, which names a capture's folder. ``keep_log``: whether :attr:`log` keeps every
+        event and frame row (``run_live`` writes it at the end); with ``False`` it holds only the
+        last :data:`LOG_MAX_EVENTS` events and no frame rows (its frame counts still cover the
+        whole session), so a session that runs for hours stays small. A capture keeps its own
+        rows either way.
 
         :attr:`capture_context` is what front ends know about the setup and a kept take records
         in ``meta.json``: ``model``, ``camera``, ``firmware``, ``device``, ``kit``, ``source``
-        (empty to start; ``device`` defaults to the board's name).
+        (the watch link's kind: ``ble``, ``serial``, ``fake`` or ``none``) and ``frame_source``
+        (``camera 0``, ``video NAME`` or ``fake``); empty to start; ``device`` defaults to the
+        board's name and ``source`` to ``none`` without a board.
 
         :attr:`overrides` is the session's tuning (:class:`formcoach.app.tuning.Overrides` over
         ``rules``), ``None`` without rules or when ``rules`` is not a
@@ -233,7 +251,7 @@ class LiveSession:
         self.rep_config = rep_config
         self.gate_source = gate_source
         self.report_dropped = report_dropped
-        self.log = EventLog()
+        self.log = EventLog() if keep_log else EventLog(max_events=LOG_MAX_EVENTS, max_frames=0)
 
         self._lock = threading.Lock()
         self._listeners: dict[str, list[Callable]] = {"snapshot": [], "imu": [], "event": []}
@@ -452,12 +470,26 @@ class LiveSession:
         if self.capture_state != "idle":
             raise RuntimeError(f"cannot {what} while a capture is in {self.capture_state!r}")
 
+    def check_board_change(self) -> None:
+        """Raise ``RuntimeError`` if :meth:`set_board` would be refused now (a take is
+        recording), so a caller can check before it closes or opens a link."""
+        if self.capture_state == "recording":
+            raise RuntimeError(
+                "cannot change the watch while a take is recording; stop the take first"
+            )
+
     def set_board(self, board) -> None:
         """Use ``board`` (BoardLink-shaped, see :meth:`__init__`) from the next frame on, or no
         board with ``None``; the gate source is kept, so ``device`` and ``energy`` stay closed
         until a board is set. The energy gate starts over (same settings). The session does not
         close the old board. Emits ``link`` ``{state, name}``: the new board's ``state()`` and
-        ``name``, or ``"none"`` and ``None``."""
+        ``name``, or ``"none"`` and ``None``.
+
+        Raises:
+            RuntimeError: a take is recording (see "Controls during a capture" in the module
+                doc); nothing changes.
+        """
+        self.check_board_change()
         old = self._energy
         self._energy = EnergyGate(
             old.threshold,
@@ -605,9 +637,12 @@ class LiveSession:
     def _capture_ctx(self) -> dict:
         ctx = {
             "rules": self.rules_name,
+            # the document the base engine was built from: a take replays with it
+            "rules_doc": self.overrides.base.doc if self.overrides is not None else None,
             "overrides": dict(self.overrides.values) if self.overrides is not None else {},
             "gate_source": self.gate_source,
             "device": self.board.name if self.board is not None else None,
+            "source": None if self.board is not None else "none",  # the link kind, if known
         }
         ctx.update(self.capture_context)
         return ctx
@@ -686,8 +721,10 @@ class LiveSession:
         """A front end drew the cue of rep ``rep_id`` of ``arm`` (``"l"``/``"r"``, ``None`` for
         squat) at ``t_mono`` (session clock, s). Emits ``cue_shown`` ``{arm, rep_id,
         latency_ms}``, the latency from the frame that completed the rep, and stores it in the
-        take (recording or review). A rep the current counters do not know is ignored."""
-        t_frame = self._rep_mono.get((arm, int(rep_id)))
+        take (recording or review). Only the first confirmation of a rep counts (two coach
+        pages confirm it twice); later ones, and a rep the current counters do not know, are
+        ignored."""
+        t_frame = self._rep_mono.pop((arm, int(rep_id)), None)
         if t_frame is None:
             return
         latency_ms = (float(t_mono) - t_frame) * 1000.0

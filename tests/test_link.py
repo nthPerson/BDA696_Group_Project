@@ -365,6 +365,33 @@ def test_a_source_that_fails_to_open_leaves_no_link_and_logs_an_error(tmp_path):
     assert logs[-1][0] == "error" and "pyserial" in logs[-1][1]
 
 
+class _Dying(_Source):
+    """A source that delivers its samples, then fails the way a lost radio link does."""
+
+    def iter_samples(self):
+        yield from self._samples
+        raise ConnectionError("the BLE device disconnected (reconnect gave up)")
+
+
+def test_why_a_watch_source_died_is_logged_once(tmp_path):
+    logs: list[tuple[str, str]] = []
+    m = _manager(tmp_path, logs=logs, samples=[_sample()])
+    m.factories["ble"] = lambda id: _Dying(id, samples=[_sample()])
+    board = m.connect("ble", "AA")
+    assert _wait_until(lambda: board.last_error is not None)
+    assert isinstance(board.last_error, ConnectionError)
+    m.status()
+    m.status()
+    errors = [t for lvl, t in logs if lvl == "error"]
+    assert len(errors) == 1 and "reconnect gave up" in errors[0] and "ConnectionError" in errors[0]
+
+    # a new link that dies is reported again
+    board = m.connect("ble", "BB")
+    assert _wait_until(lambda: board.last_error is not None)
+    m.status()
+    assert len([t for lvl, t in logs if lvl == "error"]) == 2
+
+
 def test_serial_status_carries_p_active_from_infer_lines(tmp_path):
     m = _manager(tmp_path)
     board = m.connect("serial", "/dev/ttyACM0")

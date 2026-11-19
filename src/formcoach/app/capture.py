@@ -15,8 +15,8 @@ the session calls only when the operator keeps the take. The folder follows
   ``t, processed, gate_state``, the counters' ``ang_*``/``enter_*``/``exit_*``/``armed_*``/
   ``vis_*`` on processed frames and ``t_source`` (the frame source's own time, s, which the
   pipeline was given);
-- ``meta.json``: the ``SessionRecorder`` keys, the labels, the clock fit, the capture context
-  and the take's summary;
+- ``meta.json``: the ``SessionRecorder`` keys, the labels, the clock fit (per device-clock
+  segment), the capture context, the take's summary and every cue latency (``latency``);
 - one line appended to ``<root>/<subject>/sets.csv``.
 
 **One time base.** ``t`` in every file is seconds since the take's ``t0_mono`` on the session's
@@ -31,6 +31,7 @@ import csv
 import json
 import os
 import platform
+import re
 import shutil
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
@@ -43,7 +44,7 @@ import numpy as np
 from formcoach import __version__
 from formcoach.app.events import Event, EventLog
 from formcoach.data import schema
-from formcoach.io.clock import fit_device_clock, to_laptop
+from formcoach.io.clock import ClockFit, fit_device_clock, to_laptop
 from formcoach.io.source import SISample
 from formcoach.pose.store import write_pose
 
@@ -57,8 +58,13 @@ PLACEMENT = "wrist_l"
 N_LANDMARKS = 33
 # context keys a take records in meta.json (the session fills them, see LiveSession)
 CONTEXT_KEYS = (
-    "rules", "overrides", "gate_source", "model", "camera", "firmware", "device", "kit", "source",
+    "rules", "rules_doc", "overrides", "gate_source", "model", "camera", "firmware", "device",
+    "kit", "source", "frame_source",
 )  # fmt: skip
+SUBJECT_RE = re.compile(r"[A-Za-z0-9_-]{1,32}")
+WINDOWS_RESERVED_NAMES = frozenset(
+    ["CON", "PRN", "AUX", "NUL"] + [f"{p}{i}" for p in ("COM", "LPT") for i in range(1, 10)]
+)
 _SHIFTED_PAYLOAD_KEYS = ("t_start", "t_end")  # frame-clock times inside event payloads (s)
 
 
@@ -66,13 +72,14 @@ _SHIFTED_PAYLOAD_KEYS = ("t_start", "t_end")  # frame-clock times inside event p
 class TakeLabels:
     """What the operator says about a take before recording it.
 
-    ``subject`` a folder name such as ``"S1"``; ``exercise`` one of the session's exercises
-    (``curl``, ``press``, ``raise``, ``squat``, ``idle``); ``form`` one of :data:`FORMS`;
-    ``arm`` the working arm, one of :data:`ARMS`; ``notes`` free text.
+    ``subject`` a folder name such as ``"S1"``: 1-32 letters, digits, ``_`` or ``-``, and not
+    a name Windows reserves for a device (``CON``, ``PRN``, ``AUX``, ``NUL``, ``COM1``-``COM9``,
+    ``LPT1``-``LPT9``, any case), so the take can be written on every OS; ``exercise`` one of
+    the session's exercises (``curl``, ``press``, ``raise``, ``squat``, ``idle``); ``form`` one
+    of :data:`FORMS`; ``arm`` the working arm, one of :data:`ARMS`; ``notes`` free text.
 
     Raises:
-        ValueError: any field outside its allowed values, or ``subject`` empty or not a plain
-            folder name.
+        ValueError: any field outside its allowed values, or ``subject`` not such a name.
     """
 
     subject: str
@@ -85,14 +92,35 @@ class TakeLabels:
         from formcoach.app.session import EXERCISES  # session imports this module
 
         s = self.subject
-        if not s or s in (".", "..") or "/" in s or "\\" in s or s != s.strip():
-            raise ValueError(f"subject must be a plain folder name such as 'S1', got {s!r}")
+        if (
+            not isinstance(s, str)
+            or not SUBJECT_RE.fullmatch(s)
+            or s.upper() in WINDOWS_RESERVED_NAMES
+        ):
+            raise ValueError(
+                f"subject must be a folder name of 1-32 letters, digits, '_' or '-' such as "
+                f"'S1' (and not a Windows device name such as CON), got {s!r}"
+            )
         if self.exercise not in EXERCISES:
             raise ValueError(f"unknown exercise {self.exercise!r}; choose from {EXERCISES}")
         if self.form not in FORMS:
             raise ValueError(f"unknown form {self.form!r}; choose from {FORMS}")
         if self.arm not in ARMS:
             raise ValueError(f"unknown arm {self.arm!r}; choose from {ARMS}")
+
+
+@dataclass(frozen=True)
+class _ImuTable:
+    """A take's samples ready to write: ``rows`` ``(n, 10)`` (t_device, ax, ay, az, gx, gy, gz,
+    flags, seq, t_arrival), ``t`` their laptop-clock times (s, strictly increasing),
+    ``segment`` each row's device-clock segment, and per segment its ``fits`` and ``starts``
+    (laptop time, s, of its first sample)."""
+
+    rows: np.ndarray
+    t: np.ndarray
+    segment: np.ndarray
+    fits: list[ClockFit]
+    starts: list[float]
 
 
 @dataclass(slots=True)
@@ -109,11 +137,20 @@ class Take:
 
     ``t0_mono`` is the session clock's reading (s) when recording started; every ``t`` written is
     relative to it. ``context`` holds what ``meta.json`` records about the setup: ``rules`` (the
-    rules file's name), ``overrides`` (the tuning in force, ``{key: value}``), ``gate_source``,
-    ``model`` (pose model), ``camera``, ``firmware``, ``device`` (watch name or address),
-    ``kit`` (K1…K6) and ``source`` (``ble``/``serial``/``fake``); missing keys are ``None``.
-    ``started`` is the local wall-clock time recording started (default now); it names the
-    folder.
+    rules file's name), ``rules_doc`` (the rules document the session's base engine was built
+    from, which replay prefers to the name), ``overrides`` (the tuning in force,
+    ``{key: value}``), ``gate_source``, ``model`` (pose model), ``camera``, ``firmware``,
+    ``device`` (watch name or address), ``kit`` (K1…K6), ``source`` (the watch link's kind:
+    ``ble``/``serial``/``fake``/``none``) and ``frame_source`` (``camera 0``, ``video NAME``,
+    ``fake``); missing keys are ``None``. ``started`` is the local wall-clock time recording
+    started (default now); it names the folder.
+
+    **A device clock that restarts** (the kit reboots and the link reconnects, or another kit
+    takes over the link) is a backward jump of device time. The samples are split there into
+    segments, each segment's clock is fitted on its own, and a sample is kept only if its
+    laptop time is after every sample kept before it; ``meta.json`` ``clock`` holds the longest
+    segment's fit with every segment's in ``segments``, and :attr:`warnings` says where the
+    clock restarted.
     """
 
     def __init__(
@@ -187,32 +224,55 @@ class Take:
 
     # ---- reporting ---------------------------------------------------------------------------
 
-    def _imu_array(self) -> np.ndarray:
-        """``(n, 10)`` samples with strictly increasing device time (repeats dropped)."""
+    def _imu_table(self) -> _ImuTable:
+        """The samples to write, on the laptop clock (see "A device clock that restarts" in the
+        class doc): repeats of a device time are dropped, a backward jump starts a segment,
+        each segment gets its own clock fit, and only samples later than every earlier kept
+        one are kept, so ``t`` is strictly increasing."""
         arr = np.array(self._imu, dtype=np.float64) if self._imu else np.zeros((0, 10))
-        if len(arr):
-            keep = np.concatenate([[True], np.diff(arr[:, 0]) > 0])
-            arr = arr[keep]
-        return arr
+        if not len(arr):
+            return _ImuTable(arr, np.zeros(0), np.zeros(0, dtype=np.int64), [], [])
+        step = np.diff(arr[:, 0])
+        arr = arr[np.concatenate([[True], step != 0])]  # a repeated device time: dropped
+        segment = np.concatenate([[0], np.cumsum(np.diff(arr[:, 0]) < 0)])
+        t = np.empty(len(arr))
+        fits: list[ClockFit] = []
+        starts: list[float] = []
+        for k in range(int(segment[-1]) + 1):
+            m = segment == k
+            fit = fit_device_clock(arr[m, 0], arr[m, 9])
+            t[m] = to_laptop(fit, arr[m, 0])
+            fits.append(fit)
+            starts.append(float(t[m][0]))
+        before = np.concatenate([[-np.inf], np.maximum.accumulate(t)[:-1]])
+        keep = t > before
+        return _ImuTable(arr[keep], t[keep], segment[keep], fits, starts)
 
     def summary(self) -> dict:
         """The take in numbers: ``duration_s`` (s from the start to the last frame), ``frames``,
-        ``pose_frames`` (frames with a person found), ``imu_samples``, ``rate_hz`` (samples per
-        second of device time), ``dropped`` (samples missing from the ``seq`` counter),
-        ``reps_by_arm`` (``{"l"|"r"|"all": n}``, ``{}`` for ``idle``), ``faults`` (``{counter:
-        {code: n}}``, as currently judged), ``gate_open_pct`` (% of frames with the gate open)
-        and ``latency_ms_median`` (median cue latency in ms, ``None`` without any)."""
-        imu = self._imu_array()
-        td = imu[:, 0]
-        span = float(td[-1] - td[0]) if len(td) > 1 else 0.0
+        ``pose_frames`` (frames with a person found), ``imu_samples`` (those that will be
+        written), ``rate_hz`` (samples per second of device time), ``dropped`` (samples missing
+        from the ``seq`` counter), ``reps_by_arm`` (``{"l"|"r"|"all": n}``, ``{}`` for
+        ``idle``), ``faults`` (``{counter: {code: n}}``, as currently judged),
+        ``gate_open_pct`` (% of frames with the gate open) and ``latency_ms_median`` (median
+        cue latency in ms, ``None`` without any). With a restarted device clock, ``rate_hz``
+        and ``dropped`` are summed over its segments."""
+        imu = self._imu_table()
+        intervals, span, dropped = 0, 0.0, 0
+        for k in np.unique(imu.segment):
+            rows = imu.rows[imu.segment == k]
+            if len(rows) > 1:
+                intervals += len(rows) - 1
+                span += float(rows[-1, 0] - rows[0, 0])
+                dropped += _dropped(rows[:, 8])
         frames = self._frames
         return {
             "duration_s": round(max(frames[-1].t, 0.0), 3) if frames else 0.0,
             "frames": len(frames),
             "pose_frames": sum(f.world is not None for f in frames),
-            "imu_samples": len(imu),
-            "rate_hz": round((len(td) - 1) / span, 2) if span > 0 else 0.0,
-            "dropped": _dropped(imu[:, 8]),
+            "imu_samples": len(imu.rows),
+            "rate_hz": round(intervals / span, 2) if span > 0 else 0.0,
+            "dropped": dropped,
             "reps_by_arm": {k: int(v["reps"]) for k, v in self._totals.items()},
             "faults": {k: dict(v["faults_by_code"]) for k, v in self._totals.items()},
             "gate_open_pct": (
@@ -235,9 +295,11 @@ class Take:
         a failed write leaves no partial take behind.
 
         Once the folder is in place the take is written, whatever happens to ``sets.csv``:
-        if its line cannot be added (the file is locked or not writable, or has a header this
-        code does not know) the reason is added to :attr:`warnings` as a sentence and the
-        method still returns the folder.
+        if its line cannot be added (the file is locked or not writable, has a header this
+        code does not know, or cannot be read as CSV) the reason is added to :attr:`warnings`
+        as a sentence and the method still returns the folder. A restarted device clock is a
+        warning too, and IMU samples that still fail the IMUStream checks are left out
+        (``imu.parquet`` with no rows) with a warning rather than losing the take.
 
         Raises:
             FileExistsError: the folder already exists (nothing is written).
@@ -252,11 +314,12 @@ class Take:
         if tmp.exists():  # left by an earlier failed write of this same take
             shutil.rmtree(tmp)
         tmp.mkdir(parents=True)
+        self.warnings = []  # a failed earlier write must not repeat its warnings
         try:
-            fit = self._write_imu(tmp)
+            imu, n_written = self._write_imu(tmp)
             self._write_pose(tmp)
             self._log.write_tables(tmp)
-            meta = self._meta(fit, true_reps)
+            meta = self._meta(imu, n_written, true_reps)
             (tmp / "meta.json").write_text(json.dumps(meta, indent=2, default=str), "utf-8")
             os.replace(tmp, final)
         except BaseException:
@@ -266,31 +329,50 @@ class Take:
         try:
             rows = _read_sets(sets_path)
             _append_set(sets_path, rows, self.session_id, self.labels, true_reps)
-        except (OSError, ValueError) as exc:
+        except Exception as exc:  # the take is in place: never lose it over sets.csv
             self.warnings.append(f"could not update {sets_path}: {exc}")
         return final
 
-    def _write_imu(self, folder: Path):
-        imu = self._imu_array()
-        fit = fit_device_clock(imu[:, 0], imu[:, 9])
+    def _imu_frame(self, rows: np.ndarray, t: np.ndarray):
+        """The IMUStream table of ``rows`` (``(n, 10)``) at laptop times ``t`` (s)."""
         df = schema.make_imu_stream(
             dataset="team",
             subject=self.labels.subject,
             session=self.session_id,
             device="formcoach",
             placement=PLACEMENT,
-            t=to_laptop(fit, imu[:, 0]) - self.t0_mono,
-            acc=imu[:, 1:4],
-            gyr=imu[:, 4:7],
-            exercise=np.full(len(imu), self.labels.exercise, dtype=object),
+            t=t - self.t0_mono,
+            acc=rows[:, 1:4],
+            gyr=rows[:, 4:7],
+            exercise=np.full(len(rows), self.labels.exercise, dtype=object),
         )
-        df["flags"] = imu[:, 7].astype(np.int16)
-        df["seq"] = imu[:, 8].astype(np.int32)
-        df["t_arrival"] = imu[:, 9]
-        df["t_device"] = imu[:, 0]
-        schema.validate_imu_stream(df)
+        df["flags"] = rows[:, 7].astype(np.int16)
+        df["seq"] = rows[:, 8].astype(np.int32)
+        df["t_arrival"] = rows[:, 9]
+        df["t_device"] = rows[:, 0]
+        return df
+
+    def _write_imu(self, folder: Path) -> tuple[_ImuTable, int]:
+        """Write ``imu.parquet``; returns the IMU table and the number of rows written."""
+        imu = self._imu_table()
+        for start in imu.starts[1:]:
+            self.warnings.append(
+                f"device clock restarted at t={start - self.t0_mono:.2f} s (the watch rebooted "
+                "or another watch took over); its samples were fitted to the laptop clock "
+                "separately"
+            )
+        df = self._imu_frame(imu.rows, imu.t)
+        try:
+            schema.validate_imu_stream(df)
+        except schema.SchemaError as exc:
+            self.warnings.append(
+                f"the IMU samples were left out ({exc}); imu.parquet has no rows, the pose, "
+                "events and frames are kept"
+            )
+            df = self._imu_frame(imu.rows[:0], imu.t[:0])
+            schema.validate_imu_stream(df)
         df.to_parquet(folder / "imu.parquet", index=False)
-        return fit
+        return imu, len(df)
 
     def _write_pose(self, folder: Path) -> None:
         n = len(self._frames)
@@ -313,10 +395,24 @@ class Take:
             valid=valid,
         )
 
-    def _meta(self, fit, true_reps: int | None) -> dict:
+    def _clock_meta(self, imu: _ImuTable) -> dict:
+        """``meta.json`` ``clock``: the fit of the segment with the most samples kept (all
+        zeros without samples), ``t0_mono``, and ``segments``: every segment's fit with
+        ``t_start``, its first sample's time (s, take clock)."""
+        if imu.fits:
+            counts = np.bincount(imu.segment, minlength=len(imu.fits))
+            main = imu.fits[int(np.argmax(counts))]
+        else:
+            main = fit_device_clock(np.zeros(0), np.zeros(0))
+        segments = [
+            {"t_start": start - self.t0_mono, **asdict(fit)}
+            for fit, start in zip(imu.fits, imu.starts, strict=True)
+        ]
+        return {**asdict(main), "t0_mono": self.t0_mono, "segments": segments}
+
+    def _meta(self, imu: _ImuTable, n_written: int, true_reps: int | None) -> dict:
         summary = self.summary()
         ctx = self.context
-        imu = self._imu_array()
         return {
             # the SessionRecorder keys
             "subject": self.labels.subject,
@@ -335,7 +431,7 @@ class Take:
             "ended": (self.started + timedelta(seconds=summary["duration_s"])).isoformat(
                 timespec="seconds"
             ),
-            "n_samples": len(imu),
+            "n_samples": n_written,
             "duration_s": summary["duration_s"],
             "dropped": summary["dropped"],
             # the Bench's own keys
@@ -343,10 +439,11 @@ class Take:
             "labels": asdict(self.labels),
             "arm": self.labels.arm,
             "expected_reps": true_reps,
-            "clock": {**asdict(fit), "t0_mono": self.t0_mono},
+            "clock": self._clock_meta(imu),
             **ctx,
             "overrides": dict(ctx["overrides"] or {}),
             "summary": summary,
+            "latency": list(self._latency),  # every confirmed cue: [{arm, rep_id, latency_ms}]
         }
 
 

@@ -15,8 +15,10 @@ so rep timing and durations are the live ones. Everything the result reports (ev
 ``t`` of ``pose.parquet`` and ``imu.parquet``: each frame's ``t - t_source`` is added, as
 :meth:`formcoach.app.capture.Take.add_event` does for the live events.
 
-**Rules.** The packaged rules file named in ``meta["rules"]`` (the packaged webcam rules, with a
-note, when the take names any other file), then ``meta["overrides"]``, then every
+**Rules.** The rules document the live session's base engine was built from
+(``meta["rules_doc"]``); for a take without it, the packaged rules file named in
+``meta["rules"]`` (the packaged webcam rules, with a note, when the take names any other file).
+Then ``meta["overrides"]``, then every
 ``params_changed`` event of the take in order. The live session re-judges every rep whenever a
 rule threshold moves, so every rep is judged with the final thresholds; a change of
 ``seg.min_range_deg`` takes effect from its event's time, as it did live. A ``rules`` engine given
@@ -144,9 +146,18 @@ class _GateOnly:
         return PipelineResult(log.events, log.frames_total, log.frames_processed, [], summary)
 
 
-def _base_rules(name, notes: list[str]) -> tuple[RuleEngine, str]:
-    """The packaged rules file ``name`` (a file name in ``src/formcoach/rules/``), or the
-    packaged webcam rules with a note when ``name`` is anything else."""
+def _base_rules(meta: dict, notes: list[str]) -> tuple[RuleEngine, str]:
+    """The rules the live session's base engine was built from: ``meta["rules_doc"]`` when the
+    take stored it; else (older takes) the packaged rules file named ``meta["rules"]`` (a file
+    name in ``src/formcoach/rules/``), or the packaged webcam rules with a note when it names
+    anything else."""
+    name = meta.get("rules")
+    doc = meta.get("rules_doc")
+    if isinstance(doc, dict):
+        try:
+            return RuleEngine(doc), name if isinstance(name, str) and name else "rules"
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            notes.append(f"the take's stored rules could not be read ({exc}); using its name")
     if isinstance(name, str) and name and Path(name).name == name:
         path = PACKAGE_RULES_DIR / name
         if path.suffix == ".yaml" and path.is_file():
@@ -164,7 +175,7 @@ def _take_rules(
     """The engine the take's reps are judged with (base rules, ``meta["overrides"]``, then every
     ``params_changed`` event), the minimum range (deg) in force at the start (``None``: the
     rules file's) and the later minimum-range changes as ``(take-clock s, deg)``."""
-    base, name = _base_rules(meta.get("rules"), notes)
+    base, name = _base_rules(meta, notes)
     overrides = Overrides(base, name)
 
     def apply(key: str, value) -> float | None:

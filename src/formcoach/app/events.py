@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,10 +21,28 @@ class Event:
 
 
 class EventLog:
-    def __init__(self) -> None:
-        self.events: list[Event] = []
-        self.frames: list[tuple[float, bool, bool]] = []  # t, processed, gate_state
-        self._extras: list[dict[str, float]] = []  # per-frame diagnostics, parallel to frames
+    """Events and per-frame rows of one run.
+
+    By default everything is kept. ``max_events`` / ``max_frames`` bound what is held (the
+    newest are kept; ``max_frames=0`` keeps no frame rows), for a session that runs for hours
+    and is never written (the Bench). :attr:`frames_total` and :attr:`frames_processed` always
+    count every frame logged, held or not.
+    """
+
+    def __init__(self, *, max_events: int | None = None, max_frames: int | None = None) -> None:
+        self.events: list[Event] | deque[Event] = (
+            [] if max_events is None else deque(maxlen=max_events)
+        )
+        # t, processed, gate_state
+        self.frames: list[tuple[float, bool, bool]] | deque[tuple[float, bool, bool]] = (
+            [] if max_frames is None else deque(maxlen=max_frames)
+        )
+        # per-frame diagnostics, parallel to frames
+        self._extras: list[dict[str, float]] | deque[dict[str, float]] = (
+            [] if max_frames is None else deque(maxlen=max_frames)
+        )
+        self._n_frames = 0
+        self._n_processed = 0
 
     def event(self, kind: str, t: float, **payload) -> Event:
         e = Event(kind, float(t), payload)
@@ -36,14 +55,18 @@ class EventLog:
         (replay) the file keeps exactly ``t, processed, gate_state``."""
         self.frames.append((float(t), bool(processed), bool(gate_state)))
         self._extras.append(extra)
+        self._n_frames += 1
+        self._n_processed += bool(processed)
 
     @property
     def frames_total(self) -> int:
-        return len(self.frames)
+        """Every frame logged (also those a bounded log no longer holds)."""
+        return self._n_frames
 
     @property
     def frames_processed(self) -> int:
-        return sum(p for _, p, _ in self.frames)
+        """Every processed frame logged (also those a bounded log no longer holds)."""
+        return self._n_processed
 
     def write(self, out_dir: Path, summary: dict) -> None:
         """Write ``events.parquet``, ``frames.parquet`` (:meth:`write_tables`) and
@@ -68,7 +91,7 @@ class EventLog:
             }
         )
         ev.to_parquet(out_dir / "events.parquet", index=False)
-        fr = pd.DataFrame(self.frames, columns=["t", "processed", "gate_state"])
+        fr = pd.DataFrame(list(self.frames), columns=["t", "processed", "gate_state"])
         for key in sorted({k for e in self._extras for k in e}):
             fr[key] = pd.Series([e.get(key, float("nan")) for e in self._extras], dtype="float64")
         fr.to_parquet(out_dir / "frames.parquet", index=False)
