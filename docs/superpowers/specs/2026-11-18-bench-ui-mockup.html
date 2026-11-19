@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FormCoach bench: layout concepts</title>
+<style>
+  :root {
+    --bg:#111114; --panel:#1a1a1f; --panel2:#202027; --fg:#ececf1; --muted:#9b9ba8; --border:#30303a;
+    --grid:#27272e; --accent:#7aa7ff; --ok:#4ade80; --warn:#facc15; --err:#f87171;
+    --cx:#f783ac; --cy:#69db7c; --cz:#74c0fc;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--fg); font:13px/1.35 system-ui, "Segoe UI", sans-serif;
+         display:flex; flex-direction:column; overflow:hidden; }
+  button, select, input { font:inherit; color:inherit; }
+
+  /* chooser (not part of any mockup) */
+  .chooser { flex:none; display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:8px 12px;
+             background:#000; border-bottom:2px solid var(--accent); }
+  .chooser b { font-size:13px; margin-right:4px; }
+  .chooser .grp { display:flex; gap:4px; align-items:center; }
+  .chooser button { background:#1c1c22; border:1px solid #444452; border-radius:6px; padding:5px 10px; cursor:pointer; }
+  .chooser button.on { background:var(--accent); border-color:var(--accent); color:#0b1020; font-weight:600; }
+  .chooser .pick button.sel { background:var(--ok); border-color:var(--ok); color:#06210f; font-weight:600; }
+  .chooser .sp { flex:1; }
+  .note { flex:none; padding:6px 12px; background:#0b0b0e; color:var(--muted); border-bottom:1px solid var(--border); }
+  .note b { color:var(--fg); }
+
+  .stage { flex:1; min-height:0; position:relative; container-type:size; }
+  .view { position:absolute; inset:0; display:none; }
+  .view.on { display:flex; }
+
+  /* shared mock pieces */
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; }
+  .h { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 6px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:999px;
+          border:1px solid var(--border); background:var(--panel2); white-space:nowrap; }
+  .pill.ok { background:#12351f; border-color:#1f6b3a; color:var(--ok); }
+  .pill.warn { background:#3a3108; border-color:#7a6510; color:var(--warn); }
+  .pill.rec { background:#3b1414; border-color:#8a2c2c; color:var(--err); }
+  .btn { background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:4px 10px; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#0b1020; font-weight:600; }
+  .btn.recbtn { background:#b91c1c; border-color:#b91c1c; color:#fff; font-weight:700; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; }
+  .kv span:nth-child(odd) { color:var(--muted); }
+  .video { position:relative; background:radial-gradient(120% 90% at 50% 20%, #3a3f4a 0%, #23262d 55%, #15171b 100%);
+           border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:0; }
+  .video svg.skel { height:92%; width:auto; }
+  .video .tag { position:absolute; left:8px; top:8px; font-size:11px; color:#c9c9d3; background:#0009; padding:2px 6px; border-radius:4px; }
+  .lane { display:grid; grid-template-columns:118px 1fr; align-items:stretch; border-top:1px solid var(--grid); min-height:0; }
+  .lane:first-child { border-top:0; }
+  .lane .lab { padding:4px 8px; color:var(--muted); font-size:11px; display:flex; flex-direction:column; justify-content:center; }
+  .lane .lab b { color:var(--fg); font-weight:600; font-size:12px; }
+  .lane svg { width:100%; height:100%; display:block; background:#141418; }
+  .sl { display:grid; grid-template-columns:1fr 46px; gap:2px 8px; align-items:center; margin-bottom:7px; }
+  .sl label { grid-column:1 / 3; color:var(--muted); font-size:11.5px; }
+  .sl input[type=range] { width:100%; accent-color:var(--accent); }
+  .sl output { text-align:right; font-variant-numeric:tabular-nums; }
+  .log { font:11.5px/1.5 ui-monospace, Consolas, monospace; color:#c9c9d3; overflow:hidden; }
+  .log .t { color:var(--muted); } .log .g { color:var(--ok); } .log .w { color:var(--warn); }
+  .dots { display:flex; gap:.5em; flex-wrap:wrap; }
+  .dot { width:1em; height:1em; border-radius:50%; background:#3a3a44; display:grid; place-items:center; font-weight:800; }
+  .dot.g { background:var(--ok); } .dot.w { background:var(--warn); }
+  .dot span { font-size:.62em; color:#111; line-height:1; }
+
+  /* ---------- 1a coach / distance view ---------- */
+  .coach { flex-direction:column; gap:1cqh; padding:1.2cqh; background:#0c0c0f; }
+  .coach .top { flex:1; min-height:0; display:grid; grid-template-columns:58fr 42fr; gap:1.2cqh; }
+  .coach .side { background:#16161b; border-radius:8px; padding:2cqh 2.4cqh; display:flex; flex-direction:column; }
+  .coach .ex { font-size:6cqh; font-weight:700; letter-spacing:.04em; color:#c9c9d3; }
+  .coach .count { font-size:34cqh; line-height:.9; font-weight:800; font-variant-numeric:tabular-nums; margin:1cqh 0; }
+  .coach .count small { font-size:7cqh; font-weight:600; color:var(--muted); margin-left:1.5cqh; }
+  .coach .arms { font-size:6cqh; font-weight:700; display:flex; gap:4cqh; }
+  .coach .arms i { font-style:normal; color:var(--muted); font-weight:600; }
+  .coach .counts { display:grid; grid-template-columns:1fr 1fr; gap:3cqh; margin:1cqh 0 auto; }
+  .coach .counts i { display:block; font-style:normal; font-size:7cqh; font-weight:800; color:var(--muted); line-height:1; }
+  .coach .counts b { display:block; font-size:26cqh; line-height:.95; font-weight:800; font-variant-numeric:tabular-nums; }
+  .coach .dots { font-size:2.5cqh; flex-wrap:nowrap; margin-top:1cqh; gap:.35em; }
+  .coach .cue { flex:none; display:flex; align-items:center; gap:2.5cqh; background:#f5c518; color:#111; border-radius:8px; padding:1.4cqh 2.4cqh; }
+  .coach .cue .ico { font-size:9cqh; font-weight:900; width:11cqh; height:11cqh; border-radius:50%; background:#111; color:#f5c518; display:grid; place-items:center; flex:none; }
+  .coach .cue .txt { font-size:9.5cqh; font-weight:800; line-height:1.02; }
+  .coach .cue .who { font-size:4cqh; font-weight:700; opacity:.75; }
+  .coach .state { flex:none; display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.2cqh; }
+  .coach .state div { font-size:4.6cqh; font-weight:800; text-align:center; padding:.8cqh; border-radius:8px; }
+  .coach .state .g { background:#15803d; color:#fff; } .coach .state .b { background:#1e3a8a; color:#fff; } .coach .state .r { background:#991b1b; color:#fff; }
+
+  /* ---------- 1b lab console ---------- */
+  .lab-v { gap:8px; padding:8px; }
+  .lab-v .rail { width:250px; flex:none; display:flex; flex-direction:column; gap:8px; min-height:0; }
+  .lab-v .rail .panel { padding:10px; }
+  .lab-v .mid { flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
+  .lab-v .mid .row { display:grid; grid-template-columns:230px 1fr; gap:8px; height:26%; min-height:0; }
+  .lab-v .charts { flex:1; min-height:0; display:grid; grid-template-rows:1.1fr 1fr .8fr 1.4fr .9fr; }
+  .dev { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; margin-bottom:5px; }
+  .dev.on { border-color:#1f6b3a; background:#122017; }
+  .dev small { color:var(--muted); grid-column:1; }
+  .seg { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .seg span { flex:1; text-align:center; padding:4px 2px; border-left:1px solid var(--border); font-size:12px; }
+  .seg span:first-child { border-left:0; } .seg span.on { background:var(--accent); color:#0b1020; font-weight:600; }
+  .mini { display:grid; grid-template-columns:auto 1fr; gap:10px; padding:10px; align-items:center; }
+  .mini .n { font-size:54px; font-weight:800; line-height:1; }
+  .f { display:grid; grid-template-columns:70px 1fr; gap:5px 8px; align-items:center; }
+  .f select, .f input { background:var(--panel2); border:1px solid var(--border); border-radius:5px; padding:3px 6px; width:100%; }
+  .f span { color:var(--muted); }
+
+  /* ---------- 2 one screen, modes ---------- */
+  .one { flex-direction:column; }
+  .one .bar { flex:none; display:flex; gap:8px; align-items:center; padding:7px 10px; background:var(--panel); border-bottom:1px solid var(--border); }
+  .one .tabs { flex:none; display:flex; gap:2px; padding:0 10px; background:var(--panel); border-bottom:1px solid var(--border); }
+  .one .tabs span { padding:8px 16px; border-bottom:3px solid transparent; color:var(--muted); cursor:pointer; }
+  .one .tabs span.on { color:var(--fg); border-color:var(--accent); font-weight:600; }
+  .one .body { flex:1; min-height:0; display:none; padding:8px; gap:8px; }
+  .one .body.on { display:flex; }
+  .one .left { width:36%; flex:none; display:flex; flex-direction:column; gap:8px; min-height:0; }
+  .one .charts { flex:1; min-width:0; display:grid; grid-template-rows:1fr 1fr .8fr 1.4fr; }
+  .toggle { display:inline-flex; align-items:center; gap:6px; cursor:pointer; padding:3px 10px; border-radius:999px; border:1px solid var(--border); background:var(--panel2); }
+  .toggle.on { background:var(--accent); color:#0b1020; border-color:var(--accent); font-weight:600; }
+
+  /* ---------- 3 timeline review ---------- */
+  .tl { flex-direction:column; gap:8px; padding:8px; }
+  .tl .top { height:40%; flex:none; display:grid; grid-template-columns:30% 1fr 280px; gap:8px; min-height:0; }
+  .tl .lanes { flex:1; min-height:0; position:relative; display:grid; grid-template-rows:.6fr .6fr 1.5fr .8fr 1fr; }
+  .tl .playhead { position:absolute; top:0; bottom:0; left:calc(118px + (100% - 118px) * .46); width:2px; background:#fff; pointer-events:none; }
+  .tl .playhead::before { content:"9.2 s"; position:absolute; top:-2px; left:5px; font-size:11px; background:#fff; color:#111; padding:0 4px; border-radius:3px; white-space:nowrap; }
+  .tl .foot { flex:none; display:flex; gap:8px; align-items:center; }
+  .take { padding:5px 10px; border:1px solid var(--border); border-radius:6px; background:var(--panel); }
+  .take.on { border-color:var(--accent); }
+  .chip { display:inline-block; font-size:10.5px; padding:0 5px; border-radius:3px; background:#3a3108; color:var(--warn); margin-left:4px; }
+  .tctl { position:absolute; left:8px; right:8px; bottom:8px; display:flex; gap:8px; align-items:center; font-size:12px; }
+  .tctl .trk { flex:1; height:4px; background:#555; border-radius:2px; position:relative; }
+  .tctl .trk::after { content:""; position:absolute; left:46%; top:-4px; width:12px; height:12px; border-radius:50%; background:#fff; }
+</style>
+</head>
+<body>
+
+<div class="chooser">
+  <b>Layout concepts</b>
+  <div class="grp" id="nav">
+    <button data-v="coach" class="on">1a · Coach page</button>
+    <button data-v="lab">1b · Lab console</button>
+    <button data-v="one">2 · One screen, modes</button>
+    <button data-v="tl">3 · Timeline review</button>
+  </div>
+  <div class="sp"></div>
+  <div class="grp pick" id="pick">
+    <span style="color:var(--muted)">Closest to what you want:</span>
+    <button data-choice="concept-1-console-plus-coach">1 (two pages)</button>
+    <button data-choice="concept-2-one-screen-modes">2</button>
+    <button data-choice="concept-3-timeline-review">3</button>
+    <button data-choice="mix">a mix</button>
+  </div>
+</div>
+<div class="note" id="note"></div>
+
+<div class="stage">
+
+  <!-- ================= 1a COACH ================= -->
+  <div class="view coach on" id="v-coach">
+    <div class="top">
+      <div class="video"><span class="tag">webcam, mirrored · skeleton drawn by the page, no text on the video</span><svg class="skel" viewBox="0 0 200 300"></svg></div>
+      <div class="side">
+        <div class="ex">CURL</div>
+        <div class="counts"><div><i>L</i><b>7</b><div class="dots"><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot w"><span>!</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot w"><span>!</span></div><div class="dot "></div><div class="dot "></div><div class="dot "></div></div></div><div><i>R</i><b>7</b><div class="dots"><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot "></div><div class="dot "></div><div class="dot "></div></div></div></div>
+        <div class="arms"><span style="color:var(--ok)">12 good</span><span style="color:var(--warn)">2 to fix</span></div>
+      
+      </div>
+    </div>
+    <div class="cue">
+      <div class="ico">!</div>
+      <div><div class="who">LEFT ARM · REP 7</div><div class="txt">Keep your upper arm still</div></div>
+    </div>
+    <div class="state"><div class="g">GATE OPEN</div><div class="b">WATCH LINKED</div><div class="r">● REC 0:42</div></div>
+  </div>
+
+  <!-- ================= 1b LAB ================= -->
+  <div class="view lab-v" id="v-lab">
+    <div class="rail">
+      <div class="panel">
+        <p class="h">Watch</p>
+        <div class="seg" style="margin-bottom:8px"><span class="on">BLE</span><span>USB serial</span><span>Fake</span></div>
+        <div class="dev on"><b>FormCoach-8428</b><span class="pill ok">linked</span><small>…B3:8E:94 · −52 dBm</small></div>
+        <div class="dev"><b>FormCoach-8428</b><button class="btn">Connect</button><small>…B3:8F:05 · −71 dBm</small></div>
+        <div class="dev"><b>FormCoach-8428</b><button class="btn">Connect</button><small>…B3:90:EC · −80 dBm</small></div>
+        <div style="display:flex; gap:6px; margin-top:6px"><button class="btn">Scan</button><button class="btn">Disconnect</button></div>
+      </div>
+      <div class="panel">
+        <p class="h">Device health</p>
+        <div class="kv">
+          <span>Firmware</span><span>1.1.1</span><span>Sample rate</span><span>50.1 Hz</span>
+          <span>Dropped</span><span>0</span><span>Calibrated</span><span>yes</span>
+          <span>Uptime</span><span>12 min</span><span>Inference</span><span>13.4 ms <small style="color:var(--muted)">(USB only)</small></span>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap"><button class="btn">LED test</button><button class="btn">Calibrate</button></div>
+      </div>
+      <div class="panel" style="flex:1; min-height:0">
+        <p class="h">Link log</p>
+        <div class="log">
+          <div><span class="t">10:02:11</span> scanning…</div>
+          <div><span class="t">10:02:13</span> found 3 devices</div>
+          <div><span class="t">10:02:15</span> <span class="g">linked …8E:94</span></div>
+          <div><span class="t">10:06:40</span> <span class="w">silent 2.1 s</span></div>
+          <div><span class="t">10:06:42</span> <span class="g">samples resumed</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mid">
+      <div class="row">
+        <div class="video"><svg class="skel" viewBox="0 0 200 300"></svg></div>
+        <div class="panel mini">
+          <div><p class="h">Curl · both arms</p><div class="n">7</div></div>
+          <div>
+            <div style="font-size:16px; font-weight:700; color:var(--warn)">! L rep 7: Keep your upper arm still</div>
+            <div style="color:var(--muted); margin:4px 0 8px">upper_arm_trunk_drift 41° &gt; limit 35° (6° over)</div>
+            <div class="dots" style="font-size:18px">
+              <div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot w"><span>!</span></div><div class="dot g"><span>✓</span></div>
+              <div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot w"><span>!</span></div>
+            </div>
+            <div style="margin-top:8px"><button class="btn">Open coach page on second screen ↗</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel charts">
+        <div class="lane"><div class="lab"><b>Accel</b>x y z · m/s²</div><svg data-c="acc" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+        <div class="lane"><div class="lab"><b>Gyro</b>x y z · rad/s</div><svg data-c="gyr" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+        <div class="lane"><div class="lab"><b>Gate</b>watch bit · laptop energy</div><svg data-c="gate" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+        <div class="lane"><div class="lab"><b>Elbow angle</b>L R · enter/exit band · reps</div><svg data-c="ang" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+        <div class="lane"><div class="lab"><b>Arm drift</b>per rep vs limit</div><svg data-c="met" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+      </div>
+    </div>
+
+    <div class="rail" style="width:270px">
+      <div class="panel">
+        <p class="h">Gate source</p>
+        <div class="seg"><span class="on">Watch</span><span>Laptop</span><span>Open</span><span>Hold</span></div>
+        <p class="h" style="margin-top:12px">Curl rules <span style="text-transform:none; letter-spacing:0">(re-judges this session)</span></p>
+        <div class="sl"><label>Swing: arm drift over</label><input type="range" min="10" max="60" value="35"><output>35°</output></div>
+        <div class="sl"><label>Partial: elbow never under</label><input type="range" min="60" max="140" value="115"><output>115°</output></div>
+        <div class="sl"><label>Too fast: rep shorter than</label><input type="range" min="4" max="20" value="10"><output>1.0 s</output></div>
+        <div style="color:var(--muted); font-size:11.5px">With these values: 5 good · 2 flagged <span style="color:var(--ok)">(was 3 · 4)</span></div>
+        <p class="h" style="margin-top:12px">Rep counter</p>
+        <div class="sl"><label>Minimum range to start counting</label><input type="range" min="10" max="50" value="25"><output>25°</output></div>
+      </div>
+      <div class="panel" style="flex:1">
+        <p class="h">Capture</p>
+        <div class="f">
+          <span>Subject</span><select><option>S1</option></select>
+          <span>Exercise</span><select><option>curl</option></select>
+          <span>Form</span><select><option>clean</option><option>partial</option></select>
+          <span>Arm</span><select><option>both</option><option>left</option><option>right</option></select>
+          <span>True reps</span><input value="10">
+        </div>
+        <div style="display:flex; gap:6px; margin-top:10px; align-items:center"><button class="btn recbtn">● Record set</button><span style="color:var(--muted)">IMU + pose + labels, no video</span></div>
+        <div style="margin-top:10px; padding:6px 8px; border:1px solid #1f6b3a; border-radius:6px; background:#122017; font-size:12px">Last take: 50.0 Hz · 0 drops · 7 reps counted of 10</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 2 ONE SCREEN ================= -->
+  <div class="view one" id="v-one">
+    <div class="bar">
+      <b>FormCoach bench</b>
+      <span class="pill ok">● Watch …8E:94 · 50 Hz</span>
+      <span class="pill ok">Gate open</span>
+      <span class="pill rec">● REC 0:42</span>
+      <select class="btn"><option>curl</option></select>
+      <div style="flex:1"></div>
+      <span class="toggle" id="dist">Distance view</span>
+    </div>
+    <div class="tabs" id="tabs"><span data-t="coach">Coach</span><span data-t="signals" class="on">Signals</span><span data-t="other">Tune</span><span data-t="other">Capture</span><span data-t="other">Review</span></div>
+    <div class="body on" id="b-signals">
+      <div class="left">
+        <div class="video" style="flex:1"><svg class="skel" viewBox="0 0 200 300"></svg></div>
+        <div class="panel mini">
+          <div><p class="h">Curl</p><div class="n">7</div></div>
+          <div><div style="font-size:15px; font-weight:700; color:var(--warn)">! L rep 7: Keep your upper arm still</div>
+          <div class="dots" style="font-size:16px; margin-top:8px"><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot w"><span>!</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot g"><span>✓</span></div><div class="dot w"><span>!</span></div></div></div>
+        </div>
+      </div>
+      <div class="panel charts">
+        <div class="lane"><div class="lab"><b>Accel</b>x y z</div><svg data-c="acc" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+        <div class="lane"><div class="lab"><b>Gyro</b>x y z</div><svg data-c="gyr" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+        <div class="lane"><div class="lab"><b>Gate</b>watch · laptop</div><svg data-c="gate" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+        <div class="lane"><div class="lab"><b>Elbow angle</b>L R · band · reps</div><svg data-c="ang" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+      </div>
+    </div>
+    <div class="body" id="b-other" style="align-items:center; justify-content:center; color:var(--muted); font-size:15px; text-align:center">
+      <div>This tab takes the whole screen for its own job<br>(Tune = the sliders, Capture = labels and Record, Review = past takes).<br>The video and charts are not visible while you are here.</div>
+    </div>
+    <div class="body coach" id="b-coach" style="padding:1.2cqh"></div>
+  </div>
+
+  <!-- ================= 3 TIMELINE ================= -->
+  <div class="view tl" id="v-tl">
+    <div class="top">
+      <div class="video"><span class="tag">skeleton replay from saved landmarks</span><svg class="skel" viewBox="0 0 200 300"></svg>
+        <div class="tctl"><span>▶</span><div class="trk"></div><span>9.2 / 20.0 s</span><span>1×</span></div></div>
+      <div class="panel" style="padding:12px; display:flex; flex-direction:column; gap:8px; min-height:0">
+        <p class="h">Take 3 · just recorded</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px">
+          <div class="f">
+            <span>Subject</span><select><option>S1</option></select>
+            <span>Exercise</span><select><option>curl</option></select>
+            <span>Form</span><select><option>clean</option></select>
+            <span>Arm</span><select><option>both</option></select>
+            <span>True reps</span><input value="10">
+            <span>Notes</span><input value="camera 2.5 m">
+          </div>
+          <div>
+            <div class="kv"><span>Counted</span><span><b>7</b> of 10 <span class="chip">3 missed</span></span>
+              <span>Judged</span><span>5 good · 2 flagged</span>
+              <span>Gate open</span><span>84% of the set</span>
+              <span>IMU</span><span>50.0 Hz · 0 drops</span>
+              <span>Cue delay</span><span>median 180 ms</span></div>
+            <div style="margin-top:10px; display:flex; gap:6px"><button class="btn primary">Keep take</button><button class="btn">Discard</button></div>
+          </div>
+        </div>
+        <div style="color:var(--muted); font-size:12px; margin-top:auto">Click a rep block below to jump to it and see why it was flagged or missed.</div>
+      </div>
+      <div class="panel" style="padding:12px">
+        <p class="h">Re-judge this take</p>
+        <div class="sl"><label>Swing: arm drift over</label><input type="range" min="10" max="60" value="35"><output>35°</output></div>
+        <div class="sl"><label>Partial: elbow never under</label><input type="range" min="60" max="140" value="115"><output>115°</output></div>
+        <div class="sl"><label>Counter: minimum range</label><input type="range" min="10" max="50" value="25"><output>25°</output></div>
+        <div class="sl"><label>Laptop gate: energy over</label><input type="range" min="5" max="80" value="30"><output>3.0</output></div>
+        <div style="font-size:12px; color:var(--muted)">Result with these values:<br><b style="color:var(--fg)">9 counted · 8 good · 1 flagged</b></div>
+        <div style="margin-top:8px"><button class="btn">Try on all 14 takes</button></div>
+      </div>
+    </div>
+    <div class="panel lanes">
+      <div class="lane"><div class="lab"><b>Watch gate</b></div><svg data-c="gateDev" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+      <div class="lane"><div class="lab"><b>Laptop gate</b>shadow</div><svg data-c="gateSh" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+      <div class="lane"><div class="lab"><b>Elbow angle</b>L R · thresholds</div><svg data-c="ang" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+      <div class="lane"><div class="lab"><b>Reps</b>good · flagged · missed</div><svg data-c="reps" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+      <div class="lane"><div class="lab"><b>Accel</b>x y z</div><svg data-c="acc" preserveAspectRatio="none" viewBox="0 0 1000 100"></svg></div>
+      <div class="playhead"></div>
+    </div>
+    <div class="foot">
+      <span class="take">Take 1 · curl · clean · 10/10</span><span class="take">Take 2 · curl · partial · 9/10</span><span class="take on">Take 3 · curl · clean · 7/10</span>
+      <div style="flex:1"></div>
+      <span style="color:var(--muted)">While a set is being recorded, this screen shows only the coach view.</span>
+      <button class="btn recbtn">● Record next set</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const NOTES = {
+  coach: "<b>Concept 1, page A: the coach page.</b> What you read from 2–3 m. Sized for a 15.6″ laptop at about 2.5 m: a count per arm, one cue, three state words, nothing else. Opens on its own URL, so it can sit on a second monitor or TV. <b>Weak at:</b> shows nothing for tuning.",
+  lab: "<b>Concept 1, page B: the lab console.</b> What you work in at the desk, or a teammate operates while you exercise. Everything at once: devices, signals on one time axis, tuning, capture. <b>Weak at:</b> you cannot read it while exercising, and it is two pages to build.",
+  one: "<b>Concept 2: one screen with modes.</b> One URL, a status bar that never leaves, and a tab per job. Click the tabs and the <b>Distance view</b> toggle. <b>Weak at:</b> each tab hides the others, so you cannot move a slider while watching the charts.",
+  tl: "<b>Concept 3: timeline review.</b> Record a set with only the coach view, then inspect it: scrub the skeleton and every lane together, fix labels, re-judge with different thresholds. <b>Weak at:</b> nothing is tunable while you move, and it needs capture and replay built first.",
+};
+
+// ---- synthetic data: 20 s, ten curls from 2 s to 18 s, three small ones the counter misses ----
+const N = 400, T = i => i / N * 20;
+const amp = t => (t > 11.3 && t < 16.1) ? 0.42 : 1;                 // a stretch of shallow reps
+const act = t => (t > 2 && t < 18) ? 1 : 0;
+const phase = t => 2 * Math.PI * (t - 2) / 1.6;
+const elbow = (t, off) => act(t) ? 160 - amp(t) * 52 * (1 - Math.cos(phase(t) + off)) : 160 + 2 * Math.sin(t * 3);
+const noise = (i, k) => Math.sin(i * 12.9898 * k) * 43758.5453 % 1 * 0.5;
+
+function path(fn, lo, hi) {
+  let d = "";
+  for (let i = 0; i <= N; i++) {
+    const y = 96 - (fn(T(i), i) - lo) / (hi - lo) * 92;
+    d += (i ? "L" : "M") + (i / N * 1000).toFixed(1) + " " + y.toFixed(1);
+  }
+  return d;
+}
+const P = (d, c, w = 1.5, extra = "") => `<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" vector-effect="non-scaling-stroke" ${extra}/>`;
+const R = (x, y, w, h, c, o = 1) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}" opacity="${o}"/>`;
+const X = t => t / 20 * 1000;
+const stepPath = (fn, yLo, yHi) => { let d = "", prev = null; for (let i = 0; i <= N; i++) { const v = fn(T(i)) ? yHi : yLo; const x = (i / N * 1000).toFixed(1); d += prev === null ? `M${x} ${v}` : (v !== prev ? `L${x} ${prev}L${x} ${v}` : `L${x} ${v}`); prev = v; } return d; };
+const devGate = t => t > 2.9 && t < 19.4 && !(t > 12.2 && t < 13.6);
+const shGate = t => t > 2.5 && t < 18.9;
+const reps = Array.from({ length: 10 }, (_, k) => ({ a: 2 + k * 1.6, b: 3.6 + k * 1.6, k }));
+const kind = r => (r.a > 11.2 && r.a < 15.5) ? "miss" : (r.k === 2 || r.k === 9) ? "flag" : "good";
+const col = { good: "#4ade80", flag: "#facc15", miss: "#6b6b78" };
+
+const CH = {
+  acc: () => P(path((t, i) => act(t) * amp(t) * 6 * Math.sin(phase(t)) + noise(i, 1), -9, 9), "#f783ac") + P(path((t, i) => 9.6 - act(t) * amp(t) * 5 * (1 - Math.cos(phase(t))) / 2 + noise(i, 2), -2, 12), "#69db7c") + P(path((t, i) => act(t) * amp(t) * 3 * Math.cos(phase(t) * 1) + noise(i, 3), -9, 9), "#74c0fc"),
+  gyr: () => P(path((t, i) => act(t) * amp(t) * 2.4 * Math.cos(phase(t)) + noise(i, 4) * .3, -3, 3), "#f783ac") + P(path((t, i) => act(t) * amp(t) * .8 * Math.sin(phase(t) * 2) + noise(i, 5) * .3, -3, 3), "#69db7c") + P(path((t, i) => noise(i, 6) * .4, -3, 3), "#74c0fc"),
+  gate: () => R(0, 0, 1000, 100, "#141418") + P(stepPath(devGate, 44, 10), "#4ade80", 2) + P(stepPath(shGate, 92, 58), "#7aa7ff", 2) + R(X(12.2), 6, X(1.4), 42, "#f87171", .18),
+  gateDev: () => reps && Array.from([[2.9, 12.2], [13.6, 19.4]]).map(([a, b]) => R(X(a), 22, X(b - a), 56, "#4ade80", .85)).join("") + R(X(12.2), 22, X(1.4), 56, "#f87171", .25),
+  gateSh: () => R(X(2.5), 22, X(16.4), 56, "#7aa7ff", .85),
+  ang: () => R(0, 96 - (150 - 40) / 130 * 92, 1000, 2, "#9b9ba8", .6) + R(0, 96 - (88 - 40) / 130 * 92, 1000, 2, "#9b9ba8", .6)
+        + R(0, 96 - (150 - 40) / 130 * 92, 1000, (150 - 88) / 130 * 92, "#7aa7ff", .07)
+        + reps.map(r => R(X(r.a), 0, X(1.6) - 2, 5, col[kind(r)])).join("")
+        + P(path(t => elbow(t, 0), 40, 170), "#f783ac", 1.8) + P(path(t => elbow(t, .25) + 4, 40, 170), "#74c0fc", 1.8),
+  met: () => R(0, 40, 1000, 1.5, "#f87171", .9) + reps.map(r => { const v = kind(r) === "flag" ? 72 : 30 + (r.k * 7 % 18); return R(X(r.a) + 8, 96 - v, X(1.6) - 18, v, kind(r) === "flag" ? "#facc15" : "#4ade80", .85); }).join(""),
+  reps: () => reps.map(r => R(X(r.a) + 1, 18, X(1.6) - 3, 64, col[kind(r)], kind(r) === "miss" ? .5 : .9)).join(""),
+};
+document.querySelectorAll("svg[data-c]").forEach(s => s.innerHTML = CH[s.dataset.c]());
+
+// ---- stick figure, both arms mid-curl ----
+const J = { head: [100, 38], neck: [100, 62], ls: [70, 72], rs: [130, 72], le: [64, 122], re: [136, 122], lw: [78, 84], rw: [122, 84], lh: [82, 160], rh: [118, 160], lk: [80, 215], rk: [120, 215], la: [78, 272], ra: [122, 272] };
+const B = [["ls", "rs"], ["ls", "le"], ["le", "lw"], ["rs", "re"], ["re", "rw"], ["ls", "lh"], ["rs", "rh"], ["lh", "rh"], ["lh", "lk"], ["lk", "la"], ["rh", "rk"], ["rk", "ra"], ["neck", "head"]];
+const ARM = new Set(["lsle", "lelw", "rsre", "rerw"]);
+const skel = B.map(([a, b]) => `<line x1="${J[a][0]}" y1="${J[a][1]}" x2="${J[b][0]}" y2="${J[b][1]}" stroke="${ARM.has(a + b) ? "#facc15" : "#e5e7eb"}" stroke-width="4" stroke-linecap="round"/>`).join("")
+  + `<circle cx="100" cy="32" r="14" fill="none" stroke="#e5e7eb" stroke-width="4"/>`
+  + Object.entries(J).filter(([k]) => k !== "head" && k !== "neck").map(([, p]) => `<circle cx="${p[0]}" cy="${p[1]}" r="4.5" fill="#7aa7ff"/>`).join("")
+  + `<text x="40" y="126" fill="#fff" font-size="11" font-weight="700">62°</text><text x="143" y="126" fill="#fff" font-size="11" font-weight="700">58°</text>`;
+document.querySelectorAll("svg.skel").forEach(s => s.innerHTML = skel);
+
+// ---- chooser ----
+function show(v) {
+  document.querySelectorAll(".view").forEach(e => e.classList.toggle("on", e.id === "v-" + v));
+  document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  document.getElementById("note").innerHTML = NOTES[v];
+}
+document.getElementById("nav").addEventListener("click", e => { const b = e.target.closest("button"); if (b) show(b.dataset.v); });
+document.getElementById("pick").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; document.querySelectorAll("#pick button").forEach(x => x.classList.toggle("sel", x === b)); });
+show("coach");
+
+// ---- concept 2: tabs and distance toggle ----
+const coachInner = document.getElementById("v-coach").innerHTML;
+const bCoach = document.getElementById("b-coach");
+bCoach.innerHTML = coachInner; bCoach.style.flexDirection = "column"; bCoach.style.gap = "1cqh";
+function tab(t) {
+  document.querySelectorAll("#tabs span").forEach(s => s.classList.remove("on"));
+  ["signals", "other", "coach"].forEach(k => document.getElementById("b-" + k).classList.toggle("on", k === t));
+  document.getElementById("dist").classList.toggle("on", t === "coach");
+}
+document.getElementById("tabs").addEventListener("click", e => { const s = e.target.closest("span"); if (!s) return; tab(s.dataset.t); s.classList.add("on"); });
+document.getElementById("dist").addEventListener("click", () => { const on = !document.getElementById("dist").classList.contains("on"); tab(on ? "coach" : "signals"); document.querySelector(`#tabs span[data-t="${on ? "coach" : "signals"}"]`).classList.add("on"); });
+
+// sliders show their value
+document.querySelectorAll(".sl input[type=range]").forEach(r => r.addEventListener("input", () => { const o = r.nextElementSibling; const unit = o.textContent.replace(/^[\d.]+/, ""); o.textContent = (unit === " s" || unit === "" ? (r.value / 10).toFixed(1) : r.value) + unit; }));
+</script>
+</body>
+</html>

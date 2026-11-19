@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FormCoach Bench: Lab console</title>
+<link rel="stylesheet" href="/vendor/uPlot.min.css">
+<link rel="stylesheet" href="/static/common.css">
+<link rel="stylesheet" href="/static/lab.css">
+<script src="/vendor/uPlot.iife.min.js"></script>
+<script type="module" src="/static/lab.js"></script>
+</head>
+<body class="lab">
+<header class="top">
+  <b class="brand">FormCoach bench</b>
+  <label for="exercise" class="muted">Exercise</label>
+  <select id="exercise" disabled></select>
+  <button class="btn" id="reset-counters" type="button">Reset counters</button>
+  <span class="pill" id="pill-link">○ No watch</span>
+  <span class="pill" id="pill-gate">Gate</span>
+  <span class="pill rec" id="pill-rec" hidden></span>
+  <span class="pill warn" id="pill-socket" role="status">⚠ disconnected, retrying</span>
+  <span class="sp"></span>
+  <span class="muted" id="source-text"></span>
+  <button class="btn" id="open-coach" type="button">Open coach page ↗</button>
+</header>
+<div class="errbar" id="errbar" role="alert" hidden>
+  <span aria-hidden="true">✖</span><span id="err-text"></span>
+  <button class="btn" id="err-dismiss" type="button">Dismiss</button>
+</div>
+
+<main class="lab-v">
+  <aside class="rail left" aria-label="Watch">
+    <section class="panel" id="watch"></section>
+    <section class="panel" id="health"></section>
+    <section class="panel grow" id="linklog"></section>
+  </aside>
+
+  <div class="mid">
+    <div class="row">
+      <div class="video" id="video" aria-label="Webcam with skeleton, mirrored">
+        <canvas class="vid"></canvas><canvas class="skel"></canvas>
+      </div>
+      <section class="panel mini" aria-label="Reps">
+        <div class="mini-left">
+          <p class="h" id="mini-title"></p>
+          <div class="counts" id="counts"></div>
+          <button class="btn small" id="video-toggle" type="button" aria-pressed="true">Video: on</button>
+        </div>
+        <div class="mini-right">
+          <div class="cue" id="cue" role="status"></div>
+          <div class="margin muted" id="margin"></div>
+          <div class="dotrows" id="dots"></div>
+        </div>
+      </section>
+    </div>
+    <section class="panel charts" aria-label="Signals on one time axis">
+      <div class="lanes" id="charts-lanes"></div>
+      <div class="scrollbar">
+        <button class="btn" id="pause" type="button" aria-pressed="false">Pause</button>
+        <label for="scroll" class="muted">Scroll back</label>
+        <input type="range" id="scroll" min="-1" max="0" step="0.1" value="0">
+        <span class="pill warn" id="behind" role="status" hidden></span>
+      </div>
+    </section>
+  </div>
+
+  <aside class="rail right" aria-label="Tuning and capture">
+    <section class="panel tune" id="tune"></section>
+    <section class="panel capture" id="capture"></section>
+  </aside>
+</main>
+</body>
+</html>

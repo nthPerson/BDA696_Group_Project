@@ -4,8 +4,119 @@ Newest entry first. Every work session ends with an entry: what changed, what's 
 questions, blockers. This is how teammates and future Claude Code sessions pick up context.
 Phase checklist: `docs/05-roadmap.md` §2. Checkpoint definitions: `docs/00-START-HERE.md`.
 
-**Current phase:** Phase 3 (Oct 28 – Nov 17) · **Current checkpoint:** 1–3 + software of 4–6 merged → flash and test the assembled kits
-**Hardware:** K1 fully verified 2026-10-08 (IMU, BLE, gate); more kits assembled, flashing next with fw 1.1.1; see `docs/assembly-day.md` · **Go/no-go on vision path:** ~Nov 3
+**Current phase:** Phase 4 (Nov 18 – Dec 9) · **Current checkpoint:** 1–3 + software of 4–6 merged; FormCoach Bench built on `feat/bench` (not yet run on hardware) → hardware checklist, team recordings, report
+**Hardware:** K1 verified 2026-10-08; K2–K4 self-tested 2026-10-28 (logs untracked); a kit `…8E:94` (label unknown) ran end to end with `demo --board ble` on Windows 2026-11-18 · **Go/no-go on vision path:** no recorded decision (the draft treats it as in scope)
+
+---
+
+## 2026-11-19 — FormCoach Bench built (Claude Code with Robert)
+
+### What changed
+- **FormCoach Bench** on branch `feat/bench` (ADR-0035, ADR-0036; plan
+  `docs/superpowers/plans/2026-11-18-bench.md`): `make bench ARGS="--camera 0"` (or
+  `uv run formcoach bench --camera 0`; `--fake` needs no hardware) starts a live session and a local
+  web server on `http://localhost:8010`. Two pages: the **lab console** (`/lab`: watch scan/connect,
+  Identify, kit labels, device health, link log, video with skeleton, strip charts on one time axis,
+  gate source, rule sliders that re-judge the session, "Save as rules file…", capture) and the
+  **coach page** (`/coach`: L/R counts with rep dots, one cue band, gate/watch/recording words, tones).
+- Capture: one take per set, labelled (subject, exercise, form, arm, notes, true reps), held in memory
+  until Keep, written to `data/team/<S#>/<id>/` with IMU and pose on one laptop clock (lower-envelope
+  clock fit), a `sets.csv` line with an `arm` column and the `session check` result (now per arm).
+  `formcoach demo --session <take> --headless` replays a take as recorded. No video is written.
+- In the core: `LiveSession` (`app/session.py`) owns the live loop; `run_live` and
+  `demo --camera` are now clients of it and stay as the fallback. New `app/link.py`,
+  `app/tuning.py`, `app/capture.py`, `app/replay_recorded.py`, `io/clock.py`,
+  `pose/synthetic.py`; package `src/formcoach/bench/` (extra `bench`, in `make setup-live`).
+- Docs: `docs/howto/bench.md` (new, with the message schema and Robert's hardware checklist),
+  `docs/recording-protocol.md` rewritten around the Bench (still a draft, not piloted), ADR-0036,
+  ADR-0035 accepted, `CLAUDE.md` stack/layout/targets, `README.md`, `docs/02-system-design.md` §4.6,
+  `docs/05-roadmap.md`.
+- `httpx2` added to the dev group (Starlette 1.7's test client needs it; test-only; ADR-0036 (6)).
+
+### Verified, and how
+- Automated: `make lint test` green (523 passed, 4 skipped; 109 Node tests), with fakes for the
+  camera, the watch and the clock. The lab and coach pages were exercised in headless Chromium
+  against `formcoach bench --fake` (the synthetic person and fake watch).
+- `formcoach demo --source replay --headless` prints the same line as before, and the golden replay
+  file is unchanged.
+- JPEG encoding of a 1280×720 frame: 0.31 ms at 640 px wide, 1.13 ms at 1280 (quality 70, Robert's
+  16-core WSL2 box, OpenCV 5.0.0); `--video-width` defaults to 640.
+- Reviewed: each of the twelve tasks by a separate reviewer, then the whole branch in two halves
+  (core Python; server and pages). The whole-branch review found one take-losing bug (a watch clock
+  restart mid-take made the take unkeepable) and five more issues that would have given wrong
+  numbers or a misleading demo screen; all are fixed with tests (ADR-0036 (9)). An automated
+  security review of the first server commit found the missing Origin check and the unconfined
+  `save_rules` path; both are fixed (ADR-0036 (5)).
+
+### Known issues (found in the last review, not fixed)
+- If a take starts recording while a Bluetooth connect is still in progress, the new link is
+  refused by the session and stays unused: that take has no IMU and its `meta.json` names the
+  watch anyway. Disconnect and reconnect after the take. (`bench/controller.py`, `_connect`.)
+- A forward jump or one corrupt value in the watch's clock is not split into its own segment, so
+  one clock fit compresses the IMU times of that take without a warning. A reboot (a backward
+  jump) is handled. Look at the rate in the session check. (`app/capture.py`, `_imu_table`.)
+- One out-of-order IMU sample produces a "device clock restarted" warning although nothing
+  restarted.
+- A take's warnings are shown at Keep but not saved in its `meta.json`.
+
+### Not verified
+- **Nothing has run with a real webcam, a real watch, on Windows or on macOS.** BLE scan and connect,
+  Identify, the clock fit on a real kit, the coach page at 2.5 m and the cue latency are all
+  unmeasured. Not run on Mac hardware by decision (Robert, 2026-11-18).
+- Deferred: the timeline review page (`/review` is a placeholder; its own plan) and the per-take
+  `video.mp4` option.
+
+### Next
+1. Robert: run the hardware checklist at the end of `docs/howto/bench.md` on native Windows.
+2. Robert: pilot `docs/recording-protocol.md` with the Bench (one set end to end on a kit), then
+   remove its draft warning and post subject codes, upload location and deadline.
+3. Then the timeline-review plan (`/review`, and the per-take video option).
+4. Teammates: read `docs/howto/bench.md` §1-2 and run `make bench ARGS="--fake"`; before recording,
+   read `docs/recording-protocol.md`. Bryce: the coach page is the demo mode. Christian: §8 of the
+   howto is the contract for another UI. Rochelle: tuned thresholds come out of "Save as rules file…".
+
+### Open questions
+- The roadmap's Streamlit dashboard item is marked superseded by the Bench's review page
+  (ADR-0035); Bryce owns it and should agree.
+- Presentation date (Dec 2 or Dec 9).
+
+### Blockers
+- None.
+
+---
+
+## 2026-11-18 — First end-to-end run with a watch; FormCoach Bench designed (Claude Code with Robert)
+
+### What changed
+- A kit (MAC `28:84:85:B3:8E:94`, **not yet in `docs/devices.md`**) was flashed with fw 1.1.1 from
+  `main` and passed `formcoach device check` over USB (BMI160 at 0x69, 50.1 Hz, 0 drops,
+  0.987 g, 13.4 ms inference). The log was saved outside the repo because the kit label is unknown.
+- Robert ran `formcoach demo --camera 0 --exercise curl --board ble` on Windows: **the first run
+  of `--board` with real IMU samples. It works end to end.** Findings, not fixed:
+  - the gate closes, and pose stops, when only the arm without the watch exercises (expected;
+    parked);
+  - the OpenCV overlay cannot be read from the 2-3 m the user stands at, and its text has poor
+    contrast over the video.
+- **FormCoach Bench designed** (no code yet): one tool with a coach page (the demo mode), a lab
+  console (watch connection, signals, tuning, capture) and, later, a timeline review page, on a
+  UI-neutral `LiveSession` in the core. Design:
+  `docs/superpowers/specs/2026-11-18-bench-ui-design.md`, with a clickable mockup next to it.
+  ADR-0035. This is new scope after the feature freeze, approved by Robert.
+
+### Next
+1. Robert: approve or correct the design. Then an implementation plan, then build step 0
+   (measure video encoding cost) and step 1 (`LiveSession`).
+2. Robert: say which kit `…8E:94` is, so its `docs/devices.md` row can be written.
+3. The report measurements listed in the 2026-11-12 entry are still open; the Bench's capture
+   step is how the team-recording, full-session gating and latency numbers get produced.
+
+### Open questions
+- Whether the Bench's `/review` page replaces the roadmap's Streamlit dashboard item (ADR-0035
+  says it does; Bryce owns that item).
+- Presentation date (Dec 2 or Dec 9) decides how much of the build order fits.
+
+### Blockers
+- None.
 
 ---
 

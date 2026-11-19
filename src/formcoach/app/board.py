@@ -24,7 +24,10 @@ SILENCE_S = 2.0  # seconds without a sample before the board is treated as silen
 
 
 class BoardLink:
-    """Drain an :class:`IMUSource` on a background thread without blocking the live loop."""
+    """Drain an :class:`IMUSource` on a background thread without blocking the live loop.
+
+    If the source raises, the pump stops and the exception is kept in :attr:`last_error`
+    (``None`` while the source runs or after it ended normally)."""
 
     def __init__(
         self,
@@ -40,6 +43,8 @@ class BoardLink:
         self.silence_s = silence_s
         self.clock = clock
         self.heard = False
+        # why the source stopped, if it raised (read by LinkManager.status, which logs it)
+        self.last_error: BaseException | None = None
         self._last_sample: SISample | None = None
         self._last_arrival: float | None = None
         self._q: queue.Queue[tuple[SISample, float]] = queue.Queue()
@@ -59,9 +64,10 @@ class BoardLink:
                     return
                 arrival = sample.t_arrival or self.clock()
                 self._q.put((sample, arrival))
-        except Exception:
+        except Exception as exc:
             # the source died (board off, port unplugged, ...); the live loop reads this as
-            # "silent" through state()/alive(), never as an exception.
+            # "silent" through state()/alive(), never as an exception. The reason is kept.
+            self.last_error = exc
             return
 
     def poll(self) -> list[SISample]:

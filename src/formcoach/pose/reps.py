@@ -37,7 +37,9 @@ ADAPTIVE_DEFAULTS = {"window_s": 6.0, "min_range": 25.0, "frac": 0.3}
 
 class RepSegmenter:
     """Hysteresis state machine over ``(t, angle)`` samples; ``push`` returns a rep when one
-    completes. ``min_duration_s`` drops glitches.
+    completes. ``min_duration_s`` drops glitches: after a ``push`` that ended an excursion
+    shorter than that, ``dropped_short`` holds its ``(t_start, t_end)`` in seconds (``None``
+    after every other ``push``).
 
     With ``adaptive=True`` the ``enter``/``exit`` thresholds are recomputed from the 10th/90th
     percentiles of the last ``window_s`` seconds of angle: ``enter = lo + frac*range``,
@@ -77,6 +79,7 @@ class RepSegmenter:
         self._last_rest_t = 0.0
         self._ext_v = np.inf
         self._ext_t = 0.0
+        self.dropped_short: tuple[float, float] | None = None
 
     @property
     def rep_start_t(self) -> float | None:
@@ -102,6 +105,7 @@ class RepSegmenter:
 
     def push(self, t: float, angle: float) -> PoseRep | None:
         self.i += 1
+        self.dropped_short = None
         if not np.isfinite(angle):
             return None
         v = self.sign * angle  # rep = v drops below enter, ends when v rises above exit
@@ -126,6 +130,7 @@ class RepSegmenter:
             start_i, start_t = self._last_rest_i, self._last_rest_t
             self._last_rest_i, self._last_rest_t = self.i, t
             if duration < self.min_duration_s:
+                self.dropped_short = (float(start_t), float(t))
                 return None
             rep = PoseRep(
                 self.n_reps, start_t, t, self._ext_t, start_i, self.i,

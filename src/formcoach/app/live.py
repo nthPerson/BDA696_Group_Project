@@ -1,7 +1,9 @@
 """The live demo loop: camera (or video) frames -> pose -> per-arm reps -> rules -> HUD.
 
-``run_live`` is the frame-driven loop. It feeds frames through an injectable ``detect`` callable
-(the real MediaPipe landmarker in production, a fake in tests) into a
+``run_live`` is the frame-driven loop, a client of :class:`formcoach.app.session.LiveSession`
+(which owns the pipeline, gate and LED logic; ``run_live`` adds the HUD, the printed status and
+totals and the log files). It feeds frames through an injectable ``detect`` callable (the real
+MediaPipe landmarker in production, a fake in tests) into a
 :class:`formcoach.app.pipeline.Pipeline` built ``per_arm=True``, so each arm is counted and judged
 on its own without any flag: both arms together, alternating, or one arm at a time all work from
 one command (spec §4.3). An optional :class:`formcoach.app.board.BoardLink` supplies the wearable's
@@ -28,47 +30,24 @@ import numpy as np
 import yaml
 
 from formcoach.app import hud
-from formcoach.app.events import Event, EventLog
-from formcoach.app.pipeline import Pipeline, PipelineResult
-from formcoach.io import protocol
-from formcoach.io.replay import PoseFrame
-from formcoach.pose.skeletons import MEDIAPIPE33
+from formcoach.app.events import Event
+from formcoach.app.pipeline import PipelineResult
+
+# the loop's constants and the detector wrapper live with LiveSession; re-exported here, where
+# they were first defined and are still imported from
+from formcoach.app.session import (  # noqa: F401
+    FAULT_FLASH_S,
+    FPS_WINDOW,
+    MAX_BUFFER_FRAMES,
+    REP_PAD_S,
+    DetectFn,
+    LiveSession,
+    pose_frame_from_detection,
+)
 
 BLACK_FRAMES = 30  # a camera is called black after this many frames, all with mean < BLACK_MEAN
 BLACK_MEAN = 2.0  # mean pixel value (0-255) below which a frame counts as black
 TRACE_S = 8.0  # seconds of angle history drawn in the HUD trace
-MAX_BUFFER_FRAMES = 3600  # per-arm angle buffer cap (about two minutes at 30 fps)
-REP_PAD_S = 1.0  # metrics window reaches this far back to the rest position (see Pipeline)
-FPS_WINDOW = 30  # frames averaged for the on-screen FPS readout
-FAULT_FLASH_S = 0.8  # firmware fault flash (ui.cpp): a newer LED command cancels it, so a good-rep
-# command is held back for this long after a fault one (wall seconds on the injectable clock)
-
-DetectFn = Callable[[np.ndarray, int], "tuple[np.ndarray | None, np.ndarray | None]"]
-
-
-def pose_frame_from_detection(
-    index: int, t: float, img: np.ndarray | None, world: np.ndarray | None
-) -> PoseFrame:
-    """Wrap one detector result as a :class:`PoseFrame` (MediaPipe-33 skeleton).
-
-    ``img`` is ``(33, 4)`` normalised image x, y, z and visibility; ``world`` is ``(33, 3)``
-    metres. Either being ``None`` (no person found) gives an invalid frame: ``valid=False``,
-    ``world`` all NaN, ``visibility`` zeros, ``image`` ``None``. ``t`` is seconds.
-    """
-    if img is None or world is None:
-        return PoseFrame(
-            index, float(t), np.full((33, 3), np.nan), np.zeros(33), False, MEDIAPIPE33, None
-        )
-    img = np.asarray(img)
-    return PoseFrame(
-        index,
-        float(t),
-        np.asarray(world, dtype=np.float64),
-        img[:, 3].astype(np.float64),
-        True,
-        MEDIAPIPE33,
-        img,
-    )
 
 
 def looks_black(frame_means: Sequence[float]) -> bool:
@@ -128,7 +107,10 @@ def run_live(
     ``Command.LED_GOOD_REP``, and a good-rep command is not sent within :data:`FAULT_FLASH_S`
     of a fault one (it would cancel the device's fault flash). ``send`` errors are ignored.
     ``show`` receives each rendered HUD frame; leave it ``None`` for a headless run (OpenCV is
-    then never touched). ``on_event`` sees every ``rep``/``fault``/``gate_*`` event as it happens.
+    then never touched). ``on_event`` sees every ``rep``/``fault``/``gate_*`` event as it happens,
+    and the session's ``error`` events; an exception it raises does not propagate: the session
+    reports the first one as an ``error`` event and ignores later ones. Every ``error`` event
+    (``where`` and ``error`` text) is printed through ``say``.
 
     The totals are printed through ``say`` and, when ``out_dir`` is given, ``events.parquet``,
     ``frames.parquet`` and ``session.json`` are written (even for zero reps) however the loop
@@ -140,45 +122,31 @@ def run_live(
     whose ``summary`` carries ``arms`` (per-arm totals), ``live``, ``board``, ``fps_mean``
     (frames/s) and ``duration_s``.
     """
-    log = EventLog()
-    pipe = Pipeline(
+    session = LiveSession(
         exercise=exercise,
+        detect=detect,
         rules=rules,
-        log=log,
-        on_event=on_event,
+        board=board,
+        clock=clock,
         rep_config=rep_config,
-        per_arm=True,
-        max_buffer_frames=MAX_BUFFER_FRAMES,
-        pad_rep_start_s=REP_PAD_S,
-        gate_name="device" if board is not None else "always_on",
+        report_dropped=False,
+        on_event=on_event,
     )
+    # a broken listener is reported as an error event, never raised: print it so it is not silent
+    session.subscribe(on_event=lambda e: _say_error(say, e))
+    pipe = session.pipeline
 
-    totals = pipe.arm_totals()
     banners: dict[str, hud.Banner] = {}  # one per counter ("l", "r", "all"), each expires alone
-    fault_led_at: float | None = None  # when LED_FAULT was last sent (clock seconds)
-    trace: dict[str, deque[tuple[float, float]]] = {k: deque() for k in totals}
-    stamps: deque[float] = deque(maxlen=FPS_WINDOW)
+    trace: dict[str, deque[tuple[float, float]]] = {k: deque() for k in pipe.arm_totals()}
     means: list[float] = []
     hinted = False
     last_status = ""
-    last_ms = -1
-    t_first: float | None = None
-    t_last: float | None = None
     n_frames = 0
-
-    def send_led(cmd: protocol.Command) -> None:
-        if board is not None:
-            with contextlib.suppress(Exception):
-                board.send(cmd)
 
     failed = False
     try:
         for index, t, frame in frames:
-            if t_first is None:
-                t_first = t
-            t_last = t
             n_frames += 1
-            stamps.append(clock())
 
             if black_hint is not None and not hinted and len(means) < BLACK_FRAMES:
                 means.append(float(np.mean(frame)))
@@ -186,42 +154,18 @@ def run_live(
                     say(black_hint)
                     hinted = True
 
-            if board is not None:
-                board.poll()
-                gate = bool(board.gate_open())
-                if show is None:  # no window, so no status pill: print it when it changes
-                    status, _dim = hud.pill(True, board.state(), gate, board.name)
-                    if status != last_status:
-                        last_status = status
-                        say(f"wearable: {status}")
-            else:
-                gate = True
-            pipe.set_gate(gate, t)
+            snap = session.step(index, t, frame)
 
-            img_lm = None
-            if gate:
-                t_ms = max(int(t * 1000), last_ms + 1)
-                last_ms = t_ms
-                img_lm, world = detect(frame, t_ms)
-                pf = pose_frame_from_detection(index, t, img_lm, world)
-                completed = pipe.on_frame(pf)
-            else:
-                pipe.skip_frame(t)
-                completed = []
+            if board is not None and show is None:  # no window, so no status pill: print it
+                status, _dim = hud.pill(True, snap.link_state, snap.gate, board.name)
+                if status != last_status:
+                    last_status = status
+                    say(f"wearable: {status}")
 
-            if completed:
+            if snap.completed:
                 now = clock()
-                for rep in completed:  # each counter keeps its own banner: a later arm in this
+                for rep in snap.completed:  # each counter keeps its own banner
                     banners[getattr(rep, "arm", None) or "all"] = hud.Banner.from_rep(rep, now)
-                totals = pipe.arm_totals()
-                # ONE command per frame, so arms finishing together cannot overwrite each other's
-                # LED flash: any fault wins. A good-rep command is skipped while a fault flash is
-                # still showing (an arm finishing a frame or two later would cancel it).
-                if any(rep.faults for rep in completed):
-                    send_led(protocol.Command.LED_FAULT)
-                    fault_led_at = now
-                elif fault_led_at is None or now - fault_led_at >= FAULT_FLASH_S:
-                    send_led(protocol.Command.LED_GOOD_REP)
 
             if show is None:
                 continue
@@ -229,7 +173,7 @@ def run_live(
             angles = pipe.latest_angles()
             for key, deg in angles.items():
                 pts = trace[key]
-                if gate:
+                if snap.gate:
                     pts.append((t, deg))
                 while pts and t - pts[0][0] > TRACE_S:
                     pts.popleft()
@@ -238,25 +182,22 @@ def run_live(
                 del banners[key]
             pill_text, dim = hud.pill(
                 board is not None,
-                board.state() if board is not None else "ok",
-                gate,
+                snap.link_state if board is not None else "ok",
+                snap.gate,
                 board.name if board is not None else "",
             )
-            fps = 0.0
-            if len(stamps) > 1 and stamps[-1] > stamps[0]:
-                fps = (len(stamps) - 1) / (stamps[-1] - stamps[0])
             state = hud.HudState(
                 exercise=exercise,
-                totals=totals,
+                totals=snap.totals,
                 angles={k: (None if np.isnan(v) else float(v)) for k, v in angles.items()},
                 pill_text=pill_text,
                 dim=dim,
                 banners=dict(banners),  # a copy: the HUD state must not change after the frame
-                fps=fps,
+                fps=snap.fps,
                 trace={k: list(v) for k, v in trace.items()},
                 bands=pipe.thresholds(),
             )
-            out = hud.render(frame, img_lm, state)
+            out = hud.render(frame, snap.image_landmarks, state)
             if show(out) is False:
                 break
     except KeyboardInterrupt:
@@ -265,12 +206,7 @@ def run_live(
         failed = True
         raise
     finally:
-        duration = (t_last - t_first) if (t_first is not None and t_last is not None) else 0.0
-        result = pipe.finish(compute_imu=False, end_t=t_last)
-        result.summary["live"] = True
-        result.summary["board"] = board.name if board is not None else None
-        result.summary["fps_mean"] = round((n_frames - 1) / duration, 1) if duration > 0 else 0.0
-        result.summary["duration_s"] = round(duration, 2)
+        result = session.finish()
         if extra_summary:
             result.summary.update(extra_summary)
         # a source that failed before its first frame (an unopenable video) ran nothing: no
@@ -281,7 +217,7 @@ def run_live(
                 say(line)
         if out_dir is not None and not nothing_ran:
             try:
-                log.write(out_dir, result.summary)
+                session.log.write(out_dir, result.summary)
                 result.out_dir = out_dir
             except OSError as exc:
                 if not failed:
@@ -289,6 +225,11 @@ def run_live(
                 # the loop already failed: report the lost log but let that error propagate
                 say(f"could not write the session log to {out_dir}: {exc}")
     return result
+
+
+def _say_error(say: Callable[[str], None], e: Event) -> None:
+    if e.kind == "error":
+        say(f"error in {e.payload.get('where')}: {e.payload.get('error')}")
 
 
 def _paced(

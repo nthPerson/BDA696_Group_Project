@@ -101,17 +101,21 @@ class _WindowGate(GateBase):
 
 
 class EnergyGate(_WindowGate):
-    """``var(|a|) > threshold`` over the window (the simplest baseline)."""
+    """``var(|a|) > threshold`` over the window (the simplest baseline). ``last_value`` is the
+    most recent window's ``var(|a|)`` in (m/s²)², ``None`` until the first window is decided."""
 
     name = "energy"
 
     def __init__(self, threshold: float = DEFAULT_ENERGY_THRESHOLD, **kw):
         super().__init__(**kw)
         self.threshold = threshold
+        self.last_value: float | None = None
 
     def decide(self, x: np.ndarray) -> bool:
         amag = np.linalg.norm(x[:, :3], axis=1)
-        return bool(amag.var() > self.threshold)
+        var = amag.var()
+        self.last_value = float(var)
+        return bool(var > self.threshold)  # float32 compare, as before: decisions are unchanged
 
 
 class LaptopGate(_WindowGate):

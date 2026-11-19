@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from formcoach.app import pipeline
+from formcoach.app import pipeline, replay_recorded
 from formcoach.eval import report
 from formcoach.rules.engine import RuleEngine
 
@@ -59,21 +59,46 @@ def run_session(session: Path, gate: str, rules: RuleEngine | None) -> dict:
     }
 
 
+def _without_imu(session: Path) -> bool:
+    """Whether ``session``'s ``imu.parquet`` has no rows (a take recorded without a watch)."""
+    try:
+        return len(pd.read_parquet(session / "imu.parquet", columns=["t"])) == 0
+    except (OSError, ValueError):
+        return False  # the replay reports the file itself
+
+
 def evaluate(
     sessions: list[Path],
     gates: tuple[str, ...] = ("always_on", "energy"),
     out: Path = DEFAULT_OUT,
     rules_path: Path | None = None,
 ) -> pd.DataFrame:
+    """Replay every session once per gate and write the Markdown table to ``out``; returns it.
+
+    Rules: ``rules_path`` (``--rules``) judges every session. Without it a Bench take is judged
+    with its own rules and overrides (as recorded) and any other session with the default
+    ``rules.yaml``. A gate that cannot run on a session is a row with an ``error`` instead of
+    numbers: a Bench take without IMU samples skips every gate that needs them, and a replay
+    that fails on a missing file (e.g. the laptop gate's model) or bad input is reported.
+    """
     rules = RuleEngine.from_yaml(rules_path)
     rows = []
     for s in sessions:
+        s = Path(s)
+        bench = replay_recorded.is_bench_session(s)
+        session_rules = None if bench and rules_path is None else rules
+        no_imu = bench and _without_imu(s)
         base = None
         for g in gates:
+            if no_imu and g not in replay_recorded.NO_IMU_GATES:
+                rows.append(
+                    {"session": s.name, "gate": g, "error": "skipped: the take has no IMU samples"}
+                )
+                continue
             try:
-                r = run_session(Path(s), g, rules)
-            except FileNotFoundError as exc:  # e.g. laptop gate without a trained model
-                rows.append({"session": Path(s).name, "gate": g, "error": str(exc)})
+                r = run_session(s, g, session_rules)
+            except (FileNotFoundError, ValueError) as exc:  # e.g. laptop gate without a model
+                rows.append({"session": s.name, "gate": g, "error": str(exc)})
                 continue
             if g == "always_on":
                 base = r

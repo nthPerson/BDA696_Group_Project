@@ -1,0 +1,48 @@
+/* The coach page (/coach): the mockup's "1a · Coach page". Fills the window; every size is in
+   vh so display scaling cannot shrink it. No page scroll. */
+body.coach { height: 100vh; overflow: hidden; background: #0c0c0f; font-family: system-ui, "Segoe UI", sans-serif; }
+body.coach.idle-cursor, body.coach.idle-cursor * { cursor: none; }
+.coach-page {
+  height: 100vh; padding: 1.2vh; display: grid; gap: 1vh;
+  grid-template-rows: minmax(0, 1fr) 30vh 5.6vh 2.6vh;
+}
+.top { min-height: 0; display: grid; grid-template-columns: 58fr 42fr; gap: 1.2vh; }
+
+.video { position: relative; min-width: 0; min-height: 0; overflow: hidden; border-radius: 0.8vh; background: #15171b; }
+.video canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.side { min-width: 0; min-height: 0; background: #16161b; border-radius: 0.8vh; padding: 2vh 1.8vh; display: flex; flex-direction: column; overflow: hidden; }
+.ex { font-size: 6vh; font-weight: 700; letter-spacing: 0.04em; color: #c9c9d3; line-height: 1.1; }
+.counts { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1.8vh; align-content: center; }
+.counts.one { grid-template-columns: 1fr; text-align: center; }
+.counts .col { min-width: 0; container-type: inline-size; }
+.counts .lab { display: block; font-style: normal; font-size: 7vh; font-weight: 800; color: var(--muted); line-height: 1; height: 7vh; }
+.counts.one .lab { display: none; }
+.counts .num { display: block; font-size: min(26vh, 80cqw); line-height: 0.95; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
+.counts .dots { font-size: min(calc(100cqw / 16.5), 3.4vh); flex-wrap: nowrap; gap: 0.35em; margin-top: 1.4vh; }
+.counts.one .dots { justify-content: center; }
+
+.cue { display: flex; align-items: center; gap: 2.5vh; border-radius: 0.8vh; padding: 1.2vh 2.4vh; overflow: hidden; background: #2a2a31; color: #c9c9d3; }
+.cue .ico { flex: none; width: 11vh; height: 11vh; border-radius: 50%; display: grid; place-items: center; font-size: 8vh; font-weight: 900; line-height: 1; background: #111; }
+.cue.neutral .ico { display: none; }
+.cue .body { min-width: 0; flex: 1; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
+.cue .who { font-size: 4vh; font-weight: 700; opacity: 0.75; line-height: 1.2; min-height: 4.8vh; }
+.cue .txt { font-size: 11vh; font-weight: 800; line-height: 1.08; max-height: 22.8vh; overflow: clip; overflow-clip-margin: 0.2em; overflow-wrap: anywhere; }
+.cue .txt.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.cue.neutral .who { min-height: 0; }
+.cue.good { background: #4ade80; color: #052e16; } .cue.good .ico { color: #4ade80; }
+.cue.warn { background: #f5c518; color: #111; } .cue.warn .ico { color: #f5c518; }
+.cue.info { background: #60a5fa; color: #0b1b3a; } .cue.info .ico { color: #60a5fa; }
+
+.state { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.2vh; }
+.state div { font-size: 4.2vh; font-weight: 800; text-align: center; display: grid; place-items: center; border-radius: 0.8vh; white-space: nowrap; }
+.state .g { background: #15803d; color: #fff; }
+.state .b { background: #1e3a8a; color: #fff; }
+.state .r { background: #991b1b; color: #fff; }
+.state .a { background: #f5c518; color: #111; }
+.state .n { background: #3a3a44; color: #d8d8e0; }
+.offline { font-size: 2.2vh; font-weight: 700; color: var(--warn); text-align: center; line-height: 2.6vh; visibility: hidden; }
+.offline.on { visibility: visible; }
+
+.chip { position: fixed; right: 2vh; top: 2vh; z-index: 5; font-size: 2.2vh; font-weight: 700; padding: 0.8vh 1.6vh; border-radius: 99vh; border: 1px solid #5a5a68; background: #202027cc; color: #ececf1; cursor: pointer; }
+.chip[hidden] { display: none; }

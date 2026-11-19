@@ -16,8 +16,9 @@ POSE_MODEL ?= lite
 CAMERA  ?= 0
 EXERCISE ?= curl
 BOARD   ?=
+ARGS    ?=
 
-.PHONY: help setup setup-all setup-live lint format test data convert profile features session-check device-check attach-xiao train-gate eval demo live record ble-viewer \
+.PHONY: help setup setup-all setup-live lint format test data convert profile features session-check device-check attach-xiao train-gate eval demo live bench record ble-viewer \
 	    fw-build fw-upload fw-monitor clean
 
 help: ## list targets
@@ -32,8 +33,8 @@ setup-all: ## like setup, plus vision/device/train/app extras (large downloads)
 	$(UV) sync --all-extras --group dev
 	$(RUN) pre-commit install
 
-setup-live: ## like setup, plus vision/device extras and the pose model (POSE_MODEL=lite|full|heavy)
-	$(UV) sync --group dev --extra vision --extra device
+setup-live: ## like setup, plus vision/device/bench extras and the pose model (POSE_MODEL=lite|full|heavy)
+	$(UV) sync --group dev --extra vision --extra device --extra bench
 	$(RUN) pre-commit install
 	$(RUN) formcoach pose fetch-model --model $(POSE_MODEL)
 
@@ -45,11 +46,11 @@ format: ## auto-format and auto-fix lint
 	$(RUN) ruff format .
 	$(RUN) ruff check --fix .
 
-test: ## run the pytest suite (+ the web viewer's JS tests when node is installed)
+test: ## run the pytest suite (+ the browser JS tests when node is installed)
 	$(RUN) pytest
 	@if command -v node >/dev/null 2>&1 && node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 18 ? 1 : 0)'; \
-	then node --test web/ble-viewer/test/*.test.mjs; \
-	else echo "node >= 18 not found: skipped the optional web/ble-viewer JS tests"; fi
+	then node --test web/ble-viewer/test/*.test.mjs src/formcoach/bench/static/test/*.test.mjs; \
+	else echo "node >= 18 not found: skipped the optional browser JS tests (web/ble-viewer, bench)"; fi
 
 data: ## fetch a public dataset into data/external/ (DATASET=mmfit|recofit|recgym)
 	$(RUN) formcoach data fetch --dataset $(DATASET)
@@ -74,6 +75,9 @@ demo: ## run the full pipeline (SOURCE=replay|serial|ble; replay needs no hardwa
 
 live: ## live webcam coaching (CAMERA=0|1|.. EXERCISE=curl|press|raise|squat; BOARD=ble|serial adds the wearable)
 	$(RUN) formcoach demo --camera $(CAMERA) --exercise $(EXERCISE) $(if $(BOARD),--board $(BOARD),) $(if $(PORT),--port $(PORT),)
+
+bench: ## FormCoach Bench: lab console + coach page in the browser (ARGS="--camera 0" | "--video clip.mp4" | "--fake")
+	$(RUN) formcoach bench $(ARGS)
 
 ble-viewer: ## serve the browser BLE live viewer on http://localhost:8000/ble-viewer/ (VIEWER_PORT=8000)
 	$(RUN) formcoach viewer --port $(VIEWER_PORT)

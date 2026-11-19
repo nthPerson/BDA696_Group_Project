@@ -48,6 +48,9 @@ class RepMetrics:
     metrics: dict[str, float]
     faults: list[dict] = field(default_factory=list)
     arm: str | None = None  # "l" | "r" | None (squat, or when per-arm tracking is off)
+    # the requires-tags (frontal_view, two_arm) this rep is judged with; recorded whether or
+    # not a rules engine is attached, so the rep can be re-judged later
+    context: frozenset[str] = field(default_factory=frozenset)
 
     def as_payload(self) -> dict:
         return {
@@ -72,7 +75,7 @@ class PipelineResult:
     out_dir: Path | None = None
 
 
-class _UpEstimator:
+class UpEstimator:
     """Running estimate of the vertical from hip→shoulder directions (EMA)."""
 
     def __init__(self, alpha: float = 0.02):
@@ -87,6 +90,18 @@ class _UpEstimator:
             self.up = v if self.up is None else (1 - self.alpha) * self.up + self.alpha * v
             self.up = self.up / np.linalg.norm(self.up)
         return self.up if self.up is not None else np.array([0.0, 1.0, 0.0])
+
+
+def frame_joint_angles(fr: PoseFrame, up: UpEstimator) -> dict[str, float] | None:
+    """Every tracked joint angle (degrees; torso lengths for the offset metrics) of one frame,
+    or ``None`` when the frame is invalid or its world landmarks are not all finite. ``up`` is
+    the caller's own vertical estimate; it is updated from this frame."""
+    if not fr.valid or not np.isfinite(fr.world).all():
+        return None
+    u = up.update(fr.world, fr.skeleton)
+    return {
+        k: float(v[0]) for k, v in angles_mod.joint_angles(fr.world[None], fr.skeleton, u).items()
+    }
 
 
 def primary_angle(exercise: str, a: dict[str, float], side: str = "both") -> float:
@@ -201,7 +216,7 @@ def _arm_joint_names(side: str) -> tuple[str, str, str]:
     return (f"shoulder_{side}", f"elbow_{side}", f"wrist_{side}")
 
 
-def _arm_min_visibility(fr: PoseFrame, side: str) -> float:
+def arm_min_visibility(fr: PoseFrame, side: str) -> float:
     """Lowest MediaPipe visibility (0-1) of ``side``'s shoulder, elbow and wrist in ``fr``."""
     idx = [fr.skeleton.index(name) for name in _arm_joint_names(side)]
     return float(np.min(fr.visibility[idx]))
@@ -209,7 +224,7 @@ def _arm_min_visibility(fr: PoseFrame, side: str) -> float:
 
 def _arm_visible(fr: PoseFrame, side: str) -> bool:
     """Whether ``side``'s shoulder, elbow and wrist all meet ``MIN_ARM_VISIBILITY`` in ``fr``."""
-    return _arm_min_visibility(fr, side) >= MIN_ARM_VISIBILITY
+    return arm_min_visibility(fr, side) >= MIN_ARM_VISIBILITY
 
 
 class _Track:
@@ -265,6 +280,12 @@ class Pipeline:
     ``finish`` closes the run and returns a :class:`PipelineResult`. ``run_pipeline`` is a thin
     wrapper that merges an :class:`IMUSource` with a pose-frame iterator the way the replay path
     always has; a live loop (no IMU) drives the same object directly.
+
+    With ``report_dropped=True`` an excursion the counter throws away is published as a
+    ``rep_dropped`` event ``{arm, t_start, t_end, reason}`` (times in seconds) at ``t_end``:
+    ``reason`` is ``"too_short"`` (shorter than the segmenter's ``min_duration_s``) or
+    ``"tracking_gap"`` (per-arm mode: the person was lost for more than ``MAX_GAP_FRAMES``
+    frames inside it). The default ``False`` emits nothing extra (replay's golden output).
     """
 
     def __init__(
@@ -282,6 +303,7 @@ class Pipeline:
         per_arm: bool = False,
         max_buffer_frames: int | None = None,
         pad_rep_start_s: float = 0.0,
+        report_dropped: bool = False,
     ):
         self.exercise = exercise
         self.gate = gate
@@ -294,6 +316,7 @@ class Pipeline:
         self.per_arm = per_arm
         self.max_buffer_frames = max_buffer_frames
         self.pad_rep_start_s = pad_rep_start_s
+        self.report_dropped = report_dropped
 
         cfg = {**DEFAULT_REP_CONFIG[exercise], "adaptive": True}
         if rules is not None and hasattr(rules, "rep_config"):
@@ -302,7 +325,10 @@ class Pipeline:
             cfg.update(rep_config)
         self.cfg = cfg
 
-        self.up = _UpEstimator()
+        self.up = UpEstimator()
+        # every tracked joint angle (degrees) of the last frame on_frame processed; None if that
+        # frame had no person or no usable pose (the live session's snapshot reads it)
+        self.last_frame_angles: dict[str, float] | None = None
         self.gate_state = False
         self.gated_seg_start: float | None = None
         self.gated_segments: list[tuple[float, float]] = []
@@ -359,6 +385,32 @@ class Pipeline:
         self.set_gate(state, t if t is not None else s.t)
         return state
 
+    def set_min_range(self, deg: float) -> None:
+        """Use ``deg`` degrees as the rep counter's minimum range (the angle range the adaptive
+        segmenter must see before anything counts) from the next frame on: the running
+        segmenters take it at once and the ones built after a gate close inherit it.
+
+        Raises:
+            ValueError: ``deg`` is negative or not finite (nothing changes).
+        """
+        deg = float(deg)
+        if not np.isfinite(deg) or deg < 0:
+            raise ValueError(f"min range must be a finite angle >= 0 deg, got {deg!r}")
+        self.cfg["min_range"] = deg  # the tracks share this dict; new segmenters read it
+        for track in self.tracks:
+            track.seg.min_range = deg
+
+    def resume_gate(
+        self, state: bool, since: float | None, segments: list[tuple[float, float]]
+    ) -> None:
+        """Continue a gate that was already running before this pipeline existed (the live
+        session hands it over when it replaces the pipeline): ``state`` is the gate now,
+        ``since`` the start (s) of its open segment (ignored while closed) and ``segments`` the
+        closed ``(start, end)`` segments in seconds so far. Emits nothing."""
+        self.gate_state = bool(state)
+        self.gated_seg_start = since if self.gate_state else None
+        self.gated_segments = list(segments)
+
     def set_gate(self, open_: bool, t: float) -> None:
         """Force the gate open/closed at time ``t`` (s); emits ``gate_open``/``gate_close`` and
         resets every track's buffers on close. A no-op if the state does not change."""
@@ -378,13 +430,7 @@ class Pipeline:
 
     def _angles(self, fr: PoseFrame) -> dict[str, float] | None:
         """Joint angles (degrees) for one frame, or ``None`` when invalid/non-finite."""
-        if not fr.valid or not np.isfinite(fr.world).all():
-            return None
-        u = self.up.update(fr.world, fr.skeleton)
-        return {
-            k: float(v[0])
-            for k, v in angles_mod.joint_angles(fr.world[None], fr.skeleton, u).items()
-        }
+        return frame_joint_angles(fr, self.up)
 
     def on_frame(self, fr: PoseFrame) -> list[RepMetrics]:
         """Log the frame; process it (angles → reps → rules, per track) only while the gate is
@@ -394,6 +440,7 @@ class Pipeline:
             self.log.frame(fr.t, False, False)
             return completed
         a_global = self._angles(fr)
+        self.last_frame_angles = a_global
         for track in self.tracks:
             rm = self._push_track(track, fr, a_global)
             if rm is not None:
@@ -418,7 +465,7 @@ class Pipeline:
             out[f"exit_{k}"] = track.seg.sign * track.seg.exit
             out[f"armed_{k}"] = 1.0 if track.seg.armed else 0.0
             if track.arm is not None:
-                out[f"vis_{k}"] = _arm_min_visibility(fr, track.side)
+                out[f"vis_{k}"] = arm_min_visibility(fr, track.side)
         return out
 
     def skip_frame(self, t: float) -> None:
@@ -469,6 +516,8 @@ class Pipeline:
         track.last_p = p
         rep = track.seg.push(fr.t, p)
         if rep is None:
+            if self.report_dropped and track.seg.dropped_short is not None:
+                self._emit_dropped(track, *track.seg.dropped_short, "too_short")
             return None
 
         end_abs = rep.i_end
@@ -480,6 +529,8 @@ class Pipeline:
             # live only: a rep with a stretch of lost tracking inside would be judged on
             # interpolated angles (docs/02 4.3: such a segment is invalid), so it is not counted
             track.last_end_abs = end_abs
+            if self.report_dropped:
+                self._emit_dropped(track, rep.t_start, rep.t_end, "tracking_gap")
             return None
         ts = np.asarray(track.buf_t)
         if self.pad_rep_start_s > 0:
@@ -492,8 +543,9 @@ class Pipeline:
             # live numbering follows the counter on screen across gate close/reopen (replay keeps
             # the segmenter's ids, which restart at 0 on every gate-open segment: golden output)
             rm.rep_id = len(track.reps)
+        context = self._context(track, rm)
+        rm.context = frozenset(context)
         if self.rules is not None:
-            context = self._context(track, rm)
             rm.faults = [f.as_dict() for f in self.rules.evaluate(rm, context=context)]
         track.reps.append(rm)
         self._emit_rep(track, rm)
@@ -572,6 +624,12 @@ class Pipeline:
             self.on_event(e)
         return e
 
+    def _emit_dropped(self, track: _Track, t_start: float, t_end: float, reason: str) -> None:
+        self._emit(
+            "rep_dropped", t_end, arm=track.arm, t_start=float(t_start), t_end=float(t_end),
+            reason=reason,
+        )  # fmt: skip
+
     def _emit_rep(self, track: _Track, rm: RepMetrics) -> None:
         payload = rm.as_payload()
         if self.per_arm:
@@ -640,19 +698,8 @@ class Pipeline:
         if compute_imu:
             summary["reps_imu"] = len(imu_reps)
             summary["reps_fused"] = _fuse(all_reps, imu_reps)
-        summary.update(
-            {
-                "faults": sum(len(r.faults) for r in all_reps),
-                "frames_total": self.log.frames_total,
-                "frames_processed": self.log.frames_processed,
-                "frames_processed_pct": round(
-                    100.0 * self.log.frames_processed / max(self.log.frames_total, 1), 1
-                ),
-                "frames_bridged": bridged,
-                "frames_invalid": invalid,
-                "gated_seconds": round(sum(b - a for a, b in segments), 2),
-            }
-        )
+        summary["faults"] = sum(len(r.faults) for r in all_reps)
+        summary.update(frame_gate_summary(self.log, segments, bridged=bridged, invalid=invalid))
         if compute_imu:
             summary["imu_seconds"] = round((imu_t[-1] - imu_t[0]) if len(imu_t) > 1 else 0.0, 2)
         if self.per_arm:
@@ -660,6 +707,27 @@ class Pipeline:
         return PipelineResult(
             self.log.events, self.log.frames_total, self.log.frames_processed, all_reps, summary
         )
+
+
+def frame_gate_summary(
+    log: EventLog,
+    segments: list[tuple[float, float]],
+    *,
+    bridged: int = 0,
+    invalid: int = 0,
+) -> dict:
+    """The frame and gate part of a run summary, in ``session.json``'s key order:
+    ``frames_total``, ``frames_processed``, ``frames_processed_pct`` (0-100, one decimal),
+    ``frames_bridged`` and ``frames_invalid`` (as given), ``gated_seconds`` (the summed length
+    of the closed ``(start, end)`` gate ``segments`` in seconds, two decimals)."""
+    return {
+        "frames_total": log.frames_total,
+        "frames_processed": log.frames_processed,
+        "frames_processed_pct": round(100.0 * log.frames_processed / max(log.frames_total, 1), 1),
+        "frames_bridged": bridged,
+        "frames_invalid": invalid,
+        "gated_seconds": round(sum(b - a for a, b in segments), 2),
+    }
 
 
 def run_pipeline(
@@ -730,7 +798,7 @@ def _fuse(pose_reps: list[RepMetrics], imu_reps: list) -> int:
 def run_replay(
     session: Path | str = FIXTURE_SESSION,
     *,
-    gate: str = "always_on",
+    gate: str | None = None,
     exercise: str | None = None,
     headless: bool = True,
     out_dir: Path | None = None,
@@ -740,10 +808,33 @@ def run_replay(
     gate_kwargs: dict | None = None,
     side: str = "both",
     view: str = "frontal",
+    as_recorded: bool | None = None,
 ) -> PipelineResult:
     """Replay a session directory through the pipeline; writes events/frames/session.json to
-    ``out_dir`` when given. ``side``/``view`` default to the session's ``meta.json`` values."""
+    ``out_dir`` when given. ``side``/``view`` default to the session's ``meta.json`` values.
+
+    ``as_recorded`` (``None``: whether ``session`` is a Bench take) hands the session to
+    :func:`formcoach.app.replay_recorded.replay_as_recorded` with ``gate`` (default
+    ``"recorded"``), ``rules``, ``gate_kwargs``, ``out_dir`` and ``on_event``; ``exercise``,
+    ``headless``, ``speed``, ``side`` and ``view`` do not apply there. Otherwise ``gate``
+    defaults to ``"always_on"``.
+
+    Raises:
+        ValueError: ``gate="recorded"`` for a session that is not replayed as recorded.
+    """
     session = Path(session)
+    from formcoach.app import replay_recorded  # lazy: it builds on this module
+
+    if as_recorded is None:
+        as_recorded = replay_recorded.is_bench_session(session)
+    if as_recorded:
+        return replay_recorded.replay_as_recorded(
+            session, gate=gate or replay_recorded.RECORDED, rules=rules,
+            gate_kwargs=gate_kwargs, out_dir=out_dir, on_event=on_event,
+        )  # fmt: skip
+    if gate == replay_recorded.RECORDED:
+        raise ValueError(f"gate 'recorded' needs a Bench take replayed as recorded: {session}")
+    gate = gate or "always_on"
     src = ReplaySource(session, speed=speed)
     exercise = exercise or src.meta.get("exercise", "curl")
     pose_path = session / "pose.parquet"

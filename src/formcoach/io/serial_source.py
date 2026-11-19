@@ -9,6 +9,7 @@ accounting are unit-tested without a port. Ports: ``/dev/ttyACM0`` (Linux, add y
 from __future__ import annotations
 
 import contextlib
+import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -38,11 +39,39 @@ class Stats:
         self.samples += 1
 
 
+@dataclass(frozen=True)
+class InferInfo:
+    """One firmware inference log line: ``us`` microseconds the model took, ``arena`` bytes of
+    tensor arena used, predicted ``cls`` and ``p_active`` probability of "exercising" (0..1)."""
+
+    us: int
+    arena: int
+    cls: int
+    p_active: float
+
+
+_INFER_RE = re.compile(
+    r"^#\s*infer\s+us=(\d+)\s+arena=(\d+)\s+class=(\d+)\s+p_active=([0-9]*\.?[0-9]+)\s*$"
+)
+
+
+def parse_infer_line(line: str) -> InferInfo | None:
+    """Parse ``# infer us=13390 arena=6196 class=1 p_active=0.93``; ``None`` for any other line."""
+    m = _INFER_RE.match(line.strip())
+    if m is None:
+        return None
+    return InferInfo(int(m[1]), int(m[2]), int(m[3]), float(m[4]))
+
+
 class LineDecoder:
-    """Feed serial lines; get :class:`SISample` or ``None`` (header, comment or junk)."""
+    """Feed serial lines; get :class:`SISample` or ``None`` (header, comment or junk).
+    ``last_infer`` is the latest ``# infer`` line seen and ``infer_count`` how many there were;
+    they are comments too and still count in ``stats.comment_lines``."""
 
     def __init__(self) -> None:
         self.stats = Stats()
+        self.last_infer: InferInfo | None = None
+        self.infer_count = 0
 
     def feed(self, line: str, t_arrival: float | None = None) -> SISample | None:
         s = line.strip()
@@ -50,6 +79,10 @@ class LineDecoder:
             return None
         if s.startswith("#") or s == protocol.SERIAL_CSV_HEADER:
             self.stats.comment_lines += 1
+            info = parse_infer_line(s)
+            if info is not None:
+                self.last_infer = info
+                self.infer_count += 1
             return None
         raw = protocol.parse_serial_line(s)
         if raw is None:
