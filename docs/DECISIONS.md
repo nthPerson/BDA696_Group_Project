@@ -594,8 +594,10 @@ browser page from any other origin is refused before it is accepted); `save_rule
 `overwrite: true`, which the lab page sends after asking. An automated security review of the first
 server commit found both holes (no Origin/Host check; `save_rules` writing any path) and they were
 fixed in the next commit. The alternative, binding to localhost alone, still lets any web page
-open in the same browser reach the socket. Consequence: a rules file meant for elsewhere is saved
-here and copied by hand.
+open in the same browser reach the socket. The Origin check stops other web pages, not other
+programs: any program or user on the same machine can connect without an Origin header, see the
+camera frames and send commands. Consequence: a rules file meant for elsewhere is saved here and
+copied by hand.
 
 (6) **`httpx2` in the dev dependency group.** Starlette 1.7's `TestClient` imports `httpx2`, so the
 server tests cannot run without it; the plan had said no new packages. It is test-only and adds
@@ -610,3 +612,18 @@ would have put it outside. Consequence: none for non-negative defaults.
 finish together the coach page shows one cue; the other is shown later, when the first expires,
 and is not counted. The alternative, confirming every cue when drawn, recorded false multi-second
 latencies. Consequence: the per-take median covers about one arm per simultaneous pair.
+
+(9) **Final review fixes** (before the pull request; 523 pytest, 4 skipped; 109 Node tests; still
+synthetic sources only). C1: a take whose watch clock restarts mid-set is kept: device time is split
+into segments at each backward jump, each segment gets its own clock fit (all listed in `meta.json`
+`clock.segments`), Keep warns, and samples that would still break the IMUStream checks are left out
+rather than losing the take; the watch cannot be changed while a take records. I1: `eval gating`
+judges a Bench take with its own rules unless `--rules` is given, and skips the IMU gates (with a
+row saying so) for a take recorded without a watch instead of crashing. I2: a take stores the rules
+document its session judged with (`rules_doc`) and replays with it, so a custom `--rules` file
+replays as it ran; the file name is a fallback for older takes. I4: the Bench's session keeps a
+bounded log (the last 10 000 events, no frame rows), where it grew about 220 MB an hour; `run_live`
+keeps everything. A1: when the frame source ends or the socket drops, the coach page's state words
+say CAMERA STOPPED or OFFLINE and its cue band goes neutral, the lab's gate pill says so, and link
+status keeps coming after the source ends. A2: a cue whose rep arrives while the coach page is
+hidden is never confirmed, and the coach page opens as a popup window, not a tab.

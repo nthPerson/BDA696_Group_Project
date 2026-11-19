@@ -159,9 +159,12 @@ Config-driven (`rules.yaml`), multi-label per rep, every rule outputs `{code, se
   `t_arrival` (laptop clock, s) and `t_device` (device clock, s), `t` being device time mapped onto the laptop clock
   (`io/clock.py`). `pose.parquet`: every frame (pose runs on every frame while recording), image and world landmarks,
   `valid=False` where nobody was found. `events.parquet`, and `frames.parquet` with the live columns above plus
-  `t_source` (the frame source's own time, s). `meta.json`: the `SessionRecorder` keys plus `bench`, `labels`, `arm`,
-  `expected_reps`, `clock` (`offset_s`, `drift`, `residual_ms`, `n`, `method`, `t0_mono`), `rules`, `overrides`,
-  `gate_source`, `model`, `kit`, `summary` (with the median cue latency `latency_ms_median`). No video is written.
+  `t_source` (the frame source's own time, s). `meta.json`: the `SessionRecorder` keys (`source` is the watch link's
+  kind: `ble`, `serial`, `fake` or `none`) plus `bench`, `labels`, `arm`, `expected_reps`, `clock` (`offset_s`,
+  `drift`, `residual_ms`, `n`, `method`, `t0_mono`, and `segments`: one fit per device-clock segment when the watch's
+  clock restarted mid-take), `rules`, `rules_doc` (the rules document the session judged with), `overrides`,
+  `gate_source`, `model`, `kit`, `frame_source` (`camera N`, `video NAME`, `fake`), `summary` (with the median cue
+  latency `latency_ms_median`) and `latency` (every confirmed cue: `arm`, `rep_id`, `latency_ms`). No video is written.
 
 ## 5. Data schema (common across datasets)
 

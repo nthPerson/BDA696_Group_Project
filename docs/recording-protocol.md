@@ -133,7 +133,6 @@ Rewritten 2026-11-19 for the Bench; not yet run on a kit or a real webcam.
 
 - The pilot: Robert records one set end to end on a kit (`docs/howto/bench.md` §9).
 - `formcoach eval transfer` is still a stub and there is no `data/team` loader.
-- `eval gating` judges a take with `rules.yaml`, not with the take's own rules file.
 - No video is kept, so a take cannot be re-extracted with another pose model; choose `--model`
   when starting the Bench. A per-take `video.mp4` option is left for the timeline-review plan.
 - The button is not used to mark sets: K2 and K3 failed the button check on 2026-10-28.
