@@ -20,7 +20,11 @@ Threads:
 
 When the frame source ends (:meth:`Controller.source_ended`) the session thread stops stepping;
 session commands then run directly on the caller's thread, one at a time, so a take in review
-can still be kept.
+can still be kept, and a timer thread takes over the link status (about twice a second) until
+:meth:`Controller.close`.
+
+A watch change (``connect``, ``disconnect``) is refused while a take records (the session's
+rule): the link worker asks the session first and leaves the link alone, sending an ``error``.
 """
 
 from __future__ import annotations
@@ -108,7 +112,8 @@ class Controller:
         self.clock = clock
 
         self._lock = threading.Lock()  # guards the cached state and the fields state() reads
-        self._source = session.capture_context.get("source") or "unknown"
+        self._source = session.capture_context.get("frame_source") or "unknown"
+        self._context_link: tuple | None = None  # the link (kind, id) _sync_context last saw
         self._totals: dict = session.pipeline.arm_totals() if session.pipeline else {}
         self._manual_gate = False
         self._video_on = True
@@ -128,6 +133,7 @@ class Controller:
         # hold the process); None stops it
         self._jobs: queue.SimpleQueue[Callable[[], None] | None] = queue.SimpleQueue()
         self._closed = False
+        self._stop_timer = threading.Event()  # stops the link status timer (after source end)
         self._worker = threading.Thread(target=self._work, name="bench-link", daemon=True)
         self._worker.start()
 
@@ -279,10 +285,22 @@ class Controller:
         return status
 
     def _sync_context(self, status: dict) -> None:
-        """Record the link in ``session.capture_context`` (session thread)."""
-        self.session.capture_context.update(
-            firmware=status["firmware"], device=status["id"], kit=status["kit"]
-        )
+        """Record the link in ``session.capture_context`` (session thread): ``source`` (the
+        link's kind, ``"none"`` without one), ``device`` (its identifier, or its name when it
+        was connected as "first found"), ``firmware`` and ``kit``. While the link stays the same
+        (same kind and identifier) a value it does not know yet, such as the firmware before the
+        watch's status packet, never erases one it knew; a new link or no link replaces them."""
+        ctx = self.session.capture_context
+        if status["state"] == "none":
+            ctx.update(source="none", device=None, firmware=None, kit=None)
+            self._context_link = None
+            return
+        link = (status["kind"], status["id"])
+        known = {"device": status["id"] or status["name"], "firmware": status["firmware"]}
+        if link == self._context_link:
+            known = {k: v for k, v in known.items() if v is not None}
+        self._context_link = link
+        ctx.update(source=status["kind"], kit=status["kit"], **known)
 
     # ---- running work on the session ------------------------------------------------------------
 
@@ -335,7 +353,9 @@ class Controller:
     def source_ended(self, error: str | None = None) -> None:
         """The frame source ran out (or failed with ``error``): call on the session thread
         after its loop returned. Commands queued but not run are run now; from here on session
-        commands run directly. ``state.source`` becomes ``"ended"``."""
+        commands run directly. ``state.source`` becomes ``"ended"``. Link status keeps going
+        out every :data:`LINK_PERIOD_S` seconds (wall clock) from a timer thread until
+        :meth:`close`, so the watch's health stays live without frames."""
         with self._call_lock:
             self._ended = True
             leftovers = list(self._pending.values())
@@ -348,12 +368,22 @@ class Controller:
             if error is not None:
                 self.hub.publish(protocol.error(f"the frame source stopped: {error}"))
             self._refresh()
+        if not self._closed:
+            threading.Thread(target=self._link_timer, name="bench-link-status", daemon=True).start()
+
+    def _link_timer(self) -> None:
+        """Publish the link status about twice a second until :meth:`close` (after the source
+        ended, when no snapshot does it)."""
+        while not self._stop_timer.wait(LINK_PERIOD_S):
+            with self._direct:
+                self._sync_context(self._publish_link())
 
     def close(self) -> None:
-        """Stop listening to the session and stop the link worker after its current job;
-        link commands are refused from here on."""
+        """Stop listening to the session, stop the link status timer and stop the link worker
+        after its current job; link commands are refused from here on."""
         self._unsubscribe()
         self._closed = True
+        self._stop_timer.set()
         self._jobs.put(None)
 
     def _work(self) -> None:
@@ -539,9 +569,25 @@ class Controller:
         self.hub.publish(protocol.scan(kind, devices))
 
     def _release_board(self) -> None:
-        """Let the session drop the board before the link closes it."""
-        if self.links.board is not None:
-            self._call_and_wait(lambda s: s.set_board(None), BOARD_WAIT_S)
+        """Let the session drop the board before the link closes or replaces it.
+
+        Raises:
+            RuntimeError: the session refuses a watch change now (a take is recording); the
+                link is left as it is.
+        """
+        refused: list[RuntimeError] = []
+
+        def release(s: LiveSession) -> None:
+            try:
+                s.check_board_change()
+                if s.board is not None:
+                    s.set_board(None)
+            except RuntimeError as exc:
+                refused.append(exc)
+
+        self._call_and_wait(release, BOARD_WAIT_S)
+        if refused:
+            raise refused[0]
 
     def _connect(self, kind: str, ident: str | None) -> None:
         self._release_board()

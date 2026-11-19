@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { HISTORY_FRAMES, LandmarkHistory } from "../lab-video.js";
+import { HISTORY_FRAMES, LandmarkHistory, VideoPanel, anglesOf } from "../lab-video.js";
 
 test("the landmark history holds 300 s at 30 fps", () => {
   assert.equal(HISTORY_FRAMES, 9000);
@@ -26,4 +26,25 @@ test("non-finite and out-of-order times are not kept; a frame without a person k
   h.push(1, [[0, 0, 1]]);
   assert.equal(h.length, 1);
   assert.equal(h.at(2).lm, null);
+});
+
+test("the panel's skeleton follows every frame header even when no picture comes (A4)", () => {
+  const canvas = () => ({ hidden: false, width: 0, height: 0, clientWidth: 0, clientHeight: 0, getContext: () => null });
+  const root = { querySelector: (sel) => (sel === "canvas.vid" ? vid : skel), style: {} };
+  const vid = canvas();
+  const skel = canvas();
+  const panel = new VideoPanel(root, new LandmarkHistory(10));
+  const header = (t, x) => ({ t_mono: t, lm: [[x, 0.5, 1]], counters: { l: { angle: 40 }, r: { angle: null } } });
+  panel.onFrame(header(1, 0.1), null, { paused: false, videoOn: true }); // OpenCV missing: no JPEG
+  assert.deepEqual(panel.header.lm, [[0.1, 0.5, 1]]);
+  panel.onFrame(header(2, 0.2), null, { paused: false, videoOn: true });
+  assert.deepEqual(panel.header.lm, [[0.2, 0.5, 1]]);
+  assert.equal(panel.bitmap, null);
+  panel.onFrame(header(3, 0.3), null, { paused: true, videoOn: true }); // paused: held
+  assert.deepEqual(panel.header.lm, [[0.2, 0.5, 1]]);
+});
+
+test("the panel's arm angles come from the arm counters only (squat lights no arm)", () => {
+  assert.deepEqual(anglesOf({ counters: { all: { angle: 90 } } }), { l: null, r: null });
+  assert.deepEqual(anglesOf({ counters: { l: { angle: 50 }, r: { angle: 60 } } }), { l: 50, r: 60 });
 });

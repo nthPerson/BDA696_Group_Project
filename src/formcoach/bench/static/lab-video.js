@@ -1,7 +1,7 @@
 // The lab console's video panel: the frame JPEG on one canvas and the skeleton on a canvas on
 // top, both mirrored, no text. Paused, it shows the frozen picture; scrolled back, the skeleton
 // from kept landmarks on a plain background (video frames are not kept).
-import { drawSkeleton } from "./skeleton.js";
+import { armAngles, drawSkeleton } from "./skeleton.js";
 
 // The last 300 s of landmarks at the frame rate: 30 fps × 300 s = 9,000 entries of 33 points.
 export const HISTORY_FRAMES = 9000;
@@ -45,7 +45,8 @@ export class LandmarkHistory {
   }
 }
 
-const anglesOf = (h) => ({ l: (h.counters?.l ?? h.counters?.all)?.angle ?? null, r: h.counters?.r?.angle ?? null });
+/** The arm angles of a frame header, for the skeleton's highlight (none for squat). */
+export const anglesOf = (h) => armAngles(h.counters);
 
 /** The panel: `root` holds two canvases (video under skeleton). */
 export class VideoPanel {
@@ -54,8 +55,8 @@ export class VideoPanel {
     this.history = history;
     this.vid = root.querySelector("canvas.vid");
     this.skel = root.querySelector("canvas.skel");
-    this.bitmap = null; // the picture shown (ImageBitmap) and the header it came with
-    this.header = null;
+    this.bitmap = null; // the picture shown (ImageBitmap); kept until a newer one decodes
+    this.header = null; // the newest frame header: its landmarks are the skeleton drawn
     this.frozen = null; // {t} of the picture held while paused
     this._seq = 0;
     this._dirty = true;
@@ -63,21 +64,26 @@ export class VideoPanel {
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => { this._dirty = true; }).observe(root);
   }
 
-  /** A frame from the socket: its landmarks are kept; its picture is decoded unless paused. */
+  /**
+   * A frame from the socket: its landmarks are kept in the history and, unless paused, drawn
+   * (every frame, picture or not); its picture is decoded unless paused. With video on, a frame
+   * without a picture (between images, or no OpenCV on the server) keeps the last picture.
+   */
   onFrame(h, jpeg, { paused, videoOn }) {
     this.history.push(h.t_mono, h.lm ?? null, anglesOf(h));
     if (paused) return;
-    if (!videoOn || !jpeg) {
-      if (!videoOn) { // skeleton on a plain background, every frame
-        this._setBitmap(null, h);
-      }
-      return; // with video on, a frame without a picture keeps the last picture and its skeleton
+    this.header = h;
+    this._dirty = true;
+    if (!videoOn) { // skeleton on a plain background
+      this._setBitmap(null);
+      return;
     }
+    if (!jpeg) return;
     const seq = ++this._seq;
     createImageBitmap(new Blob([jpeg], { type: "image/jpeg" })).then(
       (bmp) => {
         if (seq !== this._seq || this.frozen) bmp.close(); // a newer frame won, or paused meanwhile
-        else this._setBitmap(bmp, h);
+        else this._setBitmap(bmp);
       },
       () => {}, // an undecodable picture is skipped
     );
@@ -89,10 +95,9 @@ export class VideoPanel {
     this._dirty = true;
   }
 
-  _setBitmap(bmp, h) {
+  _setBitmap(bmp) {
     if (this.bitmap && this.bitmap !== bmp) this.bitmap.close();
     this.bitmap = bmp;
-    this.header = h;
     if (bmp) this.root.style.aspectRatio = `${bmp.width} / ${bmp.height}`;
     this._dirty = true;
   }

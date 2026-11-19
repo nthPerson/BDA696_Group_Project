@@ -6,6 +6,7 @@
 // log, error) and page actions: socket_open, socket_close, scan_started {kind},
 // dismiss_error {id}. A `log` message may carry `rx`, the page's receive time (ms since epoch);
 // a `rejudged` event may carry `rx` (ms, any monotonic page clock) to group a slider gesture.
+import { clockText } from "./format.js";
 
 export const LOG_LINES = 200;
 const MAX_ERRORS = 5;
@@ -179,6 +180,45 @@ export function captureView(s) {
   const countdownS = c.state === "countdown" && finite(c.deadline) && finite(t) ? Math.max(0, Math.ceil(c.deadline - t - 1e-9)) : null;
   const elapsedS = c.state === "recording" && finite(c.t0) && finite(t) ? Math.max(0, t - c.t0) : null;
   return { state: c.state, countdownS, elapsedS };
+}
+
+const SOURCE_WORD = { device: "watch", energy: "energy", always_on: "always open", manual: "held" };
+
+/**
+ * The top bar's gate pill `{cls, text}`: live ("ok" while open) from the newest frame; neutral
+ * "Gate · source ended" once the frame source has ended; neutral "Gate · <source>" while the
+ * page is disconnected or before a frame.
+ */
+export function gatePill(s) {
+  const f = s.frame;
+  const src = SOURCE_WORD[f?.gate_source ?? s.server?.gate_source] ?? "";
+  if (s.connected && s.server?.source === "ended") return { cls: "", text: "Gate · source ended" };
+  if (!f || !s.connected) return { cls: "", text: `Gate · ${src}` };
+  return { cls: f.gate ? "ok" : "", text: `${f.gate ? "● Gate open" : "○ Gate closed"} · ${src}` };
+}
+
+/** The top bar's capture pill `{hidden, cls, text}`; neutral (no colour) while the page is disconnected. */
+export function recPill(s) {
+  const v = captureView(s);
+  const live = v.state === "recording" ? "rec" : "warn";
+  return {
+    hidden: v.state === "idle",
+    cls: s.connected ? live : "",
+    text: v.state === "countdown" ? `◔ Get ready${v.countdownS == null ? "" : ` ${v.countdownS}`}`
+      : v.state === "recording" ? `● REC ${v.elapsedS == null ? "" : clockText(v.elapsedS)}`.trim() : "■ Take in review",
+  };
+}
+
+/**
+ * The last-cue line when there is no rep to show: "" for idle, "–" when reps were counted that
+ * this page never saw (it opened or reconnected mid-set), "No rep yet" otherwise; null when a
+ * rep was seen (the page draws it).
+ */
+export function lastCueText(s) {
+  if (s.lastRep) return null;
+  if (s.server?.exercise === "idle") return "";
+  const counted = Object.values(s.totals ?? {}).some((c) => (c?.reps ?? 0) > 0);
+  return counted ? "–" : "No rep yet";
 }
 
 /** The counter keys of an exercise: one ("all") for squat, else left and right. */

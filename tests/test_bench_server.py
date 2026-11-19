@@ -26,6 +26,7 @@ import numpy as np
 import pytest
 from typer.testing import CliRunner
 
+from formcoach.app.capture import TakeLabels
 from formcoach.bench import protocol
 from formcoach.cli import app as cli_app
 from formcoach.io.protocol import Command
@@ -666,3 +667,121 @@ def test_save_rules_is_confined_to_the_start_directory(rig, tmp_path):
         assert existing.read_text() != "# mine\n"
         msg = save(ws, path="kept.yaml", overwrite="yes")
         assert msg["type"] == "error" and "true or false" in msg["text"]
+
+
+# ---- final review fixes ------------------------------------------------------------------------
+
+
+def test_the_watch_cannot_be_changed_over_the_socket_while_a_take_records(rig):
+    TestClient = _need_starlette()
+    s = rig.session
+    links = rig.bench.links
+    board = links.board
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
+        recv(ws)
+        labels = {"subject": "S9", "exercise": "curl"}
+        ws.send_json({"cmd": "capture_start", "labels": labels, "delay_s": 0, "auto_stop": False})
+        rig.step_until(lambda: s.capture_state == "recording")
+        for cmd in ({"cmd": "disconnect"}, {"cmd": "connect", "kind": "fake", "id": "fake"}):
+            n = rig.count("error")
+            ws.send_json(cmd)
+            rig.step_until(lambda n=n: rig.count("error") > n)
+            err = until(ws, lambda m: m["type"] == "error")
+            assert err["cmd"] == cmd["cmd"] and "recording" in err["text"]
+            assert s.board is board and links.board is board  # the link was not touched
+        ws.send_json({"cmd": "capture_stop"})
+        rig.step_until(lambda: s.capture_state == "review")
+        ws.send_json({"cmd": "disconnect"})  # allowed again once the take stopped
+        rig.step_until(lambda: s.board is None and links.board is None)
+
+
+def test_a_take_records_the_link_kind_and_the_frame_source(rig):
+    TestClient = _need_starlette()
+    import pandas as pd
+
+    from formcoach.io import session_check
+
+    s = rig.session
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
+        assert recv(ws)["state"]["source"] == "fake"  # the page's source is the frame source
+        rig.step(3)  # the first frame records the link in the session's context
+        labels = {"subject": "S9", "exercise": "curl"}
+        ws.send_json({"cmd": "capture_start", "labels": labels, "delay_s": 0, "auto_stop": False})
+        rig.step_until(lambda: s.capture_state == "recording")
+        rig.step(90)
+        ws.send_json({"cmd": "capture_stop"})
+        rig.step_until(lambda: s.capture_state == "review")
+        ws.send_json({"cmd": "capture_keep", "true_reps": None})
+        rig.step_until(lambda: s.capture_state == "idle")
+    folder = next((rig.team / "S9").glob("2*"))
+    meta = json.loads((folder / "meta.json").read_text())
+    assert meta["source"] == "fake" and meta["frame_source"] == "fake"
+    assert meta["device"] == "fake" and meta["kit"] is None
+    # the session check's 50 Hz test runs for a watch take: half the samples fail it
+    imu = pd.read_parquet(folder / "imu.parquet")
+    imu.iloc[::2].to_parquet(folder / "imu.parquet", index=False)
+    assert any("not 50 Hz" in p for p in session_check.check(folder)["problems"])
+
+
+def test_sync_context_never_erases_what_the_link_knew(rig):
+    c = rig.bench.controller
+    ctx = rig.session.capture_context
+    status = rig.bench.links.status()
+    c._sync_context({**status, "firmware": "1.1.1", "kit": "K2"})
+    c._sync_context({**status, "firmware": None, "kit": None})  # same link, label removed
+    assert (ctx["source"], ctx["device"], ctx["firmware"]) == ("fake", "fake", "1.1.1")
+    assert ctx["kit"] is None
+    # another watch, connected as "first found" (no identifier): nothing is carried over
+    first = {**status, "kind": "ble", "id": None, "name": "FormCoach-8428", "firmware": None}
+    c._sync_context(first)
+    assert (ctx["source"], ctx["device"], ctx["firmware"]) == ("ble", "FormCoach-8428", None)
+    c._sync_context({**first, "name": None})  # its name not known for a moment: kept
+    assert ctx["device"] == "FormCoach-8428"
+    c._sync_context(dict.fromkeys(status) | {"state": "none"})  # no link at all
+    assert ctx["source"] == "none" and ctx["device"] is None and ctx["firmware"] is None
+
+
+def test_link_status_keeps_coming_after_the_source_ended(rig):
+    TestClient = _need_starlette()
+    from formcoach.bench.runner import serve_frames
+
+    with TestClient(rig.bench.app) as client, client.websocket_connect(WS_URL) as ws:
+        recv(ws)
+        rig.bench.frames = []
+        serve_frames(rig.bench, say=lambda _line: None)
+        until(ws, lambda m: is_state(m, source="ended"))
+        n = rig.count("link")
+        deadline = time.monotonic() + 3.0
+        while rig.count("link") < n + 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert rig.count("link") >= n + 2  # about twice a second
+        assert until(ws, lambda m: m["type"] == "link")["status"]["kind"] == "fake"
+    rig.bench.controller.close()
+    time.sleep(0.6)  # one period: the timer has stopped
+    n = rig.count("link")
+    time.sleep(1.2)
+    assert rig.count("link") == n
+
+
+def test_the_bench_session_keeps_no_frame_log(rig):
+    rig.step(60)
+    assert rig.session.log.frames_total == 60 and len(rig.session.log.frames) == 0
+
+
+def test_shutdown_says_when_a_take_was_not_kept(rig):
+    from formcoach.bench.runner import shutdown
+
+    said: list[str] = []
+    rig.session.start_capture(TakeLabels(subject="S9", exercise="curl"))
+    rig.step(3)
+    rig.clock.close()  # the fake watch stops waiting on the clock, so closing it is quick
+    shutdown(rig.bench, None, say=said.append)
+    assert "a take in recording was not kept (nothing was written)" in said
+    assert said[-1] == "bench stopped"
+    assert not (rig.team / "S9").exists()
+
+    quiet: list[str] = []
+    other = Rig(rig.team.parent / "other")
+    other.clock.close()
+    shutdown(other.bench, None, say=quiet.append)
+    assert quiet == ["bench stopped"]

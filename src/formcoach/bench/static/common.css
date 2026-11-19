@@ -54,6 +54,8 @@ button, select, input { font: inherit; color: inherit; }
 .dot { width: 1em; height: 1em; border-radius: 50%; background: var(--off); display: grid; place-items: center; font-weight: 800; }
 .dot.g { background: var(--ok); }
 .dot.w { background: var(--warn); }
+/* counted, but not seen by this page (opened mid-set): verdict unknown, so no colour or glyph */
+.dot.u { background: transparent; box-shadow: inset 0 0 0 0.14em var(--muted); }
 .dot > span { font-size: 0.62em; color: #111; line-height: 1; }
 
 /* strip charts (strips.js): a grid of lanes, each a label column and a plot; one time axis */

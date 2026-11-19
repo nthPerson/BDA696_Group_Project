@@ -29,6 +29,14 @@ export function layout(lm, width, height, { mirror = false } = {}) {
 }
 
 /**
+ * The arm angles a frame header's `counters` give the skeleton: `{l, r}` in degrees (null when
+ * not tracked). Squat's single counter (`all`) is a knee angle, so it lights no arm.
+ */
+export function armAngles(counters) {
+  return { l: counters?.l?.angle ?? null, r: counters?.r?.angle ?? null };
+}
+
+/**
  * Draw the skeleton on a 2D canvas context (no text). An arm whose entry in `angles`
  * ({l, r}, degrees) is a number is drawn in the accent colour.
  */

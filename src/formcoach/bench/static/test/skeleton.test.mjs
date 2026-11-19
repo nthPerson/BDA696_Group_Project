@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { EDGES, drawSkeleton, layout } from "../skeleton.js";
+import { EDGES, armAngles, drawSkeleton, layout } from "../skeleton.js";
 
 const lm = (over = {}) => {
   const a = Array.from({ length: 33 }, () => [0.5, 0.5, 1]);
@@ -41,4 +41,10 @@ test("drawSkeleton draws edges and joints on a context, highlighting tracked arm
   assert.equal(calls.filter((c) => c[0] === "stroke").length, 12);
   assert.equal(calls.filter((c) => c[0] === "arc").length, 33 - 11);
   assert.equal(calls.filter((c) => c[0] === "set:strokeStyle" && c[1] === "#7aa7ff").length, 2);
+});
+
+test("armAngles: the arm counters' angles; squat's single counter lights no arm", () => {
+  assert.deepEqual(armAngles({ l: { angle: 90 }, r: { angle: null } }), { l: 90, r: null });
+  assert.deepEqual(armAngles({ all: { angle: 95 } }), { l: null, r: null });
+  assert.deepEqual(armAngles(undefined), { l: null, r: null });
 });

@@ -43,9 +43,10 @@ test("repDots: g for clean, w for flagged, in order", () => {
   assert.deepEqual(repDots(undefined, ev), ["g", "w", "g"]);
 });
 
-test("repDots: reps the events no longer hold come first, flagged before good", () => {
-  const ev = [rep({ faults: [fault()] })];
-  assert.deepEqual(repDots({ reps: 4, good: 2, flagged: 2 }, ev), ["w", "g", "g", "w"]);
+test("repDots: counted reps the page never saw come first as neutral dots, seen ones in order", () => {
+  const ev = [rep({ faults: [fault()] }), rep()];
+  assert.deepEqual(repDots({ reps: 5, good: 2, flagged: 3 }, ev), ["u", "u", "u", "w", "g"]);
+  assert.deepEqual(repDots({ reps: 0, good: 0, flagged: 0 }, ev), ["w", "g"]); // never fewer than seen
 });
 
 test("clockText is m:ss", () => {

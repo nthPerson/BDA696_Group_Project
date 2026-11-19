@@ -240,3 +240,68 @@ test("two arms finishing on one frame with equal severity: only the newer is fre
   s = reduce(s, tick(1 + CUE_TTL_S - 0.5));
   assert.equal(s.cues.l.fresh, false);
 });
+
+// ---- final review fixes (A1, A2, A5, A6) ------------------------------------------------------
+
+const withSource = (source) => ({ type: "state", state: { ...hello().state, source } });
+
+test("a stopped source turns the strip and the band neutral: CAMERA STOPPED", () => {
+  let s = run([hello(), tick(1), { type: "frame", t: 1, gate: true, link_state: "ok" }, rep("l", 0, [warn])]);
+  assert.equal(v(s).band.kind, "warn");
+  s = reduce(s, withSource("ended"));
+  const m = v(s);
+  assert.deepEqual(m.strip.gate, ["CAMERA STOPPED", "n"]);
+  assert.equal(m.strip.watch[0], "WATCH LINKED"); // the link status still comes after the end
+  assert.deepEqual([m.strip.watch[1], m.strip.rec[1]], ["n", "n"]);
+  assert.equal(m.band.kind, "neutral");
+  assert.equal(m.band.text, "Camera stopped");
+  assert.equal(m.band.key, null); // nothing to confirm
+  assert.equal(m.disconnected, false);
+});
+
+test("a closed socket turns the strip and the band neutral: OFFLINE; a new hello brings it back", () => {
+  let s = run([hello(), tick(1), { type: "frame", t: 1, gate: true, link_state: "ok", capture_state: "recording" }, rep("r", 0)]);
+  s = reduce(s, { type: "socket_close" });
+  const m = v(s);
+  assert.deepEqual(m.strip.gate, ["OFFLINE", "n"]);
+  assert.deepEqual(m.strip.watch, ["WATCH: NO NEWS", "n"]);
+  assert.deepEqual(m.strip.rec, ["REC: NO NEWS", "n"]);
+  assert.equal(m.band.kind, "neutral");
+  assert.equal(m.band.key, null);
+  assert.equal(m.disconnected, true);
+  s = run([{ type: "socket_open" }, hello(), { type: "frame", t: 2, gate: true, link_state: "ok" }], s);
+  assert.deepEqual(v(s).strip.gate, ["GATE OPEN", "g"]);
+  assert.deepEqual(v(s).strip.watch, ["WATCH LINKED", "b"]);
+});
+
+test("a rep that arrives while the page is hidden is shown but never fresh", () => {
+  let s = run([hello(), tick(10), { type: "visibility", visible: false }, rep("l", 0)]);
+  s = run([{ type: "visibility", visible: true }, tick(13)], s); // rAF resumes: the cue is 3 s old
+  assert.equal(v(s).band.who, "LEFT ARM · REP 1");
+  assert.equal(v(s).band.fresh, false);
+  s = reduce(s, rep("l", 1)); // visible again: the next rep is confirmed
+  assert.equal(v(s).band.fresh, true);
+  assert.equal(initialState().visible, true);
+});
+
+test("rejudged rewrites the stored reps, the live cues and the totals; a re-judged cue is not fresh", () => {
+  const one = { reps: 1, good: 1, flagged: 0 };
+  let s = run([hello(), tick(1), rep("l", 0), rep("r", 0), withTotals({ l: one, r: one })]);
+  assert.deepEqual(v(s).counts.map((c) => c.dots.filter(Boolean)), [["g"], ["g"]]);
+  const totals = { l: { reps: 1, good: 0, flagged: 1 }, r: { reps: 1, good: 1, flagged: 0 } };
+  s = reduce(s, ev("rejudged", { totals, reps: [{ arm: "l", rep_id: 0, faults: [warn] }, { arm: "r", rep_id: 0, faults: [] }] }));
+  assert.deepEqual(s.totals, totals);
+  assert.deepEqual(s.reps.l[0].faults, [warn]);
+  assert.deepEqual(v(s).counts[0].dots[0], "w");
+  const m = v(s);
+  assert.equal(m.band.kind, "warn"); // the left cue is now the fault, so it shows
+  assert.equal(m.band.who, "LEFT ARM · REP 1");
+  assert.equal(m.band.fresh, false); // judged again later: never confirmed as a fresh cue
+  assert.equal(s.pendingTone, "good"); // no tone for a re-judging
+});
+
+test("a page that joins mid-set draws the reps it did not see as neutral dots, oldest first", () => {
+  let s = run([hello(), withTotals({ l: { reps: 3, good: 1, flagged: 2 }, r: { reps: 0, good: 0, flagged: 0 } }), rep("l", 3, [warn])]);
+  s = reduce(s, withTotals({ l: { reps: 4, good: 1, flagged: 3 }, r: { reps: 0, good: 0, flagged: 0 } }));
+  assert.deepEqual(v(s).counts[0].dots.slice(0, 5), ["u", "u", "u", "w", ""]);
+});

@@ -38,18 +38,17 @@ export function marginText(fault) {
 }
 
 /**
- * One dot per rep, oldest first: "g" clean, "w" flagged. `events` are the rep events (or
- * payloads) of one counter; when the totals count more reps than there are events (older ones
- * no longer held) those come first, flagged ones before good ones.
- * @param {{reps:number, flagged:number}|undefined} totalsForCounter
+ * One dot per rep, oldest first: "g" clean, "w" flagged, "u" counted but not seen by this page
+ * (it opened or reconnected mid-set, or no longer holds the event): its verdict and its place
+ * among the others are unknown, so it is drawn neutral, without a tick or "!". `events` are the
+ * rep events (or payloads) of one counter; the unseen reps come first, then the seen ones in
+ * their real order.
+ * @param {{reps:number}|undefined} totalsForCounter
  */
 export function repDots(totalsForCounter, events) {
   const dots = (events ?? []).map((e) => ((e.payload ?? e).faults?.length ? "w" : "g"));
-  const reps = totalsForCounter?.reps ?? dots.length;
-  const missing = Math.max(0, reps - dots.length);
-  const flaggedSeen = dots.filter((d) => d === "w").length;
-  const flaggedMissing = Math.min(missing, Math.max(0, (totalsForCounter?.flagged ?? 0) - flaggedSeen));
-  return [...Array(flaggedMissing).fill("w"), ...Array(missing - flaggedMissing).fill("g"), ...dots];
+  const missing = Math.max(0, (totalsForCounter?.reps ?? dots.length) - dots.length);
+  return [...Array(missing).fill("u"), ...dots];
 }
 
 /** Seconds -> "m:ss" ("0:42", "12:05"); negative or non-finite values give "0:00". */

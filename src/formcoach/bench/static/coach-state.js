@@ -3,10 +3,15 @@
 // what it said and decides what is on screen.
 //
 // Messages: the server's (hello, state, frame header, event) and page actions:
-// socket_open, socket_close, tick {now} (page clock, s), tone_played.
+// socket_open, socket_close, tick {now} (page clock, s), tone_played, visibility {visible}.
 //
 // Cue latency is measured only for cues that were drawn when their rep completed: a cue hidden
-// behind another one and shown later (`fresh` false in the view) is displayed but never confirmed.
+// behind another one and shown later, a cue whose rep arrived while the page was not visible (the
+// browser stops animation frames, so it could not be drawn), and a cue re-judged after a slider
+// move (`fresh` false in the view) are displayed but never confirmed.
+//
+// When the frame source has ended (`state.source` "ended") or the socket is closed, nothing on
+// screen is live: the state strip and the cue band go neutral and say so.
 import { cueText, repDots } from "./format.js";
 
 export const CUE_TTL_S = 8; // an arm's cue stays until its next rep or this long
@@ -28,6 +33,8 @@ export function initialState() {
     totals: {}, // per counter {reps, good, flagged, ...}
     gate: false,
     linkState: "none", // ok, silent, none or waiting
+    source: null, // the server's frame source ("camera 0", "fake", ...; "ended" once it stopped)
+    visible: true, // whether the page is on screen (document.visibilityState)
     videoOn: true,
     capture: { state: null, deadline: null, recStart: null }, // deadline: frame clock (s); recStart: page clock (s)
     frameT: null, // newest frame time (s, frame clock)
@@ -62,6 +69,7 @@ function applyServerState(s, st) {
     totals: st.totals ?? s.totals,
     linkState: st.link?.state ?? s.linkState,
     videoOn: st.video?.on ?? s.videoOn,
+    source: st.source ?? s.source,
   };
   out = withCapture(out, st.capture?.state);
   return out;
@@ -82,7 +90,7 @@ function onRep(s, p) {
     cues[key] = r <= rank && c.at === s.now ? { ...c, fresh: false } : c;
     if (r > rank) top = false;
   }
-  cues[k] = { payload: p, cue, at: s.now, seq, fresh: top };
+  cues[k] = { payload: p, cue, at: s.now, seq, fresh: top && s.visible };
   return {
     ...s,
     seq,
@@ -92,11 +100,29 @@ function onRep(s, p) {
   };
 }
 
+/** A re-judging (slider moved on the lab console): new faults for the reps held and the live cues. */
+function onRejudged(s, p) {
+  const now = new Map((p.reps ?? []).map((r) => [`${counterOf(r.arm)} ${r.rep_id}`, r.faults ?? []]));
+  const fix = (rp) => {
+    const f = now.get(`${counterOf(rp.arm)} ${rp.rep_id}`);
+    return f ? { ...rp, faults: f } : rp;
+  };
+  const reps = Object.fromEntries(Object.entries(s.reps).map(([k, list]) => [k, list.map(fix)]));
+  const cues = {};
+  for (const [k, c] of Object.entries(s.cues)) {
+    const payload = fix(c.payload);
+    cues[k] = payload === c.payload ? c : { ...c, payload, cue: cueText(payload), fresh: false };
+  }
+  return { ...s, reps, cues, totals: p.totals ?? s.totals };
+}
+
 function onEvent(s, ev) {
   const p = ev.payload ?? {};
   switch (ev.kind) {
     case "rep":
       return onRep(s, p);
+    case "rejudged":
+      return onRejudged(s, p);
     case "capture": {
       return withCapture(s, p.state, p.state === "countdown" ? ev.t + (p.delay_s ?? 0) : undefined);
     }
@@ -136,6 +162,8 @@ export function reduce(state, msg) {
     }
     case "tone_played":
       return s.pendingTone ? { ...s, pendingTone: null } : s;
+    case "visibility":
+      return { ...s, visible: !!msg.visible };
     case "socket_open":
       return { ...s, connected: true };
     case "socket_close":
@@ -164,7 +192,20 @@ export function recordedSeconds(s) {
   return s.capture.state === "recording" && finite(s.capture.recStart) ? Math.max(0, s.now - s.capture.recStart) : null;
 }
 
+/** Why nothing on screen is live: "offline" (socket closed), "ended" (frame source stopped) or null. */
+function stoppedOf(s) {
+  if (!s.connected) return "offline";
+  return s.source === "ended" ? "ended" : null;
+}
+
 function bandOf(s) {
+  const stopped = stoppedOf(s);
+  if (stopped) {
+    return {
+      kind: "neutral", icon: "", who: "", text: stopped === "ended" ? "Camera stopped" : "Offline, reconnecting",
+      key: null, fresh: false, arm: null, rep_id: null,
+    };
+  }
   let top = null;
   for (const c of Object.values(s.cues)) {
     const rank = RANK[c.cue.kind];
@@ -204,15 +245,16 @@ export function view(s, clockText) {
     cs === "recording" ? [rec == null ? "● REC" : `● REC ${clockText(rec)}`, "r"]
     : cs === "countdown" ? [n == null ? "GET READY" : `GET READY ${n}`, "a"]
     : ["READY", "n"];
+  const stopped = stoppedOf(s);
+  const strip =
+    stopped === "offline" ? { gate: ["OFFLINE", "n"], watch: ["WATCH: NO NEWS", "n"], rec: ["REC: NO NEWS", "n"] }
+    : stopped === "ended" ? { gate: ["CAMERA STOPPED", "n"], watch: [link[0], "n"], rec: [recording[0], "n"] }
+    : { gate: s.gate ? ["GATE OPEN", "g"] : ["GATE CLOSED", "n"], watch: link, rec: recording };
   return {
     exercise: EXERCISE_NAME[s.exercise] ?? String(s.exercise ?? "").toUpperCase(),
     counts,
     band: bandOf(s),
-    strip: {
-      gate: s.gate ? ["GATE OPEN", "g"] : ["GATE CLOSED", "n"],
-      watch: link,
-      rec: recording,
-    },
+    strip,
     disconnected: !s.connected,
   };
 }

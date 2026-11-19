@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { reduce as reduceFromPage } from "../lab.js";
 import {
   LOG_LINES, captureView, counterKeys, defaultRulesPath, devicesFor, exerciseOptions, idTail,
-  initialState, isRulesConflict, paramText, reduce, rejudgeLine, uptimeText,
+  gatePill, initialState, isRulesConflict, lastCueText, paramText, recPill, reduce, rejudgeLine, uptimeText,
 } from "../lab-state.js";
 
 const golden = JSON.parse(readFileSync(new URL("../../../../../tests/golden/bench_messages.json", import.meta.url), "utf8"));
@@ -165,4 +165,37 @@ test("paramLabel: rule parameters lose the exercise prefix; others keep the serv
   assert.equal(paramLabel({ key: "rule.curl.CURL_PARTIAL_ROM.elbow_min", label: "x" }), "Partial rom · elbow_min");
   assert.equal(paramLabel({ key: "rule.squat.KNEE_VALGUS.knee_track_at_bottom", label: "x" }), "Knee valgus · knee_track_at_bottom");
   assert.equal(paramLabel({ key: "gate.energy_threshold", label: "Energy threshold" }), "Energy threshold");
+});
+
+// ---- final review fixes (A1, A6) --------------------------------------------------------------
+
+test("the gate pill: live with frames; neutral 'source ended' after the source ends; grey when disconnected", () => {
+  const frame = { type: "frame", t: 1, gate: true, gate_source: "device", totals: {} };
+  let s = run([hello(), frame]);
+  assert.deepEqual(gatePill(s), { cls: "ok", text: "● Gate open · watch" });
+  s = reduce(s, { type: "state", state: { ...hello().state, source: "ended" } });
+  assert.deepEqual(gatePill(s), { cls: "", text: "Gate · source ended" });
+  s = run([hello(), frame, { type: "socket_close" }]);
+  assert.deepEqual(gatePill(s), { cls: "", text: "Gate · watch" });
+});
+
+test("the recording pill greys out while the page is disconnected", () => {
+  let s = run([hello(), ev("capture", { state: "recording", labels: {} }, 5), { type: "frame", t: 7, gate: true }]);
+  assert.deepEqual(recPill(s), { hidden: false, cls: "rec", text: "● REC 0:02" });
+  s = reduce(s, { type: "socket_close" });
+  assert.equal(recPill(s).cls, "");
+  s = run([hello()]);
+  assert.equal(recPill(s).hidden, true);
+});
+
+test("the last-cue line: 'No rep yet' at zero, '–' when reps were counted before the page saw any", () => {
+  let s = run([hello()]); // the golden totals count reps this page never saw
+  assert.equal(lastCueText(s), "–");
+  s = reduce(s, { type: "frame", t: 1, gate: false, totals: { l: { reps: 0 }, r: { reps: 0 } } });
+  assert.equal(lastCueText(s), "No rep yet");
+  s = reduce(s, ev("exercise", { exercise: "idle" }));
+  s = { ...s, server: { ...s.server, exercise: "idle" } };
+  assert.equal(lastCueText(s), "");
+  s = run([hello(), ev("rep", { arm: "l", rep_id: 0, faults: [] })]);
+  assert.equal(lastCueText(s), null); // a rep was seen: the page draws it
 });

@@ -3,7 +3,7 @@
 // the tones and tells the server when a cue was drawn (cue_shown).
 import { clockText } from "./format.js";
 import { h, setText } from "./dom.js";
-import { drawSkeleton } from "./skeleton.js";
+import { armAngles, drawSkeleton } from "./skeleton.js";
 import { BenchSocket } from "./socket.js";
 import { initialState, reduce, view } from "./coach-state.js";
 import * as tones from "./tones.js";
@@ -14,6 +14,7 @@ const CURSOR_HIDE_MS = 3000;
 const BAND_MAX_VH = 13; // the cue text is as large as fits in two lines, between these sizes
 const BAND_MIN_VH = 9;
 const NO_PICTURE_ASPECT = 4 / 3; // the skeleton's frame when the server sends no image
+const DOT_GLYPH = { g: "✓", w: "!" }; // "u" (counted, not seen) and "" (empty slot) have none
 const $ = (id) => document.getElementById(id);
 
 /** The mirrored picture and skeleton on two canvases that fill their box; the picture is letterboxed. */
@@ -34,7 +35,7 @@ class Video {
   /** A frame from the socket. With video off (or no picture yet) the skeleton alone is drawn. */
   onFrame(header, jpeg, videoOn) {
     this.lm = header.lm ?? null;
-    this.angles = { l: header.counters?.l?.angle ?? header.counters?.all?.angle ?? null, r: header.counters?.r?.angle ?? null };
+    this.angles = armAngles(header.counters);
     this._dirty = true;
     if (!videoOn) {
       this._set(null);
@@ -129,6 +130,10 @@ function boot() {
   };
   addEventListener("mousemove", showCursor);
   showCursor();
+  // a hidden page gets no animation frames: a cue whose rep arrives then is never confirmed
+  const onVisibility = () => dispatch({ type: "visibility", visible: document.visibilityState === "visible" });
+  document.addEventListener("visibilitychange", onVisibility);
+  onVisibility();
 
   // ---- drawing ---------------------------------------------------------------------------------
   function renderCounts(m) {
@@ -140,7 +145,7 @@ function boot() {
       h("i", { class: "lab" }, c.label),
       h("b", { class: "num" }, String(c.count)),
       h("div", { class: "dots", "aria-label": `${c.label || "all"} reps` },
-        c.dots.map((d) => h("div", { class: `dot ${d}` }, d ? h("span", {}, d === "w" ? "!" : "✓") : null))),
+        c.dots.map((d) => h("div", { class: `dot ${d}` }, DOT_GLYPH[d] ? h("span", {}, DOT_GLYPH[d]) : null))),
     )));
   }
 

@@ -1,10 +1,12 @@
 // The lab console (/lab): one socket in, the pure reducer (lab-state.js) keeps the page state,
 // and each panel module draws its part. The strip charts and the video panel are fed straight
 // from the socket and drawn from requestAnimationFrame.
-import { clockText, cueText, marginText, repDots } from "./format.js";
+import { cueText, marginText, repDots } from "./format.js";
 import { h, setText } from "./dom.js";
 import { mountCapture } from "./lab-capture.js";
-import { captureView, counterKeys, exerciseOptions, initialState, isRulesConflict, paramLabel, paramText, reduce } from "./lab-state.js";
+import {
+  counterKeys, exerciseOptions, gatePill, initialState, isRulesConflict, lastCueText, paramLabel, paramText, recPill, reduce,
+} from "./lab-state.js";
 import { mountTune } from "./lab-tune.js";
 import { LandmarkHistory, VideoPanel } from "./lab-video.js";
 import { mountWatch } from "./lab-watch.js";
@@ -19,9 +21,10 @@ const SPAN_S = 20; // seconds the charts show
 const KEEP_S = 300; // seconds of history kept for scrolling back
 const CHART_MS = 33; // the charts redraw at most about 30 times a second while running
 const MAX_DOTS = 30; // at most this many rep dots per counter (the newest that fit)
-const SOURCE_WORD = { device: "watch", energy: "energy", always_on: "always open", manual: "held" };
 const ANGLE_TITLE = { curl: "Elbow angle", press: "Elbow angle", raise: "Shoulder abduction", squat: "Knee angle" };
 const COUNTER_TEXT = { l: "L", r: "R", all: "Reps" };
+const DOT_GLYPH = { g: "✓", w: "!" }; // "u" (counted before this page saw it) has none
+const DOT_TITLE = { g: "good", w: "flagged", u: "counted before this page saw it" };
 const $ = (id) => document.getElementById(id);
 
 function boot() {
@@ -56,7 +59,9 @@ function boot() {
   // ---- top bar, error bar, counts ------------------------------------------------------------
   $("exercise").addEventListener("change", (e) => send("set_exercise", { exercise: e.target.value }));
   $("reset-counters").addEventListener("click", () => send("reset_counters"));
-  $("open-coach").addEventListener("click", () => window.open("/coach", "formcoach-coach"));
+  // a window of its own (not a tab, which would hide this page or be hidden by it): a hidden
+  // coach page stops drawing, and its cue delays would be false
+  $("open-coach").addEventListener("click", () => window.open("/coach", "formcoach-coach", "popup,width=1280,height=720"));
   $("video-toggle").addEventListener("click", () => send("set_video", { on: !(state.server?.video?.on ?? true) }));
 
   function renderTop(s) {
@@ -84,17 +89,15 @@ function boot() {
 
     const f = s.frame;
     const gate = $("pill-gate");
-    const src = SOURCE_WORD[f?.gate_source ?? server?.gate_source] ?? "";
-    const live = f && s.connected;
-    gate.className = `pill ${live && f.gate ? "ok" : ""}`;
-    setText(gate, live ? `${f.gate ? "● Gate open" : "○ Gate closed"} · ${src}` : `Gate · ${src}`);
+    const g = gatePill(s);
+    gate.className = `pill ${g.cls}`;
+    setText(gate, g.text);
 
-    const v = captureView(s);
+    const r = recPill(s);
     const rec = $("pill-rec");
-    rec.hidden = v.state === "idle";
-    rec.className = `pill ${v.state === "recording" ? "rec" : "warn"}`;
-    setText(rec, v.state === "countdown" ? `◔ Get ready${v.countdownS == null ? "" : ` ${v.countdownS}`}`
-      : v.state === "recording" ? `● REC ${v.elapsedS == null ? "" : clockText(v.elapsedS)}`.trim() : "■ Take in review");
+    rec.hidden = r.hidden;
+    rec.className = `pill ${r.cls}`;
+    setText(rec, r.text);
 
     $("pill-socket").hidden = s.connected;
     const fps = Number.isFinite(f?.fps) ? ` · ${Math.round(f.fps)} fps` : "";
@@ -132,15 +135,16 @@ function boot() {
       const dkey = dots.join("");
       if (row.dataset.key !== dkey) {
         row.dataset.key = dkey;
-        row.replaceChildren(...dots.map((d) => h("div", { class: `dot ${d}`, title: d === "w" ? "flagged" : "good" }, h("span", {}, d === "w" ? "!" : "✓"))));
+        row.replaceChildren(...dots.map((d) => h("div", { class: `dot ${d}`, title: DOT_TITLE[d] }, DOT_GLYPH[d] ? h("span", {}, DOT_GLYPH[d]) : null)));
       }
     }
     const cue = $("cue");
     const margin = $("margin");
     const rep = s.lastRep;
-    if (!rep) {
+    const none = lastCueText(s);
+    if (none != null) {
       cue.className = "cue";
-      setText(cue, server.exercise === "idle" ? "" : "No rep yet");
+      setText(cue, none);
       setText(margin, "");
     } else {
       const c = cueText(rep);

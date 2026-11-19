@@ -5,8 +5,9 @@
 it); :func:`serve_frames` runs the session over the frame source on the calling thread;
 :func:`run_bench` is the thin wrapper the CLI calls: it binds ``127.0.0.1:<http_port>`` first (a
 port in use fails before a camera is touched), builds, starts the session thread and runs
-uvicorn on the main thread, which owns Ctrl-C. On exit the session is stopped and the camera
-released (on the session thread) before the watch link is closed.
+uvicorn on the main thread, which owns Ctrl-C. On exit (:func:`shutdown`) the session is stopped
+and the camera released (on the session thread) before the watch link is closed; a take still
+recording or in review is dropped, and the terminal says so.
 
 The frame source is opened the way :func:`formcoach.app.live.run_live_demo` opens it, with the
 same checks and messages: ``--video`` (paced to real time), ``--camera N`` (opened last, since a
@@ -207,6 +208,7 @@ def build(
             board=links.board,
             clock=clock,
             rules_name=rules_file.name,
+            keep_log=False,  # nothing writes the session log; a take keeps its own rows
         )
         if video is not None:
             source = f"video {Path(video).name}"
@@ -215,8 +217,9 @@ def build(
         else:
             source = "fake"
         session.capture_context.update(
-            model="synthetic" if fake else model, camera=camera, source=source
-        )
+            model="synthetic" if fake else model, camera=camera, frame_source=source,
+            source=kind or "none",
+        )  # fmt: skip
         hub = Hub()
         controller = Controller(
             session, links, hub, video_width=video_width, jpeg_quality=JPEG_QUALITY,
@@ -334,8 +337,23 @@ def run_bench(
     except KeyboardInterrupt:
         pass
     finally:
-        bench.stop()
+        try:
+            shutdown(bench, thread, say=say)
+        finally:
+            sock.close()
+
+
+def shutdown(
+    bench: Bench, thread: threading.Thread | None, *, say: Callable[[str], None] = print
+) -> None:
+    """Stop the Bench: stop the session, wait up to :data:`JOIN_S` for its ``thread`` (if
+    any), say when a take that was recording or in review is dropped (nothing of it was
+    written), close everything (:attr:`Bench.cleanup`) and say ``"bench stopped"``."""
+    bench.stop()
+    if thread is not None:
         thread.join(timeout=JOIN_S)
-        bench.cleanup()
-        sock.close()
-        say("bench stopped")
+    state = bench.session.capture_state
+    if state in ("recording", "review"):
+        say(f"a take in {state} was not kept (nothing was written)")
+    bench.cleanup()
+    say("bench stopped")
